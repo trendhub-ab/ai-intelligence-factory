@@ -77,12 +77,15 @@ class _BoundElement:
 
 
 class _DynamicDialogLocator:
-    def __init__(self, bound_element):
+    def __init__(self, bound_element, events=None):
         self.bound_element = bound_element
         self.element_handle_calls = []
+        self.events = events
 
     def element_handle(self, timeout=0):
         self.element_handle_calls.append(timeout)
+        if self.events is not None:
+            self.events.append("bound")
         return self.bound_element
 
     def wait_for(self, **kwargs):
@@ -90,11 +93,14 @@ class _DynamicDialogLocator:
 
 
 class _BoundWaitPage:
-    def __init__(self):
+    def __init__(self, events=None):
         self.wait_calls = []
+        self.events = events
 
     def wait_for_function(self, expression, arg=None, timeout=0):
         self.wait_calls.append((expression, arg, timeout))
+        if self.events is not None:
+            self.events.append("wait")
         return True
 
 
@@ -158,3 +164,19 @@ def test_crop_close_wait_binds_original_dialog_element_before_save_retargets_fir
     assert timeout == 15000
     assert "!el.isConnected" in expression
     assert "getComputedStyle" in expression
+
+
+def test_crop_close_wait_runs_save_only_after_original_dialog_is_bound():
+    events = []
+    bound = _BoundElement()
+    dialog = _DynamicDialogLocator(bound, events=events)
+    page = _BoundWaitPage(events=events)
+
+    current_contract._wait_for_bound_dialog_hidden(
+        page,
+        dialog,
+        timeout_ms=15000,
+        after_bind=lambda: events.append("save"),
+    )
+
+    assert events == ["bound", "save", "wait"]
