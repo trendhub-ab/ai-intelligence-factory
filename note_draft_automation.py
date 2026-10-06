@@ -651,9 +651,48 @@ def _header_image_add_selector() -> str:
     )
 
 
+def _find_header_image_add_button(page: Any) -> Any | None:
+    semantic = _topmost_visible(page.locator(_header_image_add_selector()))
+    if semantic is not None:
+        return semantic
+    try:
+        page.evaluate(
+            """() => {
+                window.scrollTo(0, 0);
+                for (const el of document.querySelectorAll('*')) {
+                    if (el.scrollTop > 0) el.scrollTop = 0;
+                }
+            }"""
+        )
+        page.wait_for_timeout(1500)
+        index = page.evaluate(
+            """() => {
+                const bs = [...document.querySelectorAll('button')];
+                const matches = bs.map((b, i) => {
+                    const r = b.getBoundingClientRect();
+                    const label = (b.getAttribute('aria-label') || b.innerText || '').trim();
+                    const ok = !label && r.width >= 30 && r.width <= 56 &&
+                        r.y > 60 && r.y < 220 && r.x > 400;
+                    return ok ? i : -1;
+                }).filter((i) => i >= 0);
+                return matches.length === 1 ? matches[0] : -1;
+            }"""
+        )
+    except Exception:
+        return None
+    if not isinstance(index, int) or index < 0:
+        return None
+    try:
+        candidate = page.locator("button").nth(index)
+        if candidate.is_visible(timeout=700):
+            return candidate
+    except Exception:
+        pass
+    return None
+
+
 def _upload_header_image(page: Any, image_path: Path) -> None:
-    add_candidates = page.locator(_header_image_add_selector())
-    add_button = _topmost_visible(add_candidates)
+    add_button = _find_header_image_add_button(page)
     if add_button is None:
         raise NoteDraftError("note header-image control was not found")
     add_button.click()

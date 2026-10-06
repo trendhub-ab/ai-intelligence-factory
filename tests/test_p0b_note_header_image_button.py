@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import note_draft_automation as note
-import run222_note_presentation_integrity as header
 
 
 class _Button:
@@ -56,7 +55,7 @@ class _Page:
 def test_header_button_prefers_existing_semantic_selector():
     semantic = _Button("semantic")
     page = _Page(labeled=[semantic], geometry_index=0, all_buttons=[_Button("geometry")])
-    found = header.find_header_image_add_button(note, page)
+    found = note._find_header_image_add_button(page)
     assert found is semantic
     assert page.evaluate_calls == []
 
@@ -64,7 +63,7 @@ def test_header_button_prefers_existing_semantic_selector():
 def test_header_button_falls_back_to_unique_unlabeled_geometry_candidate():
     geometry = _Button("geometry")
     page = _Page(geometry_index=0, all_buttons=[geometry])
-    found = header.find_header_image_add_button(note, page)
+    found = note._find_header_image_add_button(page)
     assert found is geometry
     assert page.waits == [1500]
     source = "\n".join(page.evaluate_calls)
@@ -80,4 +79,4 @@ def test_header_button_falls_back_to_unique_unlabeled_geometry_candidate():
 
 def test_header_button_geometry_fallback_fails_closed_when_no_unique_candidate():
     page = _Page(geometry_index=-1, all_buttons=[_Button("other")])
-    assert header.find_header_image_add_button(note, page) is None
+    assert note._find_header_image_add_button(page) is None
