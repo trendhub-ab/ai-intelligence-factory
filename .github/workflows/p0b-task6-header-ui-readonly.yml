@@ -22,66 +22,70 @@ jobs:
       - name: Install bounded probe dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt playwright
+          pip install -r requirements.txt playwright requests
           python -m playwright install chromium
-      - name: Diagnose editor auth bootstrap without mutation
+      - name: Diagnose CORS preflight without mutation
         env:
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
           PYTHONPATH: .
         run: |
           python - <<'PY'
           import json, re
-          from collections import Counter
           from urllib.parse import urlparse
+          import requests
           import note_draft_automation as note
           from playwright.sync_api import sync_playwright
 
-          def safe_url(url):
-              p=urlparse(str(url or ''))
-              return {'host':p.hostname or '', 'path':p.path[:160]}
-          def safe_message(text):
-              value=str(text or '')
-              value=re.sub(r'https?://[^\s)]+', '<url>', value)
-              value=re.sub(r'[A-Za-z0-9_\-]{32,}', '<redacted>', value)
-              return value[:240]
+          API='https://note.com/api/v1/text_notes'
+          ORIGIN='https://editor.note.com'
+          CHROME_UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36'
+
+          def safe_headers(headers):
+              allowed=('access-control-allow-origin','access-control-allow-methods','access-control-allow-headers','vary','server','content-type','location')
+              return {k:v[:240] for k,v in headers.items() if k.lower() in allowed}
+          def probe_options(extra_headers='', ua=None):
+              h={
+                  'Origin':ORIGIN,
+                  'Access-Control-Request-Method':'POST',
+              }
+              if extra_headers:
+                  h['Access-Control-Request-Headers']=extra_headers
+              if ua:
+                  h['User-Agent']=ua
+              r=requests.options(API,headers=h,timeout=20,allow_redirects=False)
+              return {'status':r.status_code,'headers':safe_headers(r.headers),'body_len':len(r.content)}
 
           storage_path=note._decode_storage_state()
+          post_header_names=[]; failed=[]; console=[]
           try:
-              state=json.loads(storage_path.read_text(encoding='utf-8'))
-              cookie_domains=Counter(str(c.get('domain') or '') for c in state.get('cookies',[]) if isinstance(c,dict))
-              origins=[]
-              for item in state.get('origins',[]):
-                  if not isinstance(item,dict): continue
-                  origin=str(item.get('origin') or '')
-                  keys=sorted(str(x.get('name') or '') for x in item.get('localStorage',[]) if isinstance(x,dict))
-                  origins.append({'host':urlparse(origin).hostname or '', 'local_storage_keys':keys})
-
-              failed=[]; errors=[]; redirects=[]
               with sync_playwright() as p:
                   browser=p.chromium.launch(headless=True,args=['--lang=ja-JP'])
                   context=browser.new_context(storage_state=str(storage_path),locale='ja-JP',timezone_id='Asia/Tokyo',viewport={'width':1440,'height':1100})
                   page=context.new_page(); page.set_default_timeout(15000)
-                  page.on('requestfailed', lambda r: failed.append({'url':safe_url(r.url),'method':r.method,'type':r.resource_type,'failure':safe_message(r.failure)}))
-                  page.on('console', lambda m: errors.append(safe_message(m.text)) if m.type=='error' else None)
-                  def on_response(r):
-                      if 300 <= r.status < 400:
-                          loc=r.headers.get('location','')
-                          redirects.append({'status':r.status,'from':safe_url(r.url),'to':safe_url(loc)})
-                  page.on('response', on_response)
+                  def on_request(r):
+                      if urlparse(r.url).hostname=='note.com' and urlparse(r.url).path=='/api/v1/text_notes':
+                          try: names=sorted(k.lower() for k in r.headers.keys())
+                          except Exception: names=[]
+                          post_header_names.append(names)
+                  page.on('request',on_request)
+                  page.on('requestfailed',lambda r: failed.append({'host':urlparse(r.url).hostname or '', 'path':urlparse(r.url).path,'method':r.method,'failure':str(r.failure or '')[:120]}))
+                  page.on('console',lambda m: console.append(re.sub(r'https?://[^\s)]+','<url>',m.text)[:220]) if m.type=='error' else None)
                   try:
-                      nav=page.goto(note.NOTE_NEW_URL,wait_until='domcontentloaded',timeout=60000)
-                      page.wait_for_timeout(10000)
-                      print('P0B_EDITOR_AUTH_BOOTSTRAP='+json.dumps({
-                          'nav_status':None if nav is None else nav.status,
-                          'page':safe_url(page.url),'html_len':len(page.content()),
-                          'body_text_len':len(page.locator('body').inner_text(timeout=1000) or ''),
-                          'cookie_domains':dict(cookie_domains),'origins':origins,
-                          'failed_requests':failed[:20],'redirects':redirects[:20],
-                          'console_errors':errors[:10],
-                          'note_mutation_count':0,'model_calls':0,'public_release':False,
-                      },ensure_ascii=False,sort_keys=True))
+                      page.goto(note.NOTE_NEW_URL,wait_until='domcontentloaded',timeout=60000)
+                      page.wait_for_timeout(7000)
                   finally:
                       context.close(); browser.close()
+
+              result={
+                  'browser_post_header_names':post_header_names[:5],
+                  'failed_requests':failed[:10],
+                  'console_errors':console[:5],
+                  'options_minimal':probe_options(),
+                  'options_content_type':probe_options('content-type'),
+                  'options_content_type_chrome_ua':probe_options('content-type',CHROME_UA),
+                  'note_mutation_count':0,'model_calls':0,'public_release':False,
+              }
+              print('P0B_CORS_PREFLIGHT='+json.dumps(result,ensure_ascii=False,sort_keys=True))
           finally:
               storage_path.unlink(missing_ok=True)
           PY
