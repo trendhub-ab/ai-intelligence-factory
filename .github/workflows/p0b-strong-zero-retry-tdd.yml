@@ -1,5 +1,5 @@
 name: P0-B Strong-Zero Retry TDD [IMPL]
-# checkpoint: task6-crop-save-control-green
+# checkpoint: task6-bound-crop-dialog-current-contract
 
 on:
   push:
@@ -10,6 +10,7 @@ on:
       - 'member_customer_surface_contract.py'
       - 'note_delivery_*.py'
       - 'note_draft_automation.py'
+      - 'run194_note_current_contract.py'
       - 'run222_note_presentation_integrity.py'
       - 'run_p0b_*.py'
       - 'tests/test_note_delivery_*.py'
