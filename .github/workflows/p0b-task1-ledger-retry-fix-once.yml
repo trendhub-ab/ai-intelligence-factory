@@ -1,0 +1,95 @@
+name: P0-B Task 1 Ledger Retry Authority TDD Fix [IMPL ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - impl/p0b-strong-zero-retry-authority
+    paths:
+      - '.github/workflows/p0b-task1-ledger-retry-fix-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  task1-ledger-tdd-fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest playwright google-cloud-storage
+      - name: Recover prior TDD scripts and correct test typo only
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import base64, re
+          source = Path('.github/workflows/p0b-task1-ledger-retry-once.yml').read_text(encoding='utf-8')
+          pairs = re.findall(r"printf '%s' '([^']+)' \\| base64 -d > (/tmp/apply_task1_(?:tests|prod)\\.py)", source)
+          if len(pairs) != 2:
+              raise SystemExit(f'expected 2 embedded scripts, found {len(pairs)}')
+          for payload, destination in pairs:
+              Path(destination).write_bytes(base64.b64decode(payload))
+          PY
+          python /tmp/apply_task1_tests.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tests/test_note_delivery_ledger.py')
+          text = path.read_text(encoding='utf-8')
+          if 'manuap.state_version' not in text:
+              raise SystemExit('expected test typo not found')
+          path.write_text(text.replace('manuap.state_version', 'manual.state_version', 1), encoding='utf-8')
+          PY
+      - name: Verify Task 1 ledger tests are RED for missing dedicated API
+        run: |
+          set +e
+          python -m pytest -q tests/test_note_delivery_ledger.py -k 'reconciled_retry or manual_reconciliation' > /tmp/task1-red.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/task1-red.log
+          if [ "$rc" -eq 0 ]; then
+            echo '::error::Expected RED before production implementation, but tests passed.'
+            exit 1
+          fi
+          grep -q 'authorize_reconciled_retry' /tmp/task1-red.log
+      - name: Implement minimal dedicated SQLite retry authority
+        run: python /tmp/apply_task1_prod.py
+      - name: Verify focused Task 1 ledger GREEN
+        run: python -m pytest -q tests/test_note_delivery_ledger.py -k 'reconciled_retry or manual_reconciliation'
+      - name: Verify Task 1 regression GREEN
+        run: >-
+          python -m pytest -q
+          tests/test_note_delivery_strong_zero.py
+          tests/test_note_delivery_ledger.py
+          tests/test_p0b_strong_zero_reconciliation.py
+      - name: Verify focused P0-B suite GREEN
+        run: >-
+          python -m pytest -q
+          tests/test_note_delivery_strong_zero.py
+          tests/test_note_delivery_ledger.py
+          tests/test_note_delivery_gcs.py
+          tests/test_note_delivery_runtime.py
+          tests/test_p0b_strong_zero_reconciliation.py
+          tests/test_p0b_strong_zero_reconciliation_live_workflow.py
+      - name: Verify full repository and guards before commit
+        run: |
+          set -euo pipefail
+          python -m pytest tests -q
+          python workflow_reference_guard.py
+          python repository_falsification_guard.py
+          python integration_stability_guard.py
+          git diff --check
+      - name: Commit Task 1 ledger API only after all GREEN checks
+        run: |
+          set -euo pipefail
+          git config user.name 'TrendHub'
+          git config user.email 'trendhub.biz@gmail.com'
+          git add note_delivery_ledger.py tests/test_note_delivery_ledger.py
+          git commit -m 'feat: add dedicated strong-zero retry authority contract'
+          git push origin HEAD:impl/p0b-strong-zero-retry-authority
