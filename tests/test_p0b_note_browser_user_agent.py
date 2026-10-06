@@ -12,6 +12,12 @@ def test_standard_chrome_user_agent_preserves_engine_version_without_headless_ma
     assert user_agent.startswith("Mozilla/5.0 (X11; Linux x86_64)")
 
 
+def test_header_image_add_selector_accepts_accessible_child_icon():
+    selector = note._header_image_add_selector()
+    assert 'button:has([aria-label="画像を追加"])' in selector
+    assert '[role="button"]:has([aria-label="画像を追加"])' in selector
+
+
 def test_browser_draft_context_uses_standard_chrome_user_agent(monkeypatch, tmp_path):
     captured: dict[str, object] = {}
 
