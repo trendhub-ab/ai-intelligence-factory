@@ -1,0 +1,68 @@
+name: P0-B Hosted Private Draft Shape Probe [OPS ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - ops/p0b-hosted-b01-recovery-20261006
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p0b-hosted-private-draft-shape-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install probe dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests playwright
+      - name: Run shape-probe contract tests
+        run: python -m unittest tests.test_run_p0b_hosted_private_draft_shape_probe -v
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Probe private article-list shape without mutation
+        env:
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_BROWSER_AUTH_MODE: storage_state
+          NOTE_BROWSER_HEADLESS: '1'
+          P0B_HOSTED_DRAFT_SHAPE_RESULT_FILE: ${{ runner.temp }}/p0b-hosted-draft-shape.json
+        run: python run_p0b_hosted_private_draft_shape_probe.py
+      - name: Summarize safe aggregate result
+        env:
+          RESULT_FILE: ${{ runner.temp }}/p0b-hosted-draft-shape.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          allowed = {
+              'status', 'authenticated', 'final_route_shape',
+              'anchor_route_shape_counts', 'draft_marker_count',
+              'published_marker_count', 'visible_anchor_count',
+              'zero_model_calls', 'mutation_count',
+          }
+          if set(result) != allowed:
+              raise SystemExit('shape probe returned unsafe or unexpected fields')
+          if result.get('mutation_count') != 0 or result.get('zero_model_calls') is not True:
+              raise SystemExit('shape probe no-mutation contract failed')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### P0-B hosted private draft shape probe\n')
+              fh.write(f"- status: `{result.get('status')}`\n")
+              fh.write(f"- authenticated: `{result.get('authenticated')}`\n")
+              fh.write(f"- final route shape: `{result.get('final_route_shape')}`\n")
+              fh.write(f"- visible anchors: `{result.get('visible_anchor_count')}`\n")
+              fh.write(f"- draft markers: `{result.get('draft_marker_count')}`\n")
+              fh.write(f"- published markers: `{result.get('published_marker_count')}`\n")
+              fh.write(f"- anchor route shapes: `{json.dumps(result.get('anchor_route_shape_counts') or {}, ensure_ascii=False, sort_keys=True)}`\n")
+              fh.write('- mutation count: `0`\n')
+              fh.write('- model calls: `0`\n')
+          PY
