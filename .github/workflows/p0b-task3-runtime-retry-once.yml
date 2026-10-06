@@ -1,0 +1,79 @@
+name: P0-B Task 3 Reconciled Retry Runtime TDD [IMPL ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - impl/p0b-strong-zero-retry-authority
+    paths:
+      - '.github/workflows/p0b-task3-runtime-retry-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  task3-runtime-tdd:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest playwright google-cloud-storage
+      - name: Add Task 3 runtime tests first
+        run: |
+          printf '%s' '" + tb64 + "' | base64 -d > /tmp/apply_task3_tests.py
+          python /tmp/apply_task3_tests.py
+      - name: Verify Task 3 runtime tests are RED for missing retry runtime
+        run: |
+          set +e
+          python -m pytest -q tests/test_note_delivery_runtime.py -k 'reconciled_retry or create_or_resume or creation_unknown or queue' > /tmp/task3-red.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/task3-red.log
+          if [ "$rc" -eq 0 ]; then
+            echo '::error::Expected RED before runtime implementation, but tests passed.'
+            exit 1
+          fi
+          grep -q 'create_reconciled_retry' /tmp/task3-red.log
+      - name: Implement minimal shared authorized creation executor
+        run: |
+          printf '%s' '" + pb64 + "' | base64 -d > /tmp/apply_task3_prod.py
+          python /tmp/apply_task3_prod.py
+      - name: Verify focused Task 3 runtime GREEN
+        run: python -m pytest -q tests/test_note_delivery_runtime.py -k 'reconciled_retry or create_or_resume or creation_unknown or queue'
+      - name: Verify runtime ledger and GCS parity GREEN
+        run: python -m pytest -q tests/test_note_delivery_runtime.py tests/test_note_delivery_ledger.py tests/test_note_delivery_gcs.py
+      - name: Verify focused P0-B suite GREEN
+        run: >-
+          python -m pytest -q
+          tests/test_note_delivery_strong_zero.py
+          tests/test_note_delivery_ledger.py
+          tests/test_note_delivery_gcs.py
+          tests/test_note_delivery_runtime.py
+          tests/test_p0b_strong_zero_reconciliation.py
+          tests/test_p0b_strong_zero_reconciliation_live_workflow.py
+      - name: Remove transient Task 3 one-shot before repository-wide validation
+        run: rm .github/workflows/p0b-task3-runtime-retry-once.yml
+      - name: Verify full repository and guards before commit
+        run: |
+          set -euo pipefail
+          python -m pytest tests -q
+          python workflow_reference_guard.py
+          python repository_falsification_guard.py
+          python integration_stability_guard.py
+          git diff --check
+      - name: Commit Task 3 only after all GREEN checks
+        run: |
+          set -euo pipefail
+          git config user.name 'TrendHub'
+          git config user.email 'trendhub.biz@gmail.com'
+          git add note_delivery_runtime.py tests/test_note_delivery_runtime.py
+          git add -u .github/workflows/p0b-task3-runtime-retry-once.yml
+          git commit -m 'refactor: reuse one fail-closed creation executor for reconciled retry'
+          git push origin HEAD:impl/p0b-strong-zero-retry-authority
