@@ -1,4 +1,4 @@
-name: P0-B Hosted Storage Capability Audit [OPS ONE-SHOT]
+name: P0-B Hosted Existing Storage Probe [OPS ONE-SHOT]
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
   id-token: write
 
 jobs:
-  audit:
+  probe:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -29,50 +29,37 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v3
 
-      - name: Audit effective project roles and existing private storage
+      - name: Probe bucket visibility without exposing names
         run: |
           set -euo pipefail
-          work="$RUNNER_TEMP/p0b-storage-audit"
-          mkdir -p "$work"
-
-          roles="$(gcloud projects get-iam-policy "$GCP_PROJECT_ID" \
-            --flatten='bindings[].members' \
-            --filter="bindings.members:serviceAccount:${GCP_SERVICE_ACCOUNT}" \
-            --format='value(bindings.role)' 2>/dev/null || true)"
-          if [ -n "$roles" ]; then
-            printf '%s\n' "$roles" | sort -u > "$work/roles.txt"
+          if gcloud storage buckets list --project "$GCP_PROJECT_ID" --format='value(name)' > "$RUNNER_TEMP/buckets" 2> "$RUNNER_TEMP/list.err"; then
+            echo 'P0B_BUCKET_LIST_ALLOWED=true'
+            echo "P0B_BUCKET_VISIBLE_COUNT=$(grep -c . "$RUNNER_TEMP/buckets" || true)"
           else
-            : > "$work/roles.txt"
+            echo 'P0B_BUCKET_LIST_ALLOWED=false'
           fi
 
-          gcloud storage buckets list --project "$GCP_PROJECT_ID" --format='value(name)' > "$work/buckets.txt" 2>/dev/null || :
-
-          WORK="$work" PROJECT="$GCP_PROJECT_ID" python3 - <<'PY'
-          import os, pathlib, subprocess
-          work = pathlib.Path(os.environ['WORK'])
-          roles = [x.strip() for x in (work/'roles.txt').read_text().splitlines() if x.strip()]
-          buckets = [x.strip() for x in (work/'buckets.txt').read_text().splitlines() if x.strip()]
-          print('P0B_STORAGE_ROLE_COUNT=' + str(len(roles)))
-          for role in roles:
-              print('P0B_STORAGE_ROLE=' + role)
-          print('P0B_STORAGE_BUCKET_COUNT=' + str(len(buckets)))
-
-          secure = 0
-          named = 0
-          for name in buckets:
-              low = name.lower()
-              if 'aiif' not in low and 'note' not in low and os.environ['PROJECT'].lower() not in low:
-                  continue
-              named += 1
-              subprocess.run(['bash','-lc',f'echo "::add-mask::{name}"'], check=False)
-              p = subprocess.run(
-                  ['gcloud','storage','buckets','describe',f'gs://{name}','--format=value(iam_config.uniform_bucket_level_access.enabled,iam_config.public_access_prevention)'],
-                  text=True, capture_output=True
-              )
-              if p.returncode == 0:
-                  text = p.stdout.lower()
-                  if 'true' in text and 'enforced' in text:
-                      secure += 1
-          print('P0B_NAMED_BUCKET_COUNT=' + str(named))
-          print('P0B_SECURE_NAMED_BUCKET_COUNT=' + str(secure))
+          found=0
+          secure=0
+          for bucket in \
+            "$GCP_PROJECT_ID" \
+            "${GCP_PROJECT_ID}.appspot.com" \
+            "${GCP_PROJECT_ID}.firebasestorage.app" \
+            "${GCP_PROJECT_ID}-aiif-note-ledger-v1"; do
+            echo "::add-mask::$bucket"
+            if gcloud storage buckets describe "gs://$bucket" --format=json > "$RUNNER_TEMP/describe.json" 2>/dev/null; then
+              found=$((found+1))
+              if python3 - "$RUNNER_TEMP/describe.json" <<'PY'
+          import json,sys
+          d=json.load(open(sys.argv[1],encoding='utf-8'))
+          iam=d.get('iamConfiguration') or d.get('iam_config') or {}
+          ub=(iam.get('uniformBucketLevelAccess') or iam.get('uniform_bucket_level_access') or {})
+          enabled=ub.get('enabled') is True
+          pap=str(iam.get('publicAccessPrevention') or iam.get('public_access_prevention') or '').lower()=='enforced'
+          raise SystemExit(0 if enabled and pap else 1)
           PY
+              then secure=$((secure+1)); fi
+            fi
+          done
+          echo "P0B_KNOWN_BUCKET_FOUND_COUNT=$found"
+          echo "P0B_KNOWN_BUCKET_SECURE_COUNT=$secure"
