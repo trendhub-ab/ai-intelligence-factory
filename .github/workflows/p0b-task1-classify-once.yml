@@ -1,0 +1,47 @@
+name: P0-B Task 1 Infrastructure Classification [IMPL ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - impl/p0b-strong-zero-retry-authority
+    paths:
+      - '.github/workflows/p0b-task1-classify-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Register shared strong-zero module as operational infrastructure
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('member_customer_surface_contract.py')
+          text = path.read_text(encoding='utf-8')
+          name = 'note_delivery_strong_zero.py'
+          marker = '    "note_delivery_runtime.py",  # P0-B delivery orchestration, not reader/customer copy\n'
+          line = '    "note_delivery_strong_zero.py",  # P0-B strong-zero evidence contract, not reader/customer copy\n'
+          if f'"{name}"' not in text:
+              if marker not in text:
+                  raise SystemExit('classification marker not found')
+              path.write_text(text.replace(marker, marker + line, 1), encoding='utf-8')
+          PY
+          git diff --check
+          python -m unittest tests.test_member_customer_surface_contract -v
+      - name: Commit exact classification if needed
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- member_customer_surface_contract.py; then
+            echo 'classification already present'
+            exit 0
+          fi
+          git config user.name 'TrendHub'
+          git config user.email 'trendhub.biz@gmail.com'
+          git add member_customer_surface_contract.py
+          git commit -m 'fix: classify strong-zero evidence module as infrastructure'
+          git push origin HEAD:impl/p0b-strong-zero-retry-authority
