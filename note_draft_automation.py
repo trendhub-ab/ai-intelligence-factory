@@ -805,6 +805,17 @@ def _decode_storage_state() -> Path:
     return path
 
 
+
+def _standard_chrome_user_agent(browser_version: str) -> str:
+    version = str(browser_version or "").strip()
+    if not re.fullmatch(r"\d+(?:\.\d+){1,3}", version):
+        raise NoteDraftError("Playwright reported an invalid Chromium version")
+    return (
+        "Mozilla/5.0 (X11; Linux x86_64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        f"Chrome/{version} Safari/537.36"
+    )
+
 def _create_browser_draft(
     title: str,
     manuscript: str,
@@ -823,6 +834,7 @@ def _create_browser_draft(
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True, args=["--lang=ja-JP"])
         context = browser.new_context(
+            user_agent=_standard_chrome_user_agent(browser.version),
             storage_state=str(storage_path),
             locale="ja-JP",
             timezone_id="Asia/Tokyo",
