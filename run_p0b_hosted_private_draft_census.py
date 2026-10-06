@@ -2,8 +2,9 @@
 """Read-only census for resolving one P0-B CREATION_UNKNOWN safely.
 
 The census never opens an editor, never clicks a note card, and never writes note, Notion,
-or the durable ledger.  It compares the exact expected title privately against visible
-``/notes/<opaque>`` cards and emits aggregate counts only.
+or the durable ledger. It first selects note's proven draft-list filter, then compares the
+exact expected title privately against visible ``/notes/<opaque>`` cards and emits aggregate
+counts only.
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ from urllib.parse import urljoin, urlparse
 
 import note_draft_automation as base
 import run194_note_current_contract as current
+import run_p0b_hosted_private_draft_filter_navigation_probe as nav
 
 ARTICLE_LIST_URL = "https://note.com/notes"
 RESULT_ENV = "P0B_HOSTED_DRAFT_CENSUS_RESULT_FILE"
@@ -178,6 +180,13 @@ def census() -> dict[str, Any]:
                 if base._looks_logged_out(page):
                     raise base.NoteAuthenticationExpired("Hosted private-draft census session is not authenticated")
 
+                # Use only the exact draft-filter navigation shape already proven on this
+                # hosted runtime. These are UI-navigation clicks, not content mutation.
+                nav.menu._open_status_filter_menu(page)
+                nav._select_unique_draft_filter(page)
+                if base._looks_logged_out(page):
+                    raise base.NoteAuthenticationExpired("Hosted draft-filtered census session is not authenticated")
+
                 anchors = page.locator("a[href]")
                 try:
                     anchor_count = min(int(anchors.count()), 600)
@@ -217,8 +226,8 @@ def census() -> dict[str, Any]:
                     if _normalize(title) == expected_title:
                         exact_target_count += 1
 
-                # Shape-probe evidence established that this account exposes private cards on
-                # this surface.  An empty result here is therefore structural drift, not zero.
+                # An empty draft-filtered result is structural drift, not proof of zero,
+                # until the private-card surface itself remains observable.
                 if private_note_card_count == 0:
                     unreadable_count += 1
 
