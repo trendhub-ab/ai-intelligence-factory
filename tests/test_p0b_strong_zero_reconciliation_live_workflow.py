@@ -25,6 +25,15 @@ def test_live_reconciliation_is_marker_only_and_hosted_gcs():
     assert 'systemd' not in source
 
 
+def test_live_reconciliation_installs_pillow_before_snapshot_rebuild():
+    source = _source()
+    install = source.index('name: Install bounded recovery dependencies')
+    reconcile = source.index('name: Reconcile strong zero with immutable snapshot')
+    assert install < reconcile
+    dependency_block = source[install:reconcile].lower()
+    assert 'pillow' in dependency_block
+
+
 def test_live_reconciliation_runs_fresh_census_before_one_cas_reconciliation():
     source = _source()
     census = source.index('name: Run fresh strong-zero census')
