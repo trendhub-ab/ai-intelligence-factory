@@ -639,10 +639,20 @@ def _topmost_visible(locator: Any) -> Any | None:
     return best[1] if best else None
 
 
-def _upload_header_image(page: Any, image_path: Path) -> None:
-    add_candidates = page.locator(
-        'button[aria-label="画像を追加"], button[aria-label*="見出し画像"], button:has-text("画像を追加")'
+def _header_image_add_selector() -> str:
+    return (
+        'button[aria-label="画像を追加"], '
+        'button[aria-label*="見出し画像"], '
+        'button:has-text("画像を追加"), '
+        'button:has([aria-label="画像を追加"]), '
+        '[role="button"]:has([aria-label="画像を追加"]), '
+        'button:has([aria-label*="見出し画像"]), '
+        '[role="button"]:has([aria-label*="見出し画像"])'
     )
+
+
+def _upload_header_image(page: Any, image_path: Path) -> None:
+    add_candidates = page.locator(_header_image_add_selector())
     add_button = _topmost_visible(add_candidates)
     if add_button is None:
         raise NoteDraftError("note header-image control was not found")
