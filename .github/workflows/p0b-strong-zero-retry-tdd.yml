@@ -1,16 +1,14 @@
-name: P0-B Strong-Zero Retry TDD [IMPL]
-# checkpoint: task6-current-header-control-green
+name: P0-B Strong-Zero Retry TDD [CORE]
+# checkpoint: core-without-note-draft-ui
 
 on:
   push:
     branches:
-      - impl/p0b-strong-zero-retry-authority
+      - impl/p0b-strong-zero-core
     paths:
       - '.github/workflows/p0b-strong-zero-retry-tdd.yml'
       - 'member_customer_surface_contract.py'
       - 'note_delivery_*.py'
-      - 'note_draft_automation.py'
-      - 'run222_note_presentation_integrity.py'
       - 'run_p0b_*.py'
       - 'tests/test_note_delivery_*.py'
       - 'tests/test_p0b_*.py'
@@ -45,7 +43,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt pytest playwright google-cloud-storage
-      - name: Focused P0-B baseline
+      - name: Focused P0-B core baseline
         run: >-
           python -m pytest -q
           tests/test_note_delivery_strong_zero.py
@@ -55,7 +53,6 @@ jobs:
           tests/test_p0b_strong_zero_reconciliation.py
           tests/test_p0b_strong_zero_reconciliation_live_workflow.py
           tests/test_p0b_note_browser_user_agent.py
-          tests/test_p0b_note_header_image_button.py
       - name: Full repository pytest
         run: python -m pytest tests -q
       - name: Repository guards
