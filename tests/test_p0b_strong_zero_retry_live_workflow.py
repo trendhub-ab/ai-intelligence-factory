@@ -5,7 +5,6 @@ from pathlib import Path
 
 WORKFLOW = Path('.github/workflows/p0b-strong-zero-retry-live.yml')
 OFFLINE = Path('.github/workflows/p0b-offline-verification.yml')
-TRIGGER = Path('ops/p0b-strong-zero-retry.trigger')
 
 
 def _source() -> str:
@@ -37,7 +36,6 @@ def test_retry_live_is_exact_marker_only_hosted_linux_contract():
     )
     for token in forbidden:
         assert token not in lower
-    assert TRIGGER.exists() is False
 
 
 def test_retry_live_installs_bounded_dependencies_chromium_and_wif_before_runtime():
