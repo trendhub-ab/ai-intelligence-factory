@@ -34,6 +34,37 @@ def test_live_reconciliation_installs_pillow_before_snapshot_rebuild():
     assert 'pillow' in dependency_block
 
 
+def test_live_reconciliation_has_read_only_snapshot_and_ledger_gate_before_cas():
+    source = _source()
+    census = source.index('name: Run fresh strong-zero census')
+    gate = source.index('name: Rebuild immutable snapshot and recheck ambiguous ledger read-only')
+    reconcile = source.index('name: Reconcile strong zero with immutable snapshot')
+    assert census < gate < reconcile
+
+    gate_block = source[gate:reconcile]
+    required = (
+        'delivery_runtime.prepare_delivery(',
+        'get_active_by_logical_key(',
+        'DeliveryState.CREATION_UNKNOWN',
+        'prepared.snapshot != record.snapshot',
+        "str(record.draft_id or '').strip()",
+        'P0B_PRE_CAS_GATE=immutable_snapshot_match_creation_unknown',
+    )
+    for token in required:
+        assert token in gate_block
+
+    forbidden = (
+        'record_blocked(',
+        'record_draft_created(',
+        'record_verified(',
+        'record_queue_confirmed(',
+        'reconcile_strong_zero(',
+        'patch_and_readback_draft_binding(',
+    )
+    for token in forbidden:
+        assert token not in gate_block
+
+
 def test_live_reconciliation_runs_fresh_census_before_one_cas_reconciliation():
     source = _source()
     census = source.index('name: Run fresh strong-zero census')
