@@ -25,6 +25,10 @@ from note_delivery_ledger import (
     operation_key,
     revision_key,
 )
+from note_delivery_strong_zero import (
+    StrongZeroEvidenceError,
+    parse_strong_zero_evidence_category,
+)
 
 GCS_LEDGER_ENVELOPE_SCHEMA_VERSION = "note-delivery-gcs-envelope-v1"
 DEFAULT_PREFIX = "delivery/v1"
@@ -270,6 +274,67 @@ class GCSDeliveryLedger:
             winning_record = winner[0]
             reason = "existing_operation" if winning_record.operation_key == op_key else "active_logical_delivery"
             return IntentDecision(winning_record, False, reason)
+
+    def authorize_reconciled_retry(
+        self,
+        snapshot: DeliverySnapshot,
+        *,
+        run_correlation_id: str,
+        expected_version: int,
+    ) -> IntentDecision:
+        logical_key = logical_delivery_key(snapshot)
+        loaded = self._load_by_logical_key(logical_key)
+        if loaded is None:
+            raise InvalidStateTransition("delivery_not_found")
+        current, events, generation = loaded
+        if current.state_version != expected_version:
+            raise ConcurrentStateChange("state_version_mismatch")
+        if current.state != DeliveryState.MANUAL_RECONCILIATION_REQUIRED:
+            return IntentDecision(current, False, "manual_reconciliation_required")
+        if current.snapshot != snapshot:
+            return IntentDecision(current, False, "snapshot_mismatch")
+        if current.draft_id:
+            return IntentDecision(current, False, "stable_draft_present")
+        try:
+            evidence_digest = parse_strong_zero_evidence_category(
+                current.conflict_category or ""
+            )
+        except StrongZeroEvidenceError:
+            return IntentDecision(current, False, "strong_zero_evidence_invalid")
+
+        next_version = current.state_version + 1
+        now = _utc_now()
+        expires = (
+            datetime.now(timezone.utc) + timedelta(minutes=5)
+        ).isoformat().replace("+00:00", "Z")
+        retry_run = _normalized_text(run_correlation_id)
+        updated = replace(
+            current,
+            state=DeliveryState.CREATE_INTENT_RECORDED,
+            state_version=next_version,
+            attempt_count=current.attempt_count + 1,
+            owner_correlation_id=retry_run,
+            owner_expires_at=expires,
+            updated_at=now,
+        )
+        next_events = list(events)
+        next_events.append(
+            _event(
+                prior_state=DeliveryState.MANUAL_RECONCILIATION_REQUIRED,
+                new_state=DeliveryState.CREATE_INTENT_RECORDED,
+                category=f"strong_zero_retry_authorized:{evidence_digest}",
+                run_correlation_id=retry_run,
+                state_version=next_version,
+                created_at=now,
+            )
+        )
+        self._write(
+            current.logical_key,
+            updated,
+            next_events,
+            expected_generation=generation,
+        )
+        return IntentDecision(updated, True, "reconciled_retry_authorized")
 
     def _load_operation(
         self, op_key: str
