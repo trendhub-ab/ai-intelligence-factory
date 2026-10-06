@@ -21,28 +21,35 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+
           path = Path('member_customer_surface_contract.py')
           text = path.read_text(encoding='utf-8')
           marker = '    "note_delivery_runtime.py",  # P0-B delivery orchestration, not reader/customer copy\n'
           additions = (
-              '    "run_p0b_hosted_private_draft_census.py",  # P0-B read-only hosted draft census, not reader/customer copy\n'
-              '    "run_p0b_hosted_private_draft_filter_navigation_probe.py",  # P0-B read-only UI probe, not reader/customer copy\n'
-              '    "run_p0b_hosted_private_draft_shape_probe.py",  # P0-B read-only UI probe, not reader/customer copy\n'
-              '    "run_p0b_strong_zero_reconciliation.py",  # P0-B operational reconciliation, not reader/customer copy\n'
-              '    "run_p0b_hosted_private_draft_filter_menu_probe.py",  # P0-B read-only UI probe, not reader/customer copy\n'
+              ('run_p0b_hosted_private_draft_census.py', '    "run_p0b_hosted_private_draft_census.py",  # P0-B read-only hosted draft census, not reader/customer copy\n'),
+              ('run_p0b_hosted_private_draft_filter_navigation_probe.py', '    "run_p0b_hosted_private_draft_filter_navigation_probe.py",  # P0-B read-only UI probe, not reader/customer copy\n'),
+              ('run_p0b_hosted_private_draft_shape_probe.py', '    "run_p0b_hosted_private_draft_shape_probe.py",  # P0-B read-only UI probe, not reader/customer copy\n'),
+              ('run_p0b_strong_zero_reconciliation.py', '    "run_p0b_strong_zero_reconciliation.py",  # P0-B operational reconciliation, not reader/customer copy\n'),
+              ('run_p0b_hosted_private_draft_filter_menu_probe.py', '    "run_p0b_hosted_private_draft_filter_menu_probe.py",  # P0-B read-only UI probe, not reader/customer copy\n'),
           )
           if marker not in text:
               raise SystemExit('classification marker not found')
-          if any(line.strip() in text for line in additions):
-              raise SystemExit('classification already present; refusing duplicate patch')
-          text = text.replace(marker, marker + ''.join(additions), 1)
-          path.write_text(text, encoding='utf-8')
+          missing = [line for name, line in additions if f'"{name}"' not in text]
+          if missing:
+              text = text.replace(marker, marker + ''.join(missing), 1)
+              path.write_text(text, encoding='utf-8')
+          else:
+              print('all P0-B recovery modules already classified')
           PY
           git diff --check
           python -m pytest -q tests/test_member_customer_surface_contract.py
-      - name: Commit exact baseline repair
+      - name: Commit exact baseline repair if needed
         run: |
           set -euo pipefail
+          if git diff --quiet -- member_customer_surface_contract.py; then
+            echo 'no classification change required'
+            exit 0
+          fi
           git config user.name 'TrendHub'
           git config user.email 'trendhub.biz@gmail.com'
           git add member_customer_surface_contract.py
