@@ -32,25 +32,36 @@ SAFE_RESULT_KEYS = {
 }
 
 
+def _wait_for_unique_visible_exact_text(page: Any, label: str, attempts=32, interval_ms=250) -> Any:
+    """Wait boundedly for exactly one visible exact-text node; fail closed on ambiguity."""
+    controls = page.get_by_text(label, exact=True)
+    for attempt in range(attempts):
+        try:
+            count = min(int(controls.count()), 100)
+        except Exception as exc:
+            raise base.NoteDraftError("Could not enumerate exact article-list controls") from exc
+        visible_indices: list[int] = []
+        for index in range(count):
+            try:
+                if controls.nth(index).is_visible(timeout=100):
+                    visible_indices.append(index)
+            except Exception:
+                continue
+        if len(visible_indices) > 1:
+            raise base.NoteDraftError("Exact article-list control has multiple visible candidates")
+        if len(visible_indices) == 1:
+            return controls.nth(visible_indices[0])
+        if attempt + 1 < attempts:
+            page.wait_for_timeout(interval_ms)
+    raise base.NoteDraftError("Exact article-list control did not become uniquely visible in time")
+
+
 def _open_status_filter_menu(page: Any) -> int:
     """Open exactly one visible publication-status control and nothing else."""
-    controls = page.get_by_text("公開ステータス", exact=True)
-    try:
-        count = int(controls.count())
-    except Exception as exc:
-        raise base.NoteDraftError("Could not enumerate publication-status controls") from exc
-    if count != 1:
-        raise base.NoteDraftError("Publication-status control is not uniquely identified")
-    control = controls.nth(0)
-    try:
-        visible = bool(control.is_visible(timeout=1000))
-    except Exception as exc:
-        raise base.NoteDraftError("Could not verify publication-status control visibility") from exc
-    if not visible:
-        raise base.NoteDraftError("Publication-status control is not visible")
+    control = _wait_for_unique_visible_exact_text(page, "公開ステータス")
     control.click()
     page.wait_for_timeout(500)
-    return count
+    return 1
 
 
 def _visible_exact_text_count(page: Any, label: str) -> int:
