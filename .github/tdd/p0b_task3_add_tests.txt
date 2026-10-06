@@ -14,6 +14,12 @@ _RUNTIME_STRONG_ZERO_EVIDENCE = (
 )
 
 
+def _prepared_for_runtime_retry(monkeypatch, tmp_path, *, mode="success"):
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub-biz")
+    base = _creation_base(tmp_path, mode=mode)
+    return base, prepare_delivery(base, "a" * 32)
+
+
 def _prepare_runtime_manual_reconciliation(ledger, prepared):
     first = ledger.begin_or_load(prepared.snapshot, run_correlation_id="run-original")
     unknown = ledger.record_blocked(
@@ -33,8 +39,7 @@ def _prepare_runtime_manual_reconciliation(ledger, prepared):
 def test_reconciled_retry_uses_dedicated_authority_and_creates_exactly_once(tmp_path, monkeypatch):
     ledger = SQLiteDeliveryLedger(tmp_path / "ledger.sqlite3")
     ledger.initialize()
-    base = _creation_base(tmp_path)
-    prepared = _prepared()
+    base, prepared = _prepared_for_runtime_retry(monkeypatch, tmp_path)
     manual = _prepare_runtime_manual_reconciliation(ledger, prepared)
     monkeypatch.setattr(
         delivery_runtime.reconcile,
@@ -63,11 +68,10 @@ def test_reconciled_retry_uses_dedicated_authority_and_creates_exactly_once(tmp_
     assert base.create_count == 1
 
 
-def test_reconciled_retry_rejected_authority_performs_zero_browser_mutation(tmp_path):
+def test_reconciled_retry_rejected_authority_performs_zero_browser_mutation(tmp_path, monkeypatch):
     ledger = SQLiteDeliveryLedger(tmp_path / "ledger.sqlite3")
     ledger.initialize()
-    base = _creation_base(tmp_path)
-    prepared = _prepared()
+    base, prepared = _prepared_for_runtime_retry(monkeypatch, tmp_path)
     first = ledger.begin_or_load(prepared.snapshot, run_correlation_id="run-original")
 
     returned = delivery_runtime.create_reconciled_retry(
@@ -81,11 +85,10 @@ def test_reconciled_retry_rejected_authority_performs_zero_browser_mutation(tmp_
     assert base.create_count == 0
 
 
-def test_reconciled_retry_stale_version_performs_zero_browser_mutation(tmp_path):
+def test_reconciled_retry_stale_version_performs_zero_browser_mutation(tmp_path, monkeypatch):
     ledger = SQLiteDeliveryLedger(tmp_path / "ledger.sqlite3")
     ledger.initialize()
-    base = _creation_base(tmp_path)
-    prepared = _prepared()
+    base, prepared = _prepared_for_runtime_retry(monkeypatch, tmp_path)
     manual = _prepare_runtime_manual_reconciliation(ledger, prepared)
 
     with pytest.raises(ConcurrentStateChange, match="state_version_mismatch"):
@@ -99,11 +102,10 @@ def test_reconciled_retry_stale_version_performs_zero_browser_mutation(tmp_path)
     assert base.create_count == 0
 
 
-def test_reconciled_retry_browser_ambiguity_returns_to_creation_unknown(tmp_path):
+def test_reconciled_retry_browser_ambiguity_returns_to_creation_unknown(tmp_path, monkeypatch):
     ledger = SQLiteDeliveryLedger(tmp_path / "ledger.sqlite3")
     ledger.initialize()
-    base = _creation_base(tmp_path, mode="accept_before_id")
-    prepared = _prepared()
+    base, prepared = _prepared_for_runtime_retry(monkeypatch, tmp_path, mode="accept_before_id")
     manual = _prepare_runtime_manual_reconciliation(ledger, prepared)
 
     with pytest.raises(base.NoteDraftError):
@@ -130,11 +132,10 @@ def test_reconciled_retry_browser_ambiguity_returns_to_creation_unknown(tmp_path
     assert base.create_count == 1
 
 
-def test_reconciled_retry_after_stable_id_failure_never_recreates(tmp_path):
+def test_reconciled_retry_after_stable_id_failure_never_recreates(tmp_path, monkeypatch):
     ledger = SQLiteDeliveryLedger(tmp_path / "ledger.sqlite3")
     ledger.initialize()
-    base = _creation_base(tmp_path, mode="after_id_before_verify")
-    prepared = _prepared()
+    base, prepared = _prepared_for_runtime_retry(monkeypatch, tmp_path, mode="after_id_before_verify")
     manual = _prepare_runtime_manual_reconciliation(ledger, prepared)
 
     with pytest.raises(base.NoteDraftError):
@@ -167,8 +168,7 @@ def test_reconciled_retry_after_stable_id_failure_never_recreates(tmp_path):
 def test_reconciled_retry_queue_readback_mismatch_never_recreates(tmp_path, monkeypatch):
     ledger = SQLiteDeliveryLedger(tmp_path / "ledger.sqlite3")
     ledger.initialize()
-    base = _creation_base(tmp_path)
-    prepared = _prepared()
+    base, prepared = _prepared_for_runtime_retry(monkeypatch, tmp_path)
     manual = _prepare_runtime_manual_reconciliation(ledger, prepared)
     monkeypatch.setattr(
         delivery_runtime.reconcile,
