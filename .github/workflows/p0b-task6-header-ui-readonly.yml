@@ -24,7 +24,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt playwright
           python -m playwright install --with-deps chromium
-      - name: Inspect new-editor header controls without mutation
+      - name: Inspect new-editor controls without mutation
         env:
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
           PYTHONPATH: .
@@ -36,96 +36,54 @@ jobs:
 
           def clean(value, limit=120):
               return re.sub(r'\s+', ' ', str(value or '')).strip()[:limit]
-
           def attr(locator, name):
-              try:
-                  return clean(locator.get_attribute(name))
-              except Exception:
-                  return ''
-
+              try: return clean(locator.get_attribute(name))
+              except Exception: return ''
           def visible(locator):
-              try:
-                  return bool(locator.is_visible(timeout=120))
-              except Exception:
-                  return False
-
+              try: return bool(locator.is_visible(timeout=120))
+              except Exception: return False
           def box(locator):
-              try:
-                  raw = locator.bounding_box()
-              except Exception:
-                  raw = None
-              if not raw:
-                  return None
-              return {k: round(float(raw.get(k, 0.0)), 1) for k in ('x','y','width','height')}
+              try: raw=locator.bounding_box()
+              except Exception: raw=None
+              if not raw: return None
+              return {k: round(float(raw.get(k,0.0)),1) for k in ('x','y','width','height')}
 
-          storage = note._decode_storage_state()
+          storage=note._decode_storage_state()
           try:
               with sync_playwright() as p:
-                  browser = p.chromium.launch(headless=True, args=['--lang=ja-JP'])
-                  context = browser.new_context(
-                      storage_state=str(storage), locale='ja-JP', timezone_id='Asia/Tokyo',
-                      viewport={'width': 1440, 'height': 1100},
-                  )
-                  page = context.new_page()
-                  page.set_default_timeout(15000)
+                  browser=p.chromium.launch(headless=True,args=['--lang=ja-JP'])
+                  context=browser.new_context(storage_state=str(storage),locale='ja-JP',timezone_id='Asia/Tokyo',viewport={'width':1440,'height':1100})
+                  page=context.new_page(); page.set_default_timeout(15000)
                   try:
-                      page.goto(note.NOTE_NEW_URL, wait_until='domcontentloaded', timeout=60000)
-                      page.wait_for_timeout(2500)
-                      if note._looks_logged_out(page):
-                          raise SystemExit('note_auth_inactive')
-                      title = note._find_title(page)
-                      title_box = box(title)
-                      title_y = float((title_box or {}).get('y', 999999.0))
-                      controls=[]
-                      loc=page.locator('button, [role="button"], label')
-                      for i in range(min(loc.count(), 220)):
+                      page.goto(note.NOTE_NEW_URL,wait_until='domcontentloaded',timeout=60000)
+                      page.wait_for_timeout(4000)
+                      if note._looks_logged_out(page): raise SystemExit('note_auth_inactive')
+                      rows=[]
+                      loc=page.locator('input, textarea, [contenteditable="true"], button, [role="button"], label')
+                      for i in range(min(loc.count(),320)):
                           item=loc.nth(i)
-                          if not visible(item):
-                              continue
+                          if not visible(item): continue
                           b=box(item)
-                          if not b:
-                              continue
-                          try:
-                              text=clean(item.inner_text(timeout=150),80)
-                          except Exception:
-                              text=''
-                          meta={
-                              'tag': clean(item.evaluate('el => el.tagName.toLowerCase()')),
-                              'box': b,
-                              'text': text,
-                              'aria': attr(item,'aria-label'),
-                              'title': attr(item,'title'),
-                              'testid': attr(item,'data-testid'),
-                              'name': attr(item,'name'),
-                              'for': attr(item,'for'),
-                              'class': attr(item,'class'),
-                          }
-                          semantic=' '.join(str(meta[k]) for k in ('text','aria','title','testid','name','for')).lower()
-                          near_title=(float(b['y']) > max(-100.0,title_y-320) and float(b['y']) < title_y+180)
-                          token=any(t in semantic for t in ('画像','見出し','ヘッダー','アイキャッチ','cover','header','image','photo','upload'))
-                          if near_title or token:
-                              controls.append(meta)
+                          if not b: continue
+                          try: text=clean(item.inner_text(timeout=120),80)
+                          except Exception: text=''
+                          try: tag=clean(item.evaluate('el => el.tagName.toLowerCase()'))
+                          except Exception: tag=''
+                          rows.append({
+                              'tag':tag,'box':b,'text':text,
+                              'type':attr(item,'type'),'placeholder':attr(item,'placeholder'),
+                              'aria':attr(item,'aria-label'),'title':attr(item,'title'),
+                              'testid':attr(item,'data-testid'),'name':attr(item,'name'),
+                              'for':attr(item,'for'),'class':attr(item,'class'),
+                              'contenteditable':attr(item,'contenteditable'),
+                          })
                       files=[]
                       inp=page.locator('input[type="file"]')
                       for i in range(min(inp.count(),20)):
                           item=inp.nth(i)
-                          files.append({
-                              'attached': True,
-                              'visible': visible(item),
-                              'accept': attr(item,'accept'),
-                              'aria': attr(item,'aria-label'),
-                              'name': attr(item,'name'),
-                              'testid': attr(item,'data-testid'),
-                              'class': attr(item,'class'),
-                          })
-                      print('P0B_HEADER_UI=' + json.dumps({
-                          'title_box': title_box,
-                          'controls': controls[:80],
-                          'file_inputs': files,
-                          'note_mutation_count': 0,
-                          'model_calls': 0,
-                          'public_release': False,
-                      }, ensure_ascii=False, sort_keys=True))
+                          files.append({'visible':visible(item),'accept':attr(item,'accept'),'aria':attr(item,'aria-label'),'name':attr(item,'name'),'testid':attr(item,'data-testid'),'class':attr(item,'class')})
+                      rows.sort(key=lambda r:(float(r['box']['y']),float(r['box']['x'])))
+                      print('P0B_EDITOR_UI='+json.dumps({'elements':rows[:120],'file_inputs':files,'note_mutation_count':0,'model_calls':0,'public_release':False},ensure_ascii=False,sort_keys=True))
                   finally:
                       context.close(); browser.close()
           finally:
