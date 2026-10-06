@@ -26,6 +26,14 @@ class P0BHostedPrivateDraftCensusTests(unittest.TestCase):
             with self.subTest(exact=exact, suspicious=suspicious, unreadable=unreadable):
                 self.assertEqual(census._classify_census(exact, suspicious, unreadable), "ambiguous")
 
+    def test_census_uses_proven_draft_filter_navigation_before_anchor_enumeration(self) -> None:
+        source = inspect.getsource(census.census)
+        open_pos = source.index("nav.menu._open_status_filter_menu(page)")
+        select_pos = source.index("nav._select_unique_draft_filter(page)")
+        anchor_pos = source.index('anchors = page.locator("a[href]")')
+        self.assertLess(open_pos, select_pos)
+        self.assertLess(select_pos, anchor_pos)
+
     def test_probe_is_read_only_and_uses_article_list_only(self) -> None:
         source = inspect.getsource(census.census)
         self.assertIn("ARTICLE_LIST_URL", source)
