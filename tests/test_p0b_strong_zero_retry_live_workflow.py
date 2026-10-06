@@ -51,8 +51,8 @@ def test_retry_live_installs_bounded_dependencies_chromium_and_wif_before_runtim
         assert dependency in block
     assert 'python -m playwright install --with-deps chromium' in source
     assert 'google-github-actions/auth@v3' in source
-    assert 'workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}' in source
-    assert 'service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}' in source
+    assert 'workload_identity_provider: $${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}'.replace('$$', '$') in source
+    assert 'service_account: $${{ vars.GCP_SERVICE_ACCOUNT }}'.replace('$$', '$') in source
 
 
 def test_retry_live_pins_manual_ledger_candidate_before_ready_validation_and_fresh_census():
@@ -107,9 +107,10 @@ def test_retry_live_duplicate_proof_uses_ordinary_path_with_zero_create_and_same
     cleanup = source.index('name: Remove ephemeral retry files')
     block = source[duplicate:cleanup]
     assert 'delivery_runtime.create_or_resume_delivery(' in block
-    assert 'browser_create_count = 0' in block
-    assert 'browser_create_count += 1' in block
-    assert 'if browser_create_count != 0:' in block
+    assert 'browser_create_count = [0]' in block
+    assert 'browser_create_count[0] += 1' in block
+    assert 'if browser_create_count[0] != 0:' in block
+    assert 'nonlocal browser_create_count' not in block
     assert 'if after.draft_id != before_draft_id:' in block
     assert 'DeliveryState.QUEUE_CONFIRMED' in block
 
