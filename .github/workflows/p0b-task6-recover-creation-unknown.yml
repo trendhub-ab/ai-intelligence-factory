@@ -70,3 +70,5 @@ jobs:
                   result.update({"preflight_exception_type":type(exc).__name__,"preflight_exception":str(exc)[:240]})
           print('P0B_CANDIDATE_DIAGNOSTIC='+json.dumps(result,ensure_ascii=False,sort_keys=True))
           PY
+
+# reverify: contract-neutral-header-fallback
