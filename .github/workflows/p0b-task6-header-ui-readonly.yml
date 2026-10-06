@@ -13,115 +13,54 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Install bounded probe dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install playwright
-          python -m playwright install --with-deps chromium
-      - name: Inspect session shape and failing editor request without mutation
-        env:
-          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+      - name: Compare CORS preflight with headless vs normal Chrome UA
         run: |
           python - <<'PY'
-          import base64, collections, json, os, re, tempfile
-          from pathlib import Path
-          from urllib.parse import urlparse
-          from playwright.sync_api import sync_playwright
+          import json
+          import urllib.error
+          import urllib.request
 
-          def clean(value, limit=220):
-              return re.sub(r'\s+', ' ', str(value or '')).strip()[:limit]
-
-          def safe_url(value):
-              p=urlparse(str(value or ''))
-              return f'{p.scheme}://{p.netloc}{p.path}'[:240]
-
-          raw=base64.b64decode(os.environ['NOTE_STORAGE_STATE_B64'], validate=True)
-          state=json.loads(raw.decode('utf-8'))
-          domains=collections.Counter(str(c.get('domain') or '') for c in state.get('cookies',[]))
-          origins=[]
-          for item in state.get('origins',[]):
-              origins.append({
-                  'origin': safe_url(item.get('origin')),
-                  'local_storage_count': len(item.get('localStorage') or []),
-              })
-          print('P0B_STORAGE_SHAPE=' + json.dumps({
-              'cookie_count': len(state.get('cookies',[])),
-              'cookie_domains': dict(sorted(domains.items())),
-              'origins': origins,
-          }, ensure_ascii=False, sort_keys=True))
-
-          fd,name=tempfile.mkstemp(prefix='note-state-',suffix='.json')
-          os.close(fd)
-          storage=Path(name)
-          storage.write_bytes(raw)
-          try:
-              with sync_playwright() as p:
-                  browser=p.chromium.launch(headless=True,args=['--lang=ja-JP'])
-                  context=browser.new_context(storage_state=str(storage),locale='ja-JP',timezone_id='Asia/Tokyo',viewport={'width':1440,'height':1100})
-                  page=context.new_page()
-                  target_requests=[]
-                  target_responses=[]
-                  failures=[]
-                  def on_request(req):
-                      if urlparse(req.url).path == '/api/v1/text_notes':
-                          try:
-                              header_names=sorted(k.lower() for k in req.all_headers().keys())
-                          except Exception:
-                              header_names=[]
-                          target_requests.append({
-                              'method': req.method,
-                              'resource_type': req.resource_type,
-                              'url': safe_url(req.url),
-                              'header_names': header_names,
-                          })
-                  def on_response(resp):
-                      if urlparse(resp.url).path == '/api/v1/text_notes':
-                          try:
-                              h={k.lower():v for k,v in resp.all_headers().items()}
-                          except Exception:
-                              h={}
-                          target_responses.append({
-                              'status': resp.status,
-                              'url': safe_url(resp.url),
-                              'acao': clean(h.get('access-control-allow-origin'),100),
-                              'acam': clean(h.get('access-control-allow-methods'),100),
-                              'acah': clean(h.get('access-control-allow-headers'),160),
-                              'location_present': bool(h.get('location')),
-                              'content_type': clean(h.get('content-type'),100),
-                              'vary': clean(h.get('vary'),100),
-                          })
-                  def on_failed(req):
-                      if urlparse(req.url).path == '/api/v1/text_notes':
-                          failures.append({'method':req.method,'error':clean(req.failure,160),'url':safe_url(req.url)})
-                  page.on('request',on_request)
-                  page.on('response',on_response)
-                  page.on('requestfailed',on_failed)
-                  try:
-                      page.goto('https://note.com/new',wait_until='domcontentloaded',timeout=60000)
-                      page.wait_for_timeout(8000)
-                      after=context.storage_state()
-                      after_origins=[{
-                          'origin':safe_url(i.get('origin')),
-                          'local_storage_count':len(i.get('localStorage') or []),
-                      } for i in after.get('origins',[])]
-                      print('P0B_CORS_SHAPE=' + json.dumps({
-                          'final_url':safe_url(page.url),
-                          'target_requests':target_requests[:10],
-                          'target_responses':target_responses[:10],
-                          'target_failures':failures[:10],
-                          'after_origins':after_origins,
-                          'note_mutation_count':0,
-                          'model_calls':0,
-                          'public_release':False,
-                      },ensure_ascii=False,sort_keys=True))
-                  finally:
-                      context.close(); browser.close()
-          finally:
-              storage.unlink(missing_ok=True)
+          endpoint='https://note.com/api/v1/text_notes'
+          common={
+              'Origin':'https://editor.note.com',
+              'Access-Control-Request-Method':'POST',
+              'Access-Control-Request-Headers':'content-type,x-requested-with',
+              'Sec-Fetch-Mode':'cors',
+              'Sec-Fetch-Site':'same-site',
+              'Accept':'*/*',
+          }
+          agents={
+              'headless':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36',
+              'normal':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36',
+          }
+          allow={'access-control-allow-origin','access-control-allow-methods','access-control-allow-headers','vary','content-type'}
+          results={}
+          for label,ua in agents.items():
+              req=urllib.request.Request(endpoint,method='OPTIONS',headers={**common,'User-Agent':ua})
+              try:
+                  resp=urllib.request.urlopen(req,timeout=20)
+                  status=resp.status
+                  headers=resp.headers
+                  resp.close()
+              except urllib.error.HTTPError as exc:
+                  status=exc.code
+                  headers=exc.headers
+                  exc.close()
+              results[label]={
+                  'status':status,
+                  'headers':{k.lower():v for k,v in headers.items() if k.lower() in allow},
+              }
+          print('P0B_CORS_UA_AB=' + json.dumps({
+              'results':results,
+              'request_method':'OPTIONS',
+              'note_mutation_count':0,
+              'model_calls':0,
+              'public_release':False,
+          },ensure_ascii=False,sort_keys=True))
           PY
