@@ -1,4 +1,4 @@
-name: P0-B Hosted B01 Final Bootstrap [OPS ONE-SHOT]
+name: P0-B Hosted B01 Ledger Audit [OPS ONE-SHOT]
 
 on:
   push:
@@ -10,16 +10,18 @@ on:
 permissions:
   contents: read
   id-token: write
-  actions: write
 
 jobs:
-  bootstrap-and-dispatch:
+  audit-ledger:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
       GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      NOTE_DELIVERY_LEDGER_BACKEND: 'gcs'
+      NOTE_DELIVERY_LEDGER_BUCKET: ''
+      NOTE_DELIVERY_LEDGER_PREFIX: 'delivery/v1'
     steps:
       - name: Checkout hosted-only implementation
         uses: actions/checkout@v6
@@ -31,62 +33,23 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install read-only audit dependencies
+        run: pip install -q requests google-cloud-storage
+
       - name: Authenticate to Google Cloud with OIDC
         uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
-      - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v3
-
-      - name: Create and lock down private durable ledger bucket
+      - name: Resolve private ledger bucket
         run: |
           set -euo pipefail
           bucket="${GCP_PROJECT_ID}-aiif-note-ledger-v1"
           echo "::add-mask::$bucket"
-          if ! gcloud storage buckets describe "gs://$bucket" --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
-            gcloud storage buckets create "gs://$bucket" \
-              --project "$GCP_PROJECT_ID" \
-              --location asia-northeast1 \
-              --uniform-bucket-level-access \
-              --public-access-prevention >/dev/null
-          fi
-          gcloud storage buckets update "gs://$bucket" \
-            --uniform-bucket-level-access \
-            --public-access-prevention >/dev/null
-          gcloud storage buckets add-iam-policy-binding "gs://$bucket" \
-            --member="serviceAccount:${GCP_SERVICE_ACCOUNT}" \
-            --role="roles/storage.objectAdmin" >/dev/null
           echo "NOTE_DELIVERY_LEDGER_BUCKET=$bucket" >> "$GITHUB_ENV"
 
-      - name: Prove bucket privacy and generation CAS
-        run: |
-          set -euo pipefail
-          pip install -q google-cloud-storage
-          python - <<'PY'
-          import os, uuid
-          from google.cloud import storage
-          client = storage.Client(project=os.environ['GCP_PROJECT_ID'])
-          bucket = client.bucket(os.environ['NOTE_DELIVERY_LEDGER_BUCKET'])
-          bucket.reload()
-          if not bucket.iam_configuration.uniform_bucket_level_access_enabled:
-              raise SystemExit('uniform_bucket_level_access_not_enabled')
-          if bucket.iam_configuration.public_access_prevention != 'enforced':
-              raise SystemExit('public_access_prevention_not_enforced')
-          blob = bucket.blob(f'_bootstrap/{uuid.uuid4().hex}.json')
-          blob.upload_from_string('{}', content_type='application/json', if_generation_match=0)
-          blob.reload()
-          first = int(blob.generation)
-          blob.upload_from_string('{"ok":true}', content_type='application/json', if_generation_match=first)
-          blob.reload()
-          blob.delete(if_generation_match=int(blob.generation))
-          print('LEDGER_PRIVACY=PASS')
-          print('LEDGER_CAS=PASS')
-          PY
-
-      - name: Prepare-only production preflight
-        id: preflight
+      - name: Pin current eligible candidate without browser
         env:
           NOTE_DRAFT_CONFIRM: CREATE_NOTE_DRAFT
           NOTE_TARGET_SYNC_ID: ''
@@ -98,42 +61,28 @@ jobs:
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: python run199_note_vm_preflight.py
+
+      - name: Read durable ledger state only
+        env:
+          PREFLIGHT_RESULT: ${{ runner.temp }}/note_preflight.json
+          LEDGER_RESULT: ${{ runner.temp }}/ledger_audit.json
         run: |
           set -euo pipefail
-          pip install -q requests
-          python run199_note_vm_preflight.py
+          selected="$(python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r=json.loads(Path(os.environ['PREFLIGHT_RESULT']).read_text(encoding='utf-8'))
+          print(str(r.get('selected_sync_id') or '').strip())
+          PY
+          )"
+          test -n "$selected" || { echo 'P0B_LEDGER_AUDIT=no_eligible_candidate'; exit 0; }
+          NOTE_TARGET_SYNC_ID="$selected" NOTE_TARGET_IDENTITY='trendhub_biz' NOTE_DRAFT_RESULT_FILE="$LEDGER_RESULT" bash note_delivery_ledger_preflight.sh
           python - <<'PY'
           import json, os
           from pathlib import Path
-          result = json.loads(Path(os.environ['NOTE_DRAFT_RESULT_FILE']).read_text(encoding='utf-8'))
-          status = str(result.get('status') or 'unknown')
-          eligible = result.get('should_start_vm') is True
-          zero_model = result.get('zero_gemini_calls') is True
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
-              fh.write(f'eligible={"true" if eligible else "false"}\n')
-              fh.write(f'status={status}\n')
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
-              fh.write('### Hosted-only B01 bootstrap\n')
-              fh.write('- private ledger: `ready`\n')
-              fh.write('- generation CAS: `PASS`\n')
-              fh.write(f'- prepare-only status: `{status}`\n')
-              fh.write(f'- delivery eligible: `{eligible}`\n')
-              fh.write(f'- zero model calls: `{zero_model}`\n')
+          p=Path(os.environ['LEDGER_RESULT'])
+          r=json.loads(p.read_text(encoding='utf-8'))
+          print('P0B_LEDGER_AUDIT=' + str(r.get('status') or 'unknown'))
+          print('P0B_SECOND_CREATE_ALLOWED=' + ('true' if r.get('should_run_delivery') is True else 'false'))
           PY
-
-      - name: Dispatch bounded B01 private-draft proof
-        if: ${{ steps.preflight.outputs.eligible == 'true' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh workflow run note-create-draft.yml \
-            --repo "$GITHUB_REPOSITORY" \
-            --ref p0b-hosted-only-implementation \
-            --field confirm=CREATE_NOTE_DRAFT \
-            --field prepare_only=false
-          echo 'B01_DISPATCHED=true'
-
-      - name: Record safe no-op
-        if: ${{ steps.preflight.outputs.eligible != 'true' }}
-        run: echo 'B01_DISPATCHED=false'
