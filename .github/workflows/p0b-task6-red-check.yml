@@ -1,4 +1,4 @@
-name: P0-B Task 6 Candidate Pin RED Check [ONE-SHOT]
+name: P0-B Task 6 Candidate Pin GREEN Check [ONE-SHOT]
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  red:
+  green:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
