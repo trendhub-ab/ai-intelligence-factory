@@ -13,79 +13,51 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Install bounded probe dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt playwright requests
-          python -m playwright install chromium
-      - name: Diagnose CORS preflight without mutation
-        env:
-          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
-          PYTHONPATH: .
+      - run: pip install -q requests playwright && python -m playwright install chromium
+      - name: Compare safe CORS preflight user agents
         run: |
           python - <<'PY'
-          import json, re
-          from urllib.parse import urlparse
+          import json
           import requests
-          import note_draft_automation as note
           from playwright.sync_api import sync_playwright
 
           API='https://note.com/api/v1/text_notes'
           ORIGIN='https://editor.note.com'
-          CHROME_UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36'
+          STANDARD='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36'
+          HEADLESS='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36'
+          ACRH='content-type,x-requested-with'
 
-          def safe_headers(headers):
-              allowed=('access-control-allow-origin','access-control-allow-methods','access-control-allow-headers','vary','server','content-type','location')
-              return {k:v[:240] for k,v in headers.items() if k.lower() in allowed}
-          def probe_options(extra_headers='', ua=None):
-              h={
+          def options(ua):
+              r=requests.options(API,headers={
                   'Origin':ORIGIN,
                   'Access-Control-Request-Method':'POST',
+                  'Access-Control-Request-Headers':ACRH,
+                  'User-Agent':ua,
+              },timeout=20,allow_redirects=False)
+              return {
+                  'status':r.status_code,
+                  'acao':r.headers.get('access-control-allow-origin',''),
+                  'acah':r.headers.get('access-control-allow-headers',''),
+                  'server':r.headers.get('server',''),
+                  'body_len':len(r.content),
               }
-              if extra_headers:
-                  h['Access-Control-Request-Headers']=extra_headers
-              if ua:
-                  h['User-Agent']=ua
-              r=requests.options(API,headers=h,timeout=20,allow_redirects=False)
-              return {'status':r.status_code,'headers':safe_headers(r.headers),'body_len':len(r.content)}
 
-          storage_path=note._decode_storage_state()
-          post_header_names=[]; failed=[]; console=[]
-          try:
-              with sync_playwright() as p:
-                  browser=p.chromium.launch(headless=True,args=['--lang=ja-JP'])
-                  context=browser.new_context(storage_state=str(storage_path),locale='ja-JP',timezone_id='Asia/Tokyo',viewport={'width':1440,'height':1100})
-                  page=context.new_page(); page.set_default_timeout(15000)
-                  def on_request(r):
-                      if urlparse(r.url).hostname=='note.com' and urlparse(r.url).path=='/api/v1/text_notes':
-                          try: names=sorted(k.lower() for k in r.headers.keys())
-                          except Exception: names=[]
-                          post_header_names.append(names)
-                  page.on('request',on_request)
-                  page.on('requestfailed',lambda r: failed.append({'host':urlparse(r.url).hostname or '', 'path':urlparse(r.url).path,'method':r.method,'failure':str(r.failure or '')[:120]}))
-                  page.on('console',lambda m: console.append(re.sub(r'https?://[^\s)]+','<url>',m.text)[:220]) if m.type=='error' else None)
-                  try:
-                      page.goto(note.NOTE_NEW_URL,wait_until='domcontentloaded',timeout=60000)
-                      page.wait_for_timeout(7000)
-                  finally:
-                      context.close(); browser.close()
-
-              result={
-                  'browser_post_header_names':post_header_names[:5],
-                  'failed_requests':failed[:10],
-                  'console_errors':console[:5],
-                  'options_minimal':probe_options(),
-                  'options_content_type':probe_options('content-type'),
-                  'options_content_type_chrome_ua':probe_options('content-type',CHROME_UA),
-                  'note_mutation_count':0,'model_calls':0,'public_release':False,
-              }
-              print('P0B_CORS_PREFLIGHT='+json.dumps(result,ensure_ascii=False,sort_keys=True))
-          finally:
-              storage_path.unlink(missing_ok=True)
+          with sync_playwright() as p:
+              browser=p.chromium.launch(headless=True)
+              page=browser.new_page()
+              actual=str(page.evaluate('navigator.userAgent'))
+              browser.close()
+          result={
+              'actual_is_headless': 'HeadlessChrome/' in actual,
+              'standard':options(STANDARD),
+              'headless':options(HEADLESS),
+              'note_mutation_count':0,'model_calls':0,'public_release':False,
+          }
+          print('P0B_CORS_UA_CLASSIFY='+json.dumps(result,sort_keys=True))
           PY
