@@ -19,6 +19,10 @@ from note_document_contract import (
     normalize_document,
     render_safe_html,
 )
+from note_delivery_strong_zero import (
+    StrongZeroEvidenceError,
+    parse_strong_zero_evidence_category,
+)
 
 SNAPSHOT_SCHEMA_VERSION = "note-delivery-snapshot-v1"
 LOGICAL_KEY_SCHEMA_VERSION = "note-delivery-logical-key-v1"
@@ -116,6 +120,14 @@ class DeliveryLedger(Protocol):
     def get_active_by_logical_key(self, logical_key: str) -> DeliveryRecord | None: ...
 
     def begin_or_load(self, snapshot: DeliverySnapshot, *, run_correlation_id: str) -> IntentDecision: ...
+
+    def authorize_reconciled_retry(
+        self,
+        snapshot: DeliverySnapshot,
+        *,
+        run_correlation_id: str,
+        expected_version: int,
+    ) -> IntentDecision: ...
 
     def record_draft_created(
         self, operation_key: str, *, draft_id: str, note_host: str, expected_version: int
@@ -597,6 +609,82 @@ class SQLiteDeliveryLedger:
             if record is None:
                 raise LedgerUnavailableError("ledger_invariant_missing")
             return IntentDecision(record, True, "creation_authorized")
+
+        return self._transaction(work)
+
+    def authorize_reconciled_retry(
+        self,
+        snapshot: DeliverySnapshot,
+        *,
+        run_correlation_id: str,
+        expected_version: int,
+    ) -> IntentDecision:
+        logical_key = logical_delivery_key(snapshot)
+        retry_run = _normalized_text(run_correlation_id)
+
+        def work(conn: sqlite3.Connection) -> IntentDecision:
+            row = conn.execute(
+                "SELECT d.* FROM logical_bindings b JOIN deliveries d ON d.operation_key=b.operation_key "
+                "WHERE b.logical_key=?",
+                (logical_key,),
+            ).fetchone()
+            if row is None:
+                raise InvalidStateTransition("delivery_not_found")
+            current = self._row_to_record(row)
+            if current.state_version != expected_version:
+                raise ConcurrentStateChange("state_version_mismatch")
+            if current.state != DeliveryState.MANUAL_RECONCILIATION_REQUIRED:
+                return IntentDecision(current, False, "manual_reconciliation_required")
+            if current.snapshot != snapshot:
+                return IntentDecision(current, False, "snapshot_mismatch")
+            if current.draft_id:
+                return IntentDecision(current, False, "stable_draft_present")
+            try:
+                evidence_digest = parse_strong_zero_evidence_category(
+                    current.conflict_category or ""
+                )
+            except StrongZeroEvidenceError:
+                return IntentDecision(current, False, "strong_zero_evidence_invalid")
+
+            next_version = current.state_version + 1
+            now = _utc_now()
+            owner_expires = (
+                datetime.now(timezone.utc) + timedelta(minutes=5)
+            ).isoformat().replace("+00:00", "Z")
+            cursor = conn.execute(
+                "UPDATE deliveries SET state=?, state_version=?, attempt_count=attempt_count+1, "
+                "owner_correlation_id=?, owner_expires_at=?, updated_at=? "
+                "WHERE operation_key=? AND state_version=? AND state=?",
+                (
+                    DeliveryState.CREATE_INTENT_RECORDED.value,
+                    next_version,
+                    retry_run,
+                    owner_expires,
+                    now,
+                    current.operation_key,
+                    expected_version,
+                    DeliveryState.MANUAL_RECONCILIATION_REQUIRED.value,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ConcurrentStateChange("state_version_mismatch")
+            conn.execute(
+                "INSERT INTO delivery_events (record_id, prior_state, new_state, category, run_correlation_id, "
+                "state_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    current.record_id,
+                    DeliveryState.MANUAL_RECONCILIATION_REQUIRED.value,
+                    DeliveryState.CREATE_INTENT_RECORDED.value,
+                    f"strong_zero_retry_authorized:{evidence_digest}",
+                    retry_run,
+                    next_version,
+                    now,
+                ),
+            )
+            updated = self._load_operation(conn, current.operation_key)
+            if updated is None:
+                raise LedgerUnavailableError("ledger_invariant_missing")
+            return IntentDecision(updated, True, "reconciled_retry_authorized")
 
         return self._transaction(work)
 

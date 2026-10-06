@@ -9,6 +9,8 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
+import note_delivery_ledger as delivery_ledger
+
 from note_document_contract import (
     CONTRACT_VERSION,
     NORMALIZATION_POLICY_VERSION,
@@ -340,3 +342,189 @@ def test_read_only_gate_blocks_ambiguous_delivery_without_mutating_ledger():
             "should_run_delivery": True,
             "zero_gemini_calls": True,
         }
+
+
+# TASK1_STRONG_ZERO_RETRY_AUTHORITY_TESTS
+_STRONG_ZERO_EVIDENCE_DIGEST = "a" * 64
+_STRONG_ZERO_EVIDENCE = (
+    "creation_absence_confirmed_strong_zero:" + _STRONG_ZERO_EVIDENCE_DIGEST
+)
+
+
+def _prepare_manual_reconciliation(
+    ledger: SQLiteDeliveryLedger,
+    snapshot=None,
+    *,
+    evidence: str = _STRONG_ZERO_EVIDENCE,
+    with_draft: bool = False,
+):
+    snapshot = snapshot or _snapshot()
+    first = ledger.begin_or_load(snapshot, run_correlation_id="run-original")
+    if with_draft:
+        current = ledger.record_draft_created(
+            first.record.operation_key,
+            draft_id="opaque-existing-draft",
+            note_host="note.com",
+            expected_version=first.record.state_version,
+        )
+    else:
+        current = ledger.record_blocked(
+            first.record.operation_key,
+            state=DeliveryState.CREATION_UNKNOWN,
+            category="creation_result_ambiguous",
+            expected_version=first.record.state_version,
+        )
+    manual = ledger.record_blocked(
+        current.operation_key,
+        state=DeliveryState.MANUAL_RECONCILIATION_REQUIRED,
+        category=evidence,
+        expected_version=current.state_version,
+    )
+    return snapshot, manual
+
+
+def test_reconciled_retry_authorizes_once_and_preserves_manual_evidence():
+    with TemporaryDirectory() as tmp:
+        ledger = _file_ledger(tmp)
+        ledger.initialize()
+        snapshot, manual = _prepare_manual_reconciliation(ledger)
+
+        decision = ledger.authorize_reconciled_retry(
+            snapshot,
+            run_correlation_id="run-retry",
+            expected_version=manual.state_version,
+        )
+
+        assert decision.creation_authorized is True
+        assert decision.reason == "reconciled_retry_authorized"
+        assert decision.record.state == DeliveryState.CREATE_INTENT_RECORDED
+        assert decision.record.state_version == manual.state_version + 1
+        assert decision.record.attempt_count == manual.attempt_count + 1
+        assert decision.record.owner_correlation_id == "run-retry"
+        assert decision.record.owner_expires_at
+        assert decision.record.snapshot == manual.snapshot == snapshot
+        assert decision.record.draft_id is None
+        assert decision.record.conflict_category == _STRONG_ZERO_EVIDENCE
+
+        conn = sqlite3.connect(ledger.path)
+        try:
+            events = conn.execute(
+                "SELECT category, run_correlation_id FROM delivery_events "
+                "WHERE record_id=? ORDER BY event_id",
+                (manual.record_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+        assert [row[0] for row in events] == [
+            "create_intent_recorded",
+            "creation_result_ambiguous",
+            _STRONG_ZERO_EVIDENCE,
+            "strong_zero_retry_authorized:" + _STRONG_ZERO_EVIDENCE_DIGEST,
+        ]
+        assert events[-1][1] == "run-retry"
+
+        ordinary = ledger.begin_or_load(snapshot, run_correlation_id="run-ordinary")
+        assert ordinary.creation_authorized is False
+        assert ordinary.reason == "existing_operation"
+        assert ordinary.record.state == DeliveryState.CREATE_INTENT_RECORDED
+
+
+def test_reconciled_retry_rejects_malformed_strong_zero_evidence_without_mutation():
+    with TemporaryDirectory() as tmp:
+        ledger = _file_ledger(tmp)
+        ledger.initialize()
+        snapshot, manual = _prepare_manual_reconciliation(
+            ledger,
+            evidence="creation_absence_confirmed_strong_zero:BAD",
+        )
+
+        decision = ledger.authorize_reconciled_retry(
+            snapshot,
+            run_correlation_id="run-retry",
+            expected_version=manual.state_version,
+        )
+        assert decision.creation_authorized is False
+        assert decision.reason == "strong_zero_evidence_invalid"
+        assert decision.record.state == DeliveryState.MANUAL_RECONCILIATION_REQUIRED
+        assert decision.record.state_version == manual.state_version
+        assert decision.record.attempt_count == manual.attempt_count
+
+
+def test_reconciled_retry_rejects_snapshot_drift_without_mutation():
+    with TemporaryDirectory() as tmp:
+        ledger = _file_ledger(tmp)
+        ledger.initialize()
+        snapshot, manual = _prepare_manual_reconciliation(ledger)
+        drifted = _snapshot(manuscript_sha256="9" * 64)
+
+        decision = ledger.authorize_reconciled_retry(
+            drifted,
+            run_correlation_id="run-retry",
+            expected_version=manual.state_version,
+        )
+        assert decision.creation_authorized is False
+        assert decision.reason == "snapshot_mismatch"
+        assert decision.record.state == DeliveryState.MANUAL_RECONCILIATION_REQUIRED
+        assert decision.record.state_version == manual.state_version
+
+
+def test_reconciled_retry_rejects_existing_draft_identity():
+    with TemporaryDirectory() as tmp:
+        ledger = _file_ledger(tmp)
+        ledger.initialize()
+        snapshot, manual = _prepare_manual_reconciliation(ledger, with_draft=True)
+        assert manual.draft_id == "opaque-existing-draft"
+
+        decision = ledger.authorize_reconciled_retry(
+            snapshot,
+            run_correlation_id="run-retry",
+            expected_version=manual.state_version,
+        )
+        assert decision.creation_authorized is False
+        assert decision.reason == "stable_draft_present"
+        assert decision.record.state == DeliveryState.MANUAL_RECONCILIATION_REQUIRED
+        assert decision.record.state_version == manual.state_version
+
+
+def test_reconciled_retry_rejects_wrong_state():
+    with TemporaryDirectory() as tmp:
+        ledger = _file_ledger(tmp)
+        ledger.initialize()
+        snapshot = _snapshot()
+        first = ledger.begin_or_load(snapshot, run_correlation_id="run-original")
+
+        decision = ledger.authorize_reconciled_retry(
+            snapshot,
+            run_correlation_id="run-retry",
+            expected_version=first.record.state_version,
+        )
+        assert decision.creation_authorized is False
+        assert decision.reason == "manual_reconciliation_required"
+        assert decision.record.state == DeliveryState.CREATE_INTENT_RECORDED
+        assert decision.record.state_version == first.record.state_version
+
+
+def test_reconciled_retry_rejects_stale_expected_version():
+    with TemporaryDirectory() as tmp:
+        ledger = _file_ledger(tmp)
+        ledger.initialize()
+        snapshot, manual = _prepare_manual_reconciliation(ledger)
+
+        with pytest.raises(delivery_ledger.ConcurrentStateChange):
+            ledger.authorize_reconciled_retry(
+                snapshot,
+                run_correlation_id="run-retry",
+                expected_version=manual.state_version - 1,
+            )
+        after = ledger.get_by_operation_key(manual.operation_key)
+        assert after is not None
+        assert after.state == DeliveryState.MANUAL_RECONCILIATION_REQUIRED
+        assert after.state_version == manual.state_version
+        assert after.attempt_count == manual.attempt_count
+
+
+def test_manual_reconciliation_generic_transition_stays_closed():
+    assert DeliveryState.CREATE_INTENT_RECORDED not in delivery_ledger._ALLOWED_TRANSITIONS.get(
+        DeliveryState.MANUAL_RECONCILIATION_REQUIRED,
+        frozenset(),
+    )
