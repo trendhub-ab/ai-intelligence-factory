@@ -109,4 +109,4 @@ jobs:
         if: always()
         run: rm -f "${{ runner.temp }}/census.json"
 
-# invocation: run-9-crop-save-recovery
+# invocation: run-10-bound-crop-dialog-recovery
