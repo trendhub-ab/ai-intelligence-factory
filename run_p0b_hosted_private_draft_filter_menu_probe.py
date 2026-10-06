@@ -3,8 +3,9 @@
 
 This recovery probe is intentionally narrower than the private-draft census. It performs
 exactly one semantic UI click (the unique visible ``公開ステータス`` control), then only
-counts the visible exact ``下書き`` option. It never chooses a filter option, opens an
-article card, visits the editor, or writes note/Notion/ledger state.
+counts the visible exact ``下書き`` option and safe actionable-role aggregates. It never
+chooses a filter option, opens an article card, visits the editor, or writes note/Notion/
+ledger state.
 """
 from __future__ import annotations
 
@@ -18,11 +19,13 @@ import run_p0b_hosted_private_draft_shape_probe as shape
 
 ARTICLE_LIST_URL = shape.ARTICLE_LIST_URL
 RESULT_ENV = "P0B_HOSTED_DRAFT_FILTER_MENU_RESULT_FILE"
+ACTIONABLE_ROLES = ("button", "link", "menuitem", "menuitemradio", "option", "radio")
 SAFE_RESULT_KEYS = {
     "status",
     "authenticated",
     "status_filter_control_count",
     "draft_filter_option_count",
+    "draft_actionable_role_counts",
     "final_route_shape",
     "zero_model_calls",
     "mutation_count",
@@ -54,6 +57,26 @@ def _visible_exact_text_count(page: Any, label: str) -> int:
     return shape._visible_exact_text_count(page, label)
 
 
+def _visible_exact_actionable_role_counts(page: Any, label: str) -> dict[str, int]:
+    """Count visible exact-name actionable candidates by a fixed safe role set."""
+    result: dict[str, int] = {}
+    for role in ACTIONABLE_ROLES:
+        locator = page.get_by_role(role, name=label, exact=True)
+        try:
+            count = min(int(locator.count()), 100)
+        except Exception as exc:
+            raise base.NoteDraftError("Could not enumerate exact actionable draft-filter roles") from exc
+        visible = 0
+        for index in range(count):
+            try:
+                if locator.nth(index).is_visible(timeout=100):
+                    visible += 1
+            except Exception:
+                continue
+        result[role] = visible
+    return result
+
+
 def probe() -> dict[str, Any]:
     """Open the status menu once and return only aggregate, no-content-mutation facts."""
     try:
@@ -81,11 +104,13 @@ def probe() -> dict[str, Any]:
 
                 status_filter_control_count = _open_status_filter_menu(page)
                 draft_filter_option_count = _visible_exact_text_count(page, "下書き")
+                draft_actionable_role_counts = _visible_exact_actionable_role_counts(page, "下書き")
                 result = {
                     "status": "filter_menu_observed_no_content_mutation",
                     "authenticated": True,
                     "status_filter_control_count": status_filter_control_count,
                     "draft_filter_option_count": draft_filter_option_count,
+                    "draft_actionable_role_counts": draft_actionable_role_counts,
                     "final_route_shape": shape._safe_route_shape(str(page.url or "")),
                     "zero_model_calls": True,
                     "mutation_count": 0,
