@@ -1,0 +1,74 @@
+name: Note UI Clean Port [ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - fix/note-draft-ui-contract-clean
+    paths:
+      - '.github/workflows/note-ui-clean-port-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  port-and-verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: fix/note-draft-ui-contract-clean
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Port only note UI adapter files from preserved branch
+        run: |
+          set -euo pipefail
+          git fetch origin fix/note-draft-ui-contract
+          for path in \
+            note_draft_automation.py \
+            run187_note_editor_readiness.py \
+            run194_note_current_contract.py \
+            tests/test_run187_note_editor_readiness.py \
+            tests/test_p0b_note_browser_user_agent.py \
+            tests/test_p0b_note_header_image_button.py
+          do
+            git show origin/fix/note-draft-ui-contract:"$path" > "$path"
+          done
+          git diff --check
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest playwright google-cloud-storage
+      - name: Focused note UI regression
+        run: >-
+          python -m pytest -q
+          tests/test_p0b_note_header_image_button.py
+          tests/test_p0b_note_browser_user_agent.py
+          tests/test_run187_note_editor_readiness.py
+      - name: Current-contract regression
+        run: python -m unittest tests.test_run194_note_current_contract -v
+      - name: Full repository regression
+        run: python -m pytest tests -q
+      - name: Repository guards
+        run: |
+          set -euo pipefail
+          python workflow_reference_guard.py
+          python repository_falsification_guard.py
+          python integration_stability_guard.py
+          git diff --check
+      - name: Commit verified UI-only port
+        run: |
+          set -euo pipefail
+          git config user.name 'TrendHub'
+          git config user.email 'trendhub.biz@gmail.com'
+          git add \
+            note_draft_automation.py \
+            run187_note_editor_readiness.py \
+            run194_note_current_contract.py \
+            tests/test_run187_note_editor_readiness.py \
+            tests/test_p0b_note_browser_user_agent.py \
+            tests/test_p0b_note_header_image_button.py
+          git commit -m 'fix: isolate current note draft UI contract'
+          git push origin HEAD:fix/note-draft-ui-contract-clean
