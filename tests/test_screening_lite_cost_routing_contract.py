@@ -18,6 +18,14 @@ def test_daily_one_shot_routes_screening_to_lite_first_with_flash_fallbacks():
     )
 
 
+def test_daily_one_shot_allows_run_scoped_exclusion_of_screening_lite():
+    workflow = _text(WORKFLOW)
+    assert (
+        '""|gemini-3.1-flash-lite|gemini-3.5-flash|gemini-3.6-flash|gemini-3.7-flash|gemini-3.8-flash) ;;'
+        in workflow
+    )
+
+
 def test_daily_one_shot_keeps_deep_dive_pool_lite_free():
     workflow = _text(WORKFLOW)
     assert (
