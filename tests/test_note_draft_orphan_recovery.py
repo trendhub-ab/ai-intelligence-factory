@@ -31,11 +31,23 @@ class NoteDraftOrphanRecoveryTests(unittest.TestCase):
         self.assertIn("jobs", text)
         self.assertIn("30", text)
         self.assertIn("/actions/runs/$run_id/cancel", text)
-        self.assertNotIn("actions/workflows/note-create-draft.yml/dispatches", text)
         self.assertNotIn("daily-one-shot.yml", text)
         self.assertNotIn("production_pipeline.py", text)
         self.assertNotIn("GEMINI_API_KEY", text)
         self.assertNotIn("GOOGLE_API_KEY", text)
+
+    def test_owner_can_redispatch_one_exact_ready_without_unbounded_selection(self) -> None:
+        text = CONTROL.read_text(encoding="utf-8")
+        self.assertIn("startsWith(github.event.comment.body, '/aiif note redispatch_exact ')", text)
+        self.assertIn("[0-9a-fA-F]{32}", text)
+        self.assertIn("NOTE_TARGET_SYNC_ID", text)
+        self.assertIn("run199_note_vm_preflight.py", text)
+        self.assertIn("eligible_ready", text)
+        self.assertIn("actions/workflows/note-create-draft.yml/dispatches", text)
+        self.assertIn('"confirm":"CREATE_NOTE_DRAFT"', text)
+        self.assertIn('"prepare_only":"false"', text)
+        self.assertIn('"sync_id":"%s"', text)
+        self.assertNotIn('"sync_id":""', text)
 
 
 if __name__ == "__main__":
