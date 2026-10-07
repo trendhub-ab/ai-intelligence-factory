@@ -1,0 +1,235 @@
+name: PR720 Ready Eyecatch Live Proof [ONE-SHOT]
+
+on:
+  push:
+    branches:
+      - fix/ready-requires-current-eyecatch
+    paths:
+      - .github/workflows/pr720-ready-eyecatch-live-once.yml
+
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  live-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      AIIF_RUNTIME_STATE_GITHUB_TOKEN: ${{ github.token }}
+      AIIF_RUNTIME_STATE_BRANCH: runtime-state
+      AIIF_ONE_SHOT_MODE: production_e2e_validation
+      AIIF_RUN_MODE: production_e2e_validation
+      AIIF_EDITORIAL_STYLE: classic
+      AIIF_GEMINI_TEMP_EXCLUDED_MODELS: ''
+      GEMINI_SCREENING_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.5-flash,gemini-3.7-flash,gemini-3.8-flash"
+      GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.5-flash,gemini-3.7-flash,gemini-3.8-flash"
+
+    steps:
+      - name: Checkout exact PR branch head
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install bounded live dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk fonts-lato
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Focused Ready asset contract regression
+        run: python -m unittest tests.test_ready_requires_current_eyecatch -v
+
+      - name: Run one Production E2E candidate on PR branch
+        id: production
+        shell: bash
+        run: |
+          set -euo pipefail
+          python production_pipeline.py 2>&1 | tee pr720-live.log
+        env:
+          TZ: 'Asia/Tokyo'
+          PRODUCTION_E2E_PREPARE_ONLY: 'false'
+          AIIF_X_DISCOVERY_ENABLED: 'false'
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
+          GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: '2026-03-11'
+          ENABLE_DECISION_INTELLIGENCE_DB: ${{ vars.ENABLE_DECISION_INTELLIGENCE_DB || 'false' }}
+          ENABLE_JAPANESE_DISPLAY_LABEL: ${{ vars.ENABLE_JAPANESE_DISPLAY_LABEL || 'false' }}
+          NOTION_TECH_DATABASE_ID: ${{ secrets.NOTION_TECH_DATABASE_ID }}
+          NOTION_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_TECH_DATA_SOURCE_ID }}
+          NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
+          NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
+          ENABLE_EVIDENCE_LEDGER: ${{ vars.ENABLE_EVIDENCE_LEDGER || 'false' }}
+          EVIDENCE_LEDGER_REQUIRED: ${{ vars.EVIDENCE_LEDGER_REQUIRED || 'false' }}
+          NOTION_EVIDENCE_DATABASE_ID: ${{ secrets.NOTION_EVIDENCE_DATABASE_ID }}
+          NOTION_EVIDENCE_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_DATA_SOURCE_ID }}
+          EVIDENCE_HEALTH_MAX_CHECKS_PER_RUN: '20'
+          ENABLE_REVENUE_PRODUCT_PHASE2: ${{ vars.ENABLE_REVENUE_PRODUCT_PHASE2 || 'true' }}
+          TRACKING_ELIGIBILITY_MIN_SCORE: '55'
+          TRACKING_REVIEW_DAYS: '14'
+          PRODUCT_REVIEW_MAX_PER_RUN: '0'
+          LEGACY_BOOTSTRAP_MAX_PER_RUN: '0'
+          GEMINI_PRODUCT_REVIEW_PER_RUN_REQUEST_BUDGET: '3'
+          DEFERRED_DEEP_DIVE_MAX_PER_RUN: '1'
+          DEFERRED_DEEP_DIVE_MAX_QUEUE: '20'
+          DEFERRED_DEEP_DIVE_STATE_PATH: 'deferred_deep_dive/deferred_queue.json'
+          DEFERRED_DEEP_DIVE_GITHUB_DIR: 'deferred_deep_dive'
+          DEFERRED_FLASH_TTL_DAYS: '2'
+          DEFERRED_TREND_TTL_DAYS: '14'
+          DEFERRED_EVERGREEN_TTL_DAYS: '60'
+          ENABLE_SUBSCRIBER_TECH_SYNC: ${{ vars.ENABLE_SUBSCRIBER_TECH_SYNC || 'false' }}
+          NOTION_SUBSCRIBER_TECH_DATABASE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATABASE_ID }}
+          NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID }}
+          ENABLE_DECISION_MONTHLY_DIGEST: ${{ vars.ENABLE_DECISION_MONTHLY_DIGEST || 'false' }}
+          NOTION_MONTHLY_DATABASE_ID: ${{ secrets.NOTION_MONTHLY_DATABASE_ID }}
+          NOTION_MONTHLY_DATA_SOURCE_ID: ${{ secrets.NOTION_MONTHLY_DATA_SOURCE_ID }}
+          DI_MEANINGFUL_SCORE_DELTA: '5'
+          DI_STATUS_HYSTERESIS_SCORE_DELTA: '3'
+          DI_RISK_TEXT_SIMILARITY_THRESHOLD: '0.82'
+          DI_PRODUCT_TIMEZONE: 'Asia/Tokyo'
+          ARTICLE_PUBLICATION_MODE: 'free'
+          ENABLE_SUBSCRIPTION_ATTRIBUTION: 'true'
+          SUBSCRIPTION_LANDING_URL: ${{ vars.SUBSCRIPTION_LANDING_URL }}
+          SUBSCRIPTION_CAMPAIGN_ID: 'ai_intelligence_factory_subscription'
+          SUBSCRIPTION_ATTRIBUTION_DIR: 'subscription_attribution/articles'
+          SUBSCRIPTION_ATTRIBUTION_GITHUB_DIR: 'subscription_attribution/articles'
+          EYECATCH_MIN_DECISION_SCORE: '60'
+          TOP_N_FOR_DEEP_DIVE: '3'
+          ENABLE_PUBLICATION_RELIABILITY_SLOT: 'true'
+          PUBLICATION_RELIABILITY_SLOTS: '1'
+          PUBLICATION_RELIABILITY_MIN_DECISION_SCORE: '65'
+          PUBLICATION_RELIABILITY_MIN_ADVANTAGE: '8'
+          ENABLE_DETERMINISTIC_PUBLICATION_RESCUE: 'true'
+          NOTION_SAVE_THRESHOLD_SCORE: '60'
+          GITHUB_FETCH_LIMIT: '50'
+          HN_FETCH_LIMIT: '50'
+          ARXIV_FETCH_LIMIT: '50'
+          OFFICIAL_VENDOR_FETCH_LIMIT: '50'
+          MAX_SCREENING_CANDIDATES: '200'
+          ENABLE_PROFIT_PRIORITY: 'true'
+          DEEP_DIVE_DECISION_WEIGHT: '0.65'
+          DEEP_DIVE_COMMERCIAL_WEIGHT: '0.35'
+          EVERGREEN_PORTFOLIO_MIN: '1'
+          EVERGREEN_PRIORITY_TOLERANCE: '8'
+          ENABLE_PORTFOLIO_BALANCE: 'true'
+          PORTFOLIO_MIN_DISTINCT_TOPICS: '2'
+          PORTFOLIO_TOPIC_PRIORITY_TOLERANCE: '6'
+          ENABLE_SOURCE_ROI_LEARNING: 'true'
+          SOURCE_ROI_HISTORY_RUNS: '30'
+          SOURCE_ROI_RECENCY_DECAY: '0.93'
+          SOURCE_ROI_MIN_SCREENED: '50'
+          SOURCE_ROI_MIN_DEEP_DIVE_ATTEMPTS: '2'
+          SOURCE_ROI_MIN_MATURE_SOURCES: '2'
+          SOURCE_ROI_MIN_FETCH_PER_SOURCE: '25'
+          SOURCE_ROI_EXPLORATION_WEIGHT: '0.15'
+          SOURCE_ROI_STOCK_WEIGHT: '0.35'
+          SOURCE_ROI_READY_WEIGHT: '0.45'
+          SOURCE_ROI_EFFICIENCY_WEIGHT: '0.20'
+          SOURCE_ROI_MAX_FETCH_PER_SOURCE: '75'
+          SOURCE_ROI_STATE_PATH: 'source_roi_history/source_roi_state.json'
+          SOURCE_ROI_GITHUB_DIR: 'source_roi_history'
+          SCREENING_BATCH_SIZE: '25'
+          SCREENING_RECOVERY_BATCH_SIZE: '10'
+          SCREENING_BATCH_MAX_OUTPUT_TOKENS: '5000'
+          SCREENING_BATCH_PACING_SECONDS: '10'
+          ENABLE_GLOBAL_CALIBRATION: 'true'
+          GLOBAL_CALIBRATION_MIN_RAW_SCORE: '55'
+          GLOBAL_CALIBRATION_BATCH_SIZE: '50'
+          GLOBAL_CALIBRATION_MAX_OUTPUT_TOKENS: '4000'
+          ENABLE_OBSERVED_HISTORY: 'true'
+          OBSERVED_HISTORY_DIR: 'observed_history'
+          STALE_THRESHOLD_DAYS: '10'
+          GEMINI_SCREENING_CALL_TIMEOUT_SECONDS: '60'
+          GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS: '120'
+          GEMINI_DEEP_DIVE_CALL_PACING_SECONDS: '20'
+          GEMINI_MODEL_TIMEOUT_CIRCUIT_BREAKER_THRESHOLD: '2'
+          GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
+          GEMINI_COUNTER_BRANCH: 'runtime-state'
+          EYECATCH_GITHUB_BRANCH: 'runtime-state'
+          GEMINI_36_FLASH_DAILY_BUDGET: '18'
+          GEMINI_37_FLASH_DAILY_BUDGET: '18'
+          GEMINI_38_FLASH_DAILY_BUDGET: '18'
+          GEMINI_35_FLASH_DAILY_BUDGET: '18'
+          GEMINI_QUOTA_TIMEZONE: 'America/Los_Angeles'
+          GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '12'
+          ARTICLE_REVALIDATION_REQUEST_BUDGET: '4'
+          GEMINI_PENDING_RETRY_REQUEST_BUDGET: '2'
+          MAX_EVIDENCE_DOCUMENTS: '3'
+          VERIFICATION_CONTEXT_MAX_CHARS: '180000'
+
+      - name: Classify live proof outcome
+        id: audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          path = 'article_audit/production_e2e_validation.json'
+          with open(path, encoding='utf-8') as handle:
+              result = json.load(handle)
+          ready = result.get('ready')
+          sync_id = str(result.get('sync_id') or '').strip().lower()
+          error = str(result.get('error') or '').strip()
+          if error:
+              raise SystemExit('audit error: ' + error)
+          if type(ready) is not int or ready not in {0, 1}:
+              raise SystemExit('invalid ready value')
+          if ready == 1 and (len(sync_id) != 32 or any(c not in '0123456789abcdef' for c in sync_id)):
+              raise SystemExit('Ready requires exact 32-hex sync_id')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f'ready={ready}\n')
+              fh.write(f'sync_id={sync_id}\n')
+              fh.write(f'provider_requests={int(result.get("provider_requests") or 0)}\n')
+              fh.write(f'total_provider_requests={int(result.get("total_provider_requests") or 0)}\n')
+          print(json.dumps({k: result.get(k) for k in ('mode','ready','candidate','source','provider_requests','total_provider_requests','total_cap','error')}, ensure_ascii=False, sort_keys=True))
+          PY
+          if [ "${{ steps.audit.outputs.ready }}" = "0" ]; then
+            if grep -q '\[READY ASSET CONTRACT BLOCK\]' pr720-live.log; then
+              echo 'outcome=asset_blocked' >> "$GITHUB_OUTPUT"
+              echo 'Negative-path proof: Ready persistence was blocked before an incomplete asset could become Ready.'
+            else
+              echo '::error::No Ready article and no Ready asset contract block; live proof is inconclusive.'
+              exit 1
+            fi
+          else
+            echo 'outcome=ready' >> "$GITHUB_OUTPUT"
+            echo 'Positive-path proof: Ready persistence completed with a current eyecatch asset.'
+          fi
+
+      - name: Dispatch exact Ready to note private-draft chain
+        if: ${{ steps.audit.outputs.outcome == 'ready' }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          SYNC_ID: ${{ steps.audit.outputs.sync_id }}
+        run: |
+          set -euo pipefail
+          test -n "$SYNC_ID"
+          gh workflow run note-ready-sync.yml --ref main \
+            -f create_private_draft=true \
+            -f target_sync_id="$SYNC_ID"
+
+      - name: Upload live proof evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr720-ready-eyecatch-live-${{ github.run_number }}
+          path: |
+            article_audit/production_e2e_validation.json
+            pr720-live.log
+          if-no-files-found: warn
+          retention-days: 30
