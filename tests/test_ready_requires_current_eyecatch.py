@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import inspect
 import types
 import unittest
 
 import eyecatch_publication_contract as eyecatch_contract
-import run296_editorial_format_v2 as editorial_format
+import run222_note_presentation_integrity as presentation_integrity
 
 
 class ReadyRequiresCurrentEyecatchTests(unittest.TestCase):
@@ -41,7 +42,7 @@ class ReadyRequiresCurrentEyecatchTests(unittest.TestCase):
 
     def test_ready_persistence_fails_closed_without_current_eyecatch(self):
         pipeline, calls = self._pipeline()
-        editorial_format.install_ready_asset_contract(pipeline)
+        presentation_integrity.install_ready_asset_contract(pipeline)
 
         self.assertFalse(
             pipeline.upgrade_notion_page_with_report(
@@ -61,7 +62,7 @@ class ReadyRequiresCurrentEyecatchTests(unittest.TestCase):
 
     def test_ready_persistence_preserves_existing_path_for_current_eyecatch(self):
         pipeline, calls = self._pipeline()
-        editorial_format.install_ready_asset_contract(pipeline)
+        presentation_integrity.install_ready_asset_contract(pipeline)
 
         title = "現行タイトル"
         filename = eyecatch_contract.versioned_image_filename("article.png", title)
@@ -94,12 +95,17 @@ class ReadyRequiresCurrentEyecatchTests(unittest.TestCase):
         pipeline, _calls = self._pipeline()
         original_upgrade = pipeline.upgrade_notion_page_with_report
         original_save = pipeline.save_to_notion
-        editorial_format.install_ready_asset_contract(pipeline)
-
-        import inspect
+        presentation_integrity.install_ready_asset_contract(pipeline)
 
         self.assertEqual(inspect.signature(pipeline.upgrade_notion_page_with_report), inspect.signature(original_upgrade))
         self.assertEqual(inspect.signature(pipeline.save_to_notion), inspect.signature(original_save))
+
+    def test_non_manuscript_persistence_is_not_reclassified_as_ready(self):
+        pipeline, calls = self._pipeline()
+        presentation_integrity.install_ready_asset_contract(pipeline)
+
+        self.assertTrue(pipeline.save_to_notion(title_text="管理行", eyecatch_url=""))
+        self.assertEqual(calls, [("save", "管理行", "")])
 
 
 if __name__ == "__main__":
