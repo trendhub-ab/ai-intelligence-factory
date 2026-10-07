@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-10-07T04:27:02.370781+00:00",
+  "updated_at": "2026-10-07T04:27:03.549241+00:00",
   "last_request_at_epoch": 1791347191.4377885,
-  "last_status": 200,
+  "last_status": 0,
   "last_error_type": "ReadTimeout",
-  "circuit_run_id": "36993142738",
-  "circuit_status": 429,
-  "circuit_opened_at": "2026-10-02T10:02:42.752873+00:00",
+  "circuit_run_id": "37571203591",
+  "circuit_status": 0,
+  "circuit_opened_at": "2026-10-07T04:27:03.549230+00:00",
   "entries": {}
 }
