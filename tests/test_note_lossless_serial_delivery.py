@@ -7,43 +7,54 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 READY_SYNC = ROOT / ".github" / "workflows" / "note-ready-sync.yml"
 CREATE_DRAFT = ROOT / ".github" / "workflows" / "note-create-draft.yml"
+DAILY = ROOT / ".github" / "workflows" / "daily-one-shot.yml"
 
 
 class NoteLosslessSerialDeliveryTests(unittest.TestCase):
-    def test_ready_sync_waits_for_exact_private_draft_instead_of_fire_and_forget_dispatch(self) -> None:
+    def test_daily_contract_is_not_reimplemented_in_note_delivery_repair(self) -> None:
+        daily = DAILY.read_text(encoding="utf-8")
+
+        self.assertIn('for target_source_url in "${target_source_urls[@]}"; do', daily)
+        self.assertIn('gh workflow run note-ready-sync.yml --ref main', daily)
+        self.assertNotIn('target_source_urls_b64:', daily)
+
+    def test_ready_sync_keeps_each_exact_target_lossless_instead_of_fixed_pending_slot(self) -> None:
         ready = READY_SYNC.read_text(encoding="utf-8")
 
-        self.assertIn("draft_eligible: ${{ steps.fanout.outputs.eligible }}", ready)
-        self.assertIn("selected_sync_id: ${{ steps.fanout.outputs.selected_sync_id }}", ready)
-        self.assertIn("create-private-draft:", ready)
-        self.assertIn("needs: sync-note-ready", ready)
-        self.assertIn("uses: ./.github/workflows/note-create-draft.yml", ready)
-        self.assertIn("secrets: inherit", ready)
-        self.assertNotIn("gh workflow run note-create-draft.yml", ready)
+        self.assertIn('TARGET_SYNC_ID: ${{ inputs.target_sync_id || steps.sync.outputs.resolved_sync_id }}', ready)
+        self.assertIn('-f sync_id="$SELECTED_SYNC_ID"', ready)
+        self.assertNotIn('group: note-ready-article-sync', ready)
 
-    def test_called_draft_is_pinned_to_the_exact_ready_sync_id(self) -> None:
-        ready = READY_SYNC.read_text(encoding="utf-8")
-
-        self.assertIn("confirm: CREATE_NOTE_DRAFT", ready)
-        self.assertIn("sync_id: ${{ needs.sync-note-ready.outputs.selected_sync_id }}", ready)
-        self.assertIn("prepare_only: false", ready)
-        self.assertIn("inputs.create_private_draft == true", ready)
-        self.assertIn("needs.sync-note-ready.outputs.draft_eligible == 'true'", ready)
-
-    def test_create_draft_supports_reusable_call_without_losing_manual_dispatch(self) -> None:
+    def test_create_draft_does_not_use_fixed_workflow_concurrency_that_can_replace_pending_runs(self) -> None:
         draft = CREATE_DRAFT.read_text(encoding="utf-8")
 
-        self.assertIn("workflow_call:", draft)
-        self.assertIn("workflow_dispatch:", draft)
-        self.assertGreaterEqual(draft.count("confirm:"), 2)
-        self.assertGreaterEqual(draft.count("sync_id:"), 2)
-        self.assertGreaterEqual(draft.count("prepare_only:"), 2)
+        self.assertNotIn('group: note-draft-create', draft)
+        self.assertNotIn('cancel-in-progress:', draft)
 
-    def test_global_single_writer_concurrency_remains_fail_safe(self) -> None:
+    def test_vm_start_waits_for_exactly_one_online_note_runner_before_browser_delivery(self) -> None:
         draft = CREATE_DRAFT.read_text(encoding="utf-8")
 
-        self.assertIn("group: note-draft-create", draft)
-        self.assertIn("cancel-in-progress: false", draft)
+        self.assertIn('Wait for exactly one registered note runner to become online', draft)
+        self.assertIn('actions/runners?per_page=100', draft)
+        self.assertIn('status == "online"', draft)
+        self.assertIn('aiif-note-cloud', draft)
+        self.assertIn('count" -eq 1', draft)
+
+    def test_vm_stop_is_deferred_while_another_note_draft_run_is_active(self) -> None:
+        draft = CREATE_DRAFT.read_text(encoding="utf-8")
+
+        self.assertIn('Defer VM stop while another note draft run is active', draft)
+        self.assertIn('gh run list --workflow note-create-draft.yml', draft)
+        self.assertIn('queued', draft)
+        self.assertIn('in_progress', draft)
+        self.assertIn('GITHUB_RUN_ID', draft)
+        self.assertIn('Another note draft run is active; keeping the persistent VM online.', draft)
+
+    def test_stop_cleanup_runs_after_any_started_vm_path_not_only_successful_start_job(self) -> None:
+        draft = CREATE_DRAFT.read_text(encoding="utf-8")
+
+        self.assertIn("needs.start-cloud-vm.result != 'skipped'", draft)
+        self.assertNotIn("needs.start-cloud-vm.result == 'success'", draft)
 
 
 if __name__ == "__main__":
