@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-05T09:29:56.585656+00:00",
+  "updated_at": "2026-10-07T04:34:24.536876+00:00",
   "items": [
-    {
-      "key": "https://news.ycombinator.com/item?id=49942569",
-      "deferred_at": "2026-10-04T15:26:41.042712+00:00",
-      "expires_at": "2026-10-18T15:26:41.042712+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "OpenAI says hacking at scale is expensive to investigate",
-        "originalTitle": "OpenAI says hacking at scale is expensive to investigate",
-        "displayName": "OpenAI says hacking at scale is expensive to investigate",
-        "sourceLanguage": "en",
-        "url": "https://www.theguardian.com/technology/2026/oct/03/openai-review-hacks-australian-government-sites-costing-500000-a-day",
-        "description": "OpenAI says hacking at scale is expensive to investigate",
-        "stargazerCount": 7,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-03T09:07:13Z",
-        "sourceContext": "HN points=7 comments=0 matched_query=OpenAI",
-        "primaryUrl": "https://www.theguardian.com/technology/2026/oct/03/openai-review-hacks-australian-government-sites-costing-500000-a-day",
-        "sourceDetails": {
-          "hn_id": "49942569",
-          "hn_url": "https://news.ycombinator.com/item?id=49942569",
-          "external_url": "https://www.theguardian.com/technology/2026/oct/03/openai-review-hacks-australian-government-sites-costing-500000-a-day",
-          "comments": 0,
-          "matched_query": "OpenAI",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3ef479ff-dca9-81ba-8245-ccab0762fb52",
-      "score": 78,
-      "reason": "AI悪用調査にかかる多額のコスト実態と企業の防衛策",
-      "commercial_score": 75,
-      "shelf_life_score": 60,
-      "shelf_life": "TREND",
-      "portfolio_topic": "SECURITY",
-      "deep_dive_priority_score": 76.95
-    },
     {
       "key": "https://github.com/kubeflow/kubeflow",
       "deferred_at": "2026-10-01T11:18:06.215429+00:00",
