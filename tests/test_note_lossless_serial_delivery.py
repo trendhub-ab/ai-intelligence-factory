@@ -18,12 +18,17 @@ class NoteLosslessSerialDeliveryTests(unittest.TestCase):
         self.assertIn('gh workflow run note-ready-sync.yml --ref main', daily)
         self.assertNotIn('target_source_urls_b64:', daily)
 
-    def test_ready_sync_keeps_each_exact_target_lossless_instead_of_fixed_pending_slot(self) -> None:
+    def test_ready_sync_keeps_single_writer_lock_but_scopes_it_to_each_exact_target(self) -> None:
         ready = READY_SYNC.read_text(encoding="utf-8")
 
         self.assertIn('TARGET_SYNC_ID: ${{ inputs.target_sync_id || steps.sync.outputs.resolved_sync_id }}', ready)
         self.assertIn('-f sync_id="$SELECTED_SYNC_ID"', ready)
-        self.assertNotIn('group: note-ready-article-sync', ready)
+        self.assertIn(
+            'group: note-ready-article-sync-${{ inputs.target_sync_id || inputs.target_source_url || github.run_id }}',
+            ready,
+        )
+        self.assertIn('cancel-in-progress: false', ready)
+        self.assertNotIn('group: note-ready-article-sync\n', ready)
 
     def test_create_draft_does_not_use_fixed_workflow_concurrency_that_can_replace_pending_runs(self) -> None:
         draft = CREATE_DRAFT.read_text(encoding="utf-8")
