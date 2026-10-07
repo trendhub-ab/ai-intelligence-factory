@@ -15,12 +15,17 @@ Notion rich_text segmentation is transport-only and must never change manuscript
 legacy paragraph-aware chunker can drop a newline when a chunk boundary is crossed, while Notion
 may merge rich_text segments again on readback.  This overlay therefore rewrites code-block
 rich_text with lossless fixed-size slices before persistence and verifies the in-memory roundtrip.
+
+Ready persistence also requires the eyecatch URL to be bound to the current public title and
+current eyecatch policy.  A missing, legacy, or stale asset must fail closed before a source row
+can become Ready, matching the downstream note Ready contract without adding any provider calls.
 """
 from __future__ import annotations
 
 import inspect
 from typing import Any
 
+import eyecatch_publication_contract as eyecatch_contract
 import publication_contract as contract
 
 _INSTALLED_ATTR = "_run194_publication_contract_installed"
@@ -75,13 +80,32 @@ def _latest_current_block(pipeline_module: Any, page_id: str, headers: dict) -> 
     return latest
 
 
+def _has_current_ready_eyecatch(signature: inspect.Signature, args: tuple, kwargs: dict) -> bool:
+    """Use the same deterministic title/policy URL contract as downstream note sync."""
+    bound = signature.bind_partial(*args, **kwargs)
+    public_title = str(bound.arguments.get("title_text") or "").strip()
+    eyecatch_url = str(bound.arguments.get("eyecatch_url") or "").strip()
+    return bool(public_title and eyecatch_contract.current_asset_url(eyecatch_url, public_title))
+
+
+def _log_ready_asset_block(pipeline_module: Any, operation: str) -> None:
+    logger = getattr(pipeline_module, "logger", None)
+    if logger is not None and callable(getattr(logger, "warning", None)):
+        logger.warning(
+            "[READY ASSET CONTRACT BLOCK] %s refused: current title-bound eyecatch asset is required",
+            operation,
+        )
+
+
 def install(pipeline_module: Any) -> Any:
     if getattr(pipeline_module, _INSTALLED_ATTR, False):
         return pipeline_module
 
     original_build_children = pipeline_module.build_notion_manuscript_children
     original_upgrade = pipeline_module.upgrade_notion_page_with_report
+    original_save = getattr(pipeline_module, "save_to_notion", None)
     upgrade_signature = inspect.signature(original_upgrade)
+    save_signature = inspect.signature(original_save) if callable(original_save) else None
     legacy_ready_caption = str(
         getattr(pipeline_module, "MANUSCRIPT_CAPTION_READY", "AIIF_MANUSCRIPT:READY")
     )
@@ -123,9 +147,25 @@ def install(pipeline_module: Any) -> Any:
         finally:
             pipeline_module._notion_page_has_manuscript_child = previous_has
 
+    def upgrade_with_required_current_eyecatch(*args, **kwargs):
+        if not _has_current_ready_eyecatch(upgrade_signature, args, kwargs):
+            _log_ready_asset_block(pipeline_module, "upgrade_notion_page_with_report")
+            return False
+        return upgrade_with_exact_body_idempotency(*args, **kwargs)
+
     pipeline_module.build_notion_manuscript_children = build_current_manuscript_children
     pipeline_module._notion_page_has_manuscript_child = has_current_ready_manuscript
-    pipeline_module.upgrade_notion_page_with_report = upgrade_with_exact_body_idempotency
+    pipeline_module.upgrade_notion_page_with_report = upgrade_with_required_current_eyecatch
+
+    if callable(original_save) and save_signature is not None:
+        def save_with_required_current_eyecatch(*args, **kwargs):
+            if not _has_current_ready_eyecatch(save_signature, args, kwargs):
+                _log_ready_asset_block(pipeline_module, "save_to_notion")
+                return False
+            return original_save(*args, **kwargs)
+
+        pipeline_module.save_to_notion = save_with_required_current_eyecatch
+
     pipeline_module.CURRENT_PUBLICATION_CONTRACT = contract.CONTRACT_ID
     pipeline_module.CURRENT_PUBLICATION_POLICY_SHA256 = contract.policy_sha256()
     setattr(pipeline_module, _INSTALLED_ATTR, True)
