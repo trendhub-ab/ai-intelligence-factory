@@ -1,37 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-07T04:34:24.536876+00:00",
+  "updated_at": "2026-10-07T08:21:16.229407+00:00",
   "items": [
-    {
-      "key": "https://github.com/kubeflow/kubeflow",
-      "deferred_at": "2026-10-01T11:18:06.215429+00:00",
-      "expires_at": "2026-11-30T11:18:06.215429+00:00",
-      "repo": {
-        "source": "GitHub",
-        "nameWithOwner": "kubeflow/kubeflow",
-        "originalTitle": "kubeflow/kubeflow",
-        "displayName": "kubeflow/kubeflow",
-        "sourceLanguage": "en",
-        "url": "https://github.com/kubeflow/kubeflow",
-        "description": "The Cloud Native AI Platform",
-        "stargazerCount": 15891,
-        "licenseInfo": {
-          "spdxId": "Apache-2.0"
-        },
-        "publishedAt": "2026-09-30T23:20:11Z",
-        "sourceContext": "",
-        "primaryUrl": "https://github.com/kubeflow/kubeflow",
-        "sourceDetails": {}
-      },
-      "notion_page_id": "3ec479ff-dca9-8177-a6b5-d20393560af6",
-      "score": 75,
-      "reason": "クラウドネイティブAIプラットフォームとして広く使われるKubeflow",
-      "commercial_score": 80,
-      "shelf_life_score": 90,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "INFRA",
-      "deep_dive_priority_score": 76.75
-    },
     {
       "key": "https://interrupt.langchain.com/london",
       "deferred_at": "2026-09-28T13:56:39.215114+00:00",
