@@ -9,12 +9,17 @@ Production intent:
   note readback does not preserve that metadata, while preserving code text byte-for-byte;
 - preserve the stored current-publication-contract manuscript for validation before applying
   note-editor-only presentation transforms;
+- require a current title/policy-bound eyecatch before a manuscript may persist as Ready;
 - zero Gemini/model calls and no public-release action.
 """
 from __future__ import annotations
 
+import functools
+import inspect
 import re
 from typing import Any
+
+import eyecatch_publication_contract as eyecatch_contract
 
 CTA_HEADINGS = {
     "「自分はどうする？」まで判断したい方へ",
@@ -23,6 +28,7 @@ CTA_HEADINGS = {
 }
 SOURCE_HEADING = "Sources / Evidence"
 _FENCE_LANGUAGE = re.compile(r"^(\s*)```([A-Za-z0-9][A-Za-z0-9_+.#-]{0,39})\s*$")
+_READY_ASSET_MARKER = "_run222_ready_asset_contract_installed"
 
 
 def _plain_heading(value: str) -> str:
@@ -143,8 +149,73 @@ def prepare_note_editor_manuscript(markdown_text: str, title: str) -> str:
     return re.sub(r"\n{4,}", "\n\n\n", text).strip()
 
 
+def _ready_asset_decision(signature: inspect.Signature, args: tuple[Any, ...], kwargs: dict[str, Any]) -> bool | None:
+    """Return None for non-manuscript writes, otherwise whether the Ready asset is current."""
+    bound = signature.bind_partial(*args, **kwargs)
+    manuscript = str(bound.arguments.get("clean_manuscript") or "")
+    if not manuscript:
+        return None
+    public_title = str(bound.arguments.get("title_text") or "").strip()
+    eyecatch_url = str(bound.arguments.get("eyecatch_url") or "").strip()
+    return bool(public_title and eyecatch_contract.current_asset_url(eyecatch_url, public_title))
+
+
+def _log_ready_asset_block(pipeline_module: Any, operation: str) -> None:
+    logger = getattr(pipeline_module, "logger", None)
+    warning = getattr(logger, "warning", None) if logger is not None else None
+    if callable(warning):
+        warning(
+            "[READY ASSET CONTRACT BLOCK] %s refused: current title-bound eyecatch asset is required",
+            operation,
+        )
+
+
+def install_ready_asset_contract(pipeline_module: Any) -> Any:
+    """Fail closed before Ready persistence when its current eyecatch asset is absent/stale.
+
+    The exact same deterministic ``current_asset_url`` contract is used by downstream note Ready
+    synchronization.  This closes the upstream/downstream mismatch without retrying image
+    generation, calling a model, mutating note, or changing non-manuscript persistence.
+    """
+    if getattr(pipeline_module, _READY_ASSET_MARKER, False):
+        return pipeline_module
+
+    original_upgrade = getattr(pipeline_module, "upgrade_notion_page_with_report", None)
+    original_save = getattr(pipeline_module, "save_to_notion", None)
+    if not callable(original_upgrade) or not callable(original_save):
+        return pipeline_module
+
+    upgrade_signature = inspect.signature(original_upgrade)
+    save_signature = inspect.signature(original_save)
+
+    @functools.wraps(original_upgrade)
+    def upgrade_with_current_ready_asset(*args: Any, **kwargs: Any):
+        decision = _ready_asset_decision(upgrade_signature, args, kwargs)
+        if decision is False:
+            _log_ready_asset_block(pipeline_module, "upgrade_notion_page_with_report")
+            return False
+        return original_upgrade(*args, **kwargs)
+
+    @functools.wraps(original_save)
+    def save_with_current_ready_asset(*args: Any, **kwargs: Any):
+        decision = _ready_asset_decision(save_signature, args, kwargs)
+        if decision is False:
+            _log_ready_asset_block(pipeline_module, "save_to_notion")
+            return False
+        return original_save(*args, **kwargs)
+
+    pipeline_module.upgrade_notion_page_with_report = upgrade_with_current_ready_asset
+    pipeline_module.save_to_notion = save_with_current_ready_asset
+    setattr(pipeline_module, _READY_ASSET_MARKER, True)
+    pipeline_module.RUN222_READY_REQUIRES_CURRENT_EYECATCH = True
+    return pipeline_module
+
+
 def install_pipeline(pipeline_module: Any) -> Any:
     """Ensure newly generated canonical manuscripts end with the CTA after provenance."""
+    # Install the Ready asset guard independently so lightweight tests or reused runtime objects
+    # that already carry the presentation marker cannot silently skip the publication invariant.
+    install_ready_asset_contract(pipeline_module)
     if getattr(pipeline_module, "_run222_pipeline_installed", False):
         return pipeline_module
     original = pipeline_module.build_clean_note_manuscript
