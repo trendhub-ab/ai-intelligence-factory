@@ -24,6 +24,13 @@ on:
 permissions:
   contents: read
 
+# Keep one writer through completion; retain up to 100 waiting runs instead
+# of replacing the previous pending Ready delivery (GitHub queue limit).
+concurrency:
+  group: note-ready-article-sync
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   sync-note-ready:
     runs-on: ubuntu-latest

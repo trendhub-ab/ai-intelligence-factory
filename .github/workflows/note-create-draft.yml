@@ -20,6 +20,13 @@ on:
 permissions:
   contents: read
 
+# Keep one writer through completion; retain up to 100 waiting runs instead
+# of replacing the previous pending Ready delivery (GitHub queue limit).
+concurrency:
+  group: note-draft-create
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   preflight:
     runs-on: ubuntu-latest
@@ -149,13 +156,7 @@ jobs:
             done
           fi
           if [ "$state" != "RUNNING" ]; then
-            if ! gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet; then
-              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
-              if [ "$state" != "RUNNING" ]; then
-                echo "::error::Persistent note VM did not reach RUNNING after concurrent-safe start"
-                exit 1
-              fi
-            fi
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
           fi
           echo "Persistent note VM is running; waiting for its registered GitHub runner."
 
@@ -395,38 +396,20 @@ jobs:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
       GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
-      GH_TOKEN: ${{ secrets.GH_PAT }}
     steps:
-      - name: Defer VM stop while another note draft run is active
-        id: siblings
-        run: |
-          set -euo pipefail
-          if [ -z "${GH_TOKEN:-}" ]; then
-            echo "::error::GH_PAT is required to determine whether another note draft run is active"
-            exit 1
-          fi
-          active="$(gh run list --workflow note-create-draft.yml --limit 100 --json databaseId,status \
-            --jq "[.[] | select(.databaseId != ${GITHUB_RUN_ID}) | select(.status == \"queued\" or .status == \"in_progress\")] | length")"
-          if [ "${active:-0}" -gt 0 ]; then
-            echo "keep_online=true" >> "$GITHUB_OUTPUT"
-            echo "Another note draft run is active; keeping the persistent VM online."
-          else
-            echo "keep_online=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Authenticate to Google Cloud with OIDC
-        if: ${{ steps.siblings.outputs.keep_online != 'true' && vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
         uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       - name: Set up gcloud
-        if: ${{ steps.siblings.outputs.keep_online != 'true' && vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
         uses: google-github-actions/setup-gcloud@v3
 
       - name: Stop persistent note Chrome VM
-        if: ${{ steps.siblings.outputs.keep_online != 'true' && vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
         run: |
           set -euo pipefail
           state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
