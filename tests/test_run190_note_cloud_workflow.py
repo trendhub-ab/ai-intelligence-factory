@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+import re
 from pathlib import Path
 
 
@@ -27,7 +28,29 @@ class Run190CloudWorkflowTests(unittest.TestCase):
             "if: ${{ inputs.prepare_only == false && needs.preflight.outputs.should_start_vm == 'true' }}",
             source,
         )
-        self.assertIn("if: ${{ always() && needs.start-cloud-vm.result == 'success' }}", source)
+        # Evaluate the cleanup decision across success/failure and no-start paths.
+        # A VM can be running even if the subsequent runner-readiness step fails.
+        cleanup = source.split("  stop-cloud-vm:", 1)[1]
+        expression = re.search(r"if: \$\{\{ (.*?) \}\}", cleanup)[1]
+        expression = (expression.replace("always()", "True")
+                      .replace("inputs.prepare_only", "prepare_only")
+                      .replace("needs.preflight.outputs.should_start_vm", "should_start")
+                      .replace("needs.start-cloud-vm.result", "start_result")
+                      .replace("false", "False").replace("&&", "and"))
+        for prepare, candidate, start_result, expected in [
+            (False, 'true', 'success', True),
+            (False, 'true', 'failure', True),
+            (False, 'true', 'cancelled', True),
+            (False, 'true', 'skipped', False),
+            (True, 'true', 'skipped', False),
+            (False, 'false', 'skipped', False),
+        ]:
+            with self.subTest(prepare=prepare, candidate=candidate, start=start_result):
+                actual = eval(expression, {"__builtins__": {}}, {
+                    "prepare_only": prepare, "should_start": candidate,
+                    "start_result": start_result,
+                })
+                self.assertEqual(expected, actual)
         self.assertNotIn("if: ${{ always() && inputs.prepare_only == false }}", source)
 
     def test_prepare_only_and_empty_queue_do_not_start_cloud_vm(self) -> None:
