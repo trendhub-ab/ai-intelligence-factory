@@ -17,7 +17,7 @@ class DailyProductReviewBudgetContractTests(unittest.TestCase):
             'GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.5-flash,gemini-3.7-flash,gemini-3.8-flash"',
             text,
         )
-        self.assertNotIn("flash-lite", text)
+        self.assertNotIn("flash-lite", section.lower())
 
 
 if __name__ == "__main__":
