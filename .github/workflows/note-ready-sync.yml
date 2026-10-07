@@ -24,10 +24,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: note-ready-article-sync
-  cancel-in-progress: false
-
 jobs:
   sync-note-ready:
     runs-on: ubuntu-latest
