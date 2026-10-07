@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import sys
+import types
+
 import pytest
 
 import note_draft_automation as note
@@ -62,9 +65,12 @@ def test_browser_draft_context_uses_standard_chrome_user_agent(monkeypatch, tmp_
         def __exit__(self, *_args):
             return False
 
-    import playwright.sync_api
-
-    monkeypatch.setattr(playwright.sync_api, "sync_playwright", lambda: FakePlaywrightManager())
+    fake_sync_api = types.ModuleType("playwright.sync_api")
+    fake_sync_api.sync_playwright = lambda: FakePlaywrightManager()
+    fake_playwright = types.ModuleType("playwright")
+    fake_playwright.sync_api = fake_sync_api
+    monkeypatch.setitem(sys.modules, "playwright", fake_playwright)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", fake_sync_api)
 
     with pytest.raises(RuntimeError, match="stop-after-context"):
         note._create_browser_draft(
