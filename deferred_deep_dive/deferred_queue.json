@@ -1,7 +1,91 @@
 {
   "version": 1,
-  "updated_at": "2026-10-07T08:21:16.229407+00:00",
+  "updated_at": "2026-10-07T18:21:28.832239+00:00",
   "items": [
+    {
+      "key": "https://www.microsoft.com/en-us/research/blog/agent-lightning-v1-0-a-3500-line-lightweight-agentic-rl-framework-for-training-agents-with-real-harnesses",
+      "deferred_at": "2026-10-07T18:21:28.831847+00:00",
+      "expires_at": "2026-10-21T18:21:28.831847+00:00",
+      "repo": {
+        "source": "X",
+        "nameWithOwner": "agent lightning v1 0 a 3500 line lightweight agentic rl framework for training agents with real harnesses — microsoft.com",
+        "originalTitle": "agent lightning v1 0 a 3500 line lightweight agentic rl framework for training agents with real harnesses — microsoft.com",
+        "displayName": "agent lightning v1 0 a 3500 line lightweight agentic rl framework for training agents with real harnesses — microsoft.com",
+        "sourceLanguage": "en",
+        "url": "https://www.microsoft.com/en-us/research/blog/agent-lightning-v1-0-a-3500-line-lightweight-agentic-rl-framework-for-training-agents-with-real-harnesses",
+        "description": "X監視で発見した一次情報候補URL。X投稿自体は根拠に使わず、リンク先一次情報だけを検証対象とする。",
+        "stargazerCount": 1,
+        "licenseInfo": null,
+        "publishedAt": null,
+        "sourceContext": "",
+        "primaryUrl": "https://www.microsoft.com/en-us/research/blog/agent-lightning-v1-0-a-3500-line-lightweight-agentic-rl-framework-for-training-agents-with-real-harnesses",
+        "sourceDetails": {
+          "source_platform": "x",
+          "source_role": "discovery_signal",
+          "raw_source_not_evidence": true,
+          "evidence_status": "discovery_only",
+          "is_evidence": false,
+          "canonical_primary_url": "https://www.microsoft.com/en-us/research/blog/agent-lightning-v1-0-a-3500-line-lightweight-agentic-rl-framework-for-training-agents-with-real-harnesses",
+          "resolution_status": "candidate_needs_primary_verification",
+          "x_source_authors": [
+            "MSFTResearch"
+          ],
+          "x_source_post_urls": [
+            "https://twitter.com/MSFTResearch/status/2107866039803404605"
+          ],
+          "x_source_post_ids": [
+            "2107866039803404605"
+          ],
+          "mention_count": 1
+        }
+      },
+      "notion_page_id": "3f2479ff-dca9-81ee-8170-fcc2784b13d3",
+      "score": 80,
+      "reason": "Microsoft発の軽量フレームワークで実務適応性大",
+      "commercial_score": 85,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 81.75
+    },
+    {
+      "key": "https://arxiv.org/abs/2610.08651",
+      "deferred_at": "2026-10-07T18:21:28.831968+00:00",
+      "expires_at": "2026-12-06T18:21:28.831968+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "A Case Study in Assuring AI-Written Software",
+        "originalTitle": "A Case Study in Assuring AI-Written Software",
+        "displayName": "A Case Study in Assuring AI-Written Software",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2610.08651v1",
+        "description": "Software-engineering agents can enable people without formal software training to build systems they could not otherwise implement and simultaneously can produce more code than even experts can meaningfully inspect. In both cases, exhaustive code review is not reliable as the sole basis for human control. We report a case study of a production healthcare platform built through coding agents and governed by an operator without formal software-engineering training. Over time, its workflow grew int",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-06T16:37:08Z",
+        "sourceContext": "Software-engineering agents can enable people without formal software training to build systems they could not otherwise implement and simultaneously can produce more code than even experts can meaningfully inspect. In both cases, exhaustive code review is not reliable as the sole basis for human control. We report a case study of a production healthcare platform built through coding agents and governed by an operator without formal software-engineering training. Over time, its workflow grew into a human-led meta-agent system where one agent wrote code, other agents supervised and reviewed it, and project rules carried lessons forward. The operator found that tests, monitors and reviewing agents used to supervise the system were fallible. Some monitors measured proxies rather than outcomes, some audits failed silently, missing checks disappeared from reported results and one automated repair caused operational disruption. In this case, human control depended on keeping the intended outcome, the evidence used to judge it, the agents' permissions and the final human decision were all tied to the same underlying objective.",
+        "primaryUrl": "https://arxiv.org/abs/2610.08651v1",
+        "sourceDetails": {
+          "authors": [
+            "Lindsey Ferris",
+            "Sierra Bonilla"
+          ],
+          "categories": [
+            "cs.SE",
+            "cs.AI",
+            "cs.MA"
+          ]
+        }
+      },
+      "notion_page_id": "3f2479ff-dca9-81a0-bc0e-fae038535905",
+      "score": 85,
+      "reason": "AIソフトウェアの品質保証に関する必読の事例。",
+      "commercial_score": 75,
+      "shelf_life_score": 90,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 81.5
+    },
     {
       "key": "https://interrupt.langchain.com/london",
       "deferred_at": "2026-09-28T13:56:39.215114+00:00",
