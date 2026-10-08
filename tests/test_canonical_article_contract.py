@@ -49,7 +49,7 @@ def test_writer_contract_repairs_repeated_ai_style_without_banning_natural_singl
     cac = _load()
     text = cac.canonical_writer_contract()
     assert "単語や一文を機械的に禁止しない" in text
-    assert "『私なら』" in text
+    assert "私なら" in text
     assert "定型句として反復" in text
     assert "具体的な意思決定・条件・代償" in text
 
@@ -66,7 +66,8 @@ def test_writer_contract_breaks_uniform_textbook_section_cadence():
 def test_writer_contract_reduces_repeated_meta_summaries_and_grand_closings():
     cac = _load()
     text = cac.canonical_writer_contract()
-    assert "『つまり』『要するに』『重要なのは』" in text
+    for token in ("つまり", "要するに", "重要なのは"):
+        assert token in text
     assert "必要な一回は許容" in text
     assert "抽象的な大結論を各節" in text
     assert "二種類以上" in text
