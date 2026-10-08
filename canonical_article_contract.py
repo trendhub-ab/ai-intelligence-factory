@@ -49,6 +49,7 @@ Evidence・Fact・安全性と条件の正確さは編集より優先します�
 """.strip()
 
 
+
 def canonical_writer_contract() -> str:
     return f"""
 [{CANONICAL_ARTICLE_CONTRACT_MARKER}]
@@ -100,6 +101,14 @@ Reader Question、Central Conclusion、Capability Boundary、Reader Decision、�
 「ですよね」「実は」「つまり」、問い、比喩、短文等に回数ノルマを設けない。
 です・ます調を土台にし、教師の講義や監査報告書ではなく、AI・ITに詳しい人が面白いところを順番に見せる距離感にする。
 Reader-first summary / Reader Summaryの「どんな内容？／なぜ重要？／結論は？／元情報」は冒頭の短い固定導線として使う。Reader-first summaryを本文テンプレートにしない。その後の本文は同じ4項目を繰り返さず、記事固有のEvidence・制約・判断の流れで深掘りする。
+
+【Editorial Naturalness｜テンプレート臭をSelf-Editで消す】
+単語や一文を機械的に禁止しない。自然な単発表現は許容し、同じ修辞・判断・節構造が定型句として反復されることを問題にする。
+「私なら」は、具体的な意思決定・条件・代償を伴う箇所では使ってよいが、複数の節を閉じる定型句として反復しない。判断がEvidenceから自然に伝わる箇所では、話者を前に出さず事実・条件・選択肢をそのまま置く。
+各節を毎回「説明→意味→強い結論」の同じ型で閉じない。事実だけで止める節、短い節、長い節を混ぜ、意味に応じて段落長・節長を均一化しすぎない。
+「つまり」「要するに」「重要なのは」等のメタ要約を節ごとに連発しない。必要な一回は許容し、接続句がなくても文脈で読める箇所は削る。
+抽象的な大結論を各節に置かない。強い判断はEvidenceとReader Decisionが本当に必要とする箇所へ集約し、どの記事にも使える一般論で締めない。
+Self-Editでこれらのテンプレート的な癖が二種類以上重なっていたら、Fact/Evidence/Decisionと情報量は変えず、情報を減らさず文章の運びだけを再編集する。
 """.strip()
 
 
@@ -121,6 +130,7 @@ Reader Repair後の前半は、①何が変わった ②今どう判断する �
 判断・重要制約・比較・反証に不要なベンチマーク名と値は本文から省略してよい。ただし根拠資料自体は変更せず、残す数値の単位・測定条件・対象を切り離さない。省略で推奨強度や対象範囲が変わる場合は必ず残す。
 Evidenceを落とさず、情報の置き場所と粒度を変えて読みやすくする。修正後もFact / Evidence / Publication / Readerを再判定し、通らなければReadyにしない。
 """.strip()
+
 
 def canonical_final_reader_check() -> str:
     return f"""
