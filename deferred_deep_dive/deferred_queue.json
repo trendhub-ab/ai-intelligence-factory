@@ -1,45 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-08T10:43:36.455561+00:00",
+  "updated_at": "2026-10-08T10:45:48.781033+00:00",
   "items": [
-    {
-      "key": "https://arxiv.org/abs/2610.08651",
-      "deferred_at": "2026-10-07T18:21:28.831968+00:00",
-      "expires_at": "2026-12-06T18:21:28.831968+00:00",
-      "repo": {
-        "source": "ArXiv",
-        "nameWithOwner": "A Case Study in Assuring AI-Written Software",
-        "originalTitle": "A Case Study in Assuring AI-Written Software",
-        "displayName": "A Case Study in Assuring AI-Written Software",
-        "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2610.08651v1",
-        "description": "Software-engineering agents can enable people without formal software training to build systems they could not otherwise implement and simultaneously can produce more code than even experts can meaningfully inspect. In both cases, exhaustive code review is not reliable as the sole basis for human control. We report a case study of a production healthcare platform built through coding agents and governed by an operator without formal software-engineering training. Over time, its workflow grew int",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-06T16:37:08Z",
-        "sourceContext": "Software-engineering agents can enable people without formal software training to build systems they could not otherwise implement and simultaneously can produce more code than even experts can meaningfully inspect. In both cases, exhaustive code review is not reliable as the sole basis for human control. We report a case study of a production healthcare platform built through coding agents and governed by an operator without formal software-engineering training. Over time, its workflow grew into a human-led meta-agent system where one agent wrote code, other agents supervised and reviewed it, and project rules carried lessons forward. The operator found that tests, monitors and reviewing agents used to supervise the system were fallible. Some monitors measured proxies rather than outcomes, some audits failed silently, missing checks disappeared from reported results and one automated repair caused operational disruption. In this case, human control depended on keeping the intended outcome, the evidence used to judge it, the agents' permissions and the final human decision were all tied to the same underlying objective.",
-        "primaryUrl": "https://arxiv.org/abs/2610.08651v1",
-        "sourceDetails": {
-          "authors": [
-            "Lindsey Ferris",
-            "Sierra Bonilla"
-          ],
-          "categories": [
-            "cs.SE",
-            "cs.AI",
-            "cs.MA"
-          ]
-        }
-      },
-      "notion_page_id": "3f2479ff-dca9-81a0-bc0e-fae038535905",
-      "score": 85,
-      "reason": "AIソフトウェアの品質保証に関する必読の事例。",
-      "commercial_score": 75,
-      "shelf_life_score": 90,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 81.5
-    },
     {
       "key": "https://interrupt.langchain.com/london",
       "deferred_at": "2026-09-28T13:56:39.215114+00:00",
