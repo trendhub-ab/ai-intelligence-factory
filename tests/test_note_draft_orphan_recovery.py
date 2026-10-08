@@ -50,6 +50,15 @@ class NoteDraftOrphanRecoveryTests(unittest.TestCase):
         self.assertIn('"sync_id":"%s"', text)
         self.assertNotIn('"sync_id":""', text)
 
+    def test_exact_redispatch_refreshes_only_the_requested_ready_before_preflight(self) -> None:
+        text = CONTROL.read_text(encoding="utf-8")
+        refresh_call = "note_ready_sync.sync_note_ready_db(target_sync_id=target)"
+        preflight_call = "python run199_note_vm_preflight.py"
+        self.assertIn(refresh_call, text)
+        self.assertIn(preflight_call, text)
+        self.assertLess(text.index(refresh_call), text.index(preflight_call))
+        self.assertNotIn("sync_note_ready_db()", text)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
