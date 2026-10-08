@@ -17,7 +17,7 @@ jobs:
   diagnose:
     if: ${{ github.event.issue.number == 71 && github.event.comment.body == '/aiif diagnose note-cloud-runner' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 14
     env:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
@@ -45,20 +45,91 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v3
 
-      - name: Start persistent note VM
+      - name: Capture and temporarily wrap startup script for read-only runner facts
         run: |
           set -euo pipefail
           state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
-          if [ "$state" = "STOPPING" ]; then
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          elif [ "$state" = "STOPPING" ]; then
             for _ in $(seq 1 30); do
               sleep 5
               state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
               [ "$state" = "TERMINATED" ] && break
             done
           fi
-          if [ "$state" != "RUNNING" ]; then
-            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" \
+            --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" \
+            --format='json(metadata.items)' \
+            | python - <<'PY'
+          import json, sys
+          data = json.load(sys.stdin)
+          items = ((data.get('metadata') or {}).get('items') or [])
+          value = next((str(i.get('value') or '') for i in items if i.get('key') == 'startup-script'), '')
+          if not value:
+              raise SystemExit('startup-script metadata is missing')
+          open('/tmp/aiif-original-startup.sh', 'w', encoding='utf-8').write(value)
+          PY
+          original_sha="$(sha256sum /tmp/aiif-original-startup.sh | awk '{print $1}')"
+          echo "ORIGINAL_STARTUP_SHA=$original_sha" >> "$GITHUB_ENV"
+
+          original_b64="$(base64 -w0 /tmp/aiif-original-startup.sh)"
+          cat > /tmp/aiif-diagnostic-startup.sh <<EOF
+          #!/bin/bash
+          set +e
+          echo '$original_b64' | base64 -d > /tmp/aiif-original-startup.sh
+          chmod 700 /tmp/aiif-original-startup.sh
+          bash /tmp/aiif-original-startup.sh
+          original_rc=\$?
+          echo "AIIF_DIAG_ORIGINAL_STARTUP_RC=\$original_rc"
+          svc='actions.runner.trendhub-ab-ai-intelligence-factory.aiif-note-draft.service'
+          svc_user="\$(systemctl show "\$svc" -p User --value 2>/dev/null)"
+          svc_group="\$(systemctl show "\$svc" -p Group --value 2>/dev/null)"
+          workdir="\$(systemctl show "\$svc" -p WorkingDirectory --value 2>/dev/null)"
+          fragment="\$(systemctl show "\$svc" -p FragmentPath --value 2>/dev/null)"
+          echo "AIIF_DIAG_SERVICE_USER=\$svc_user"
+          echo "AIIF_DIAG_SERVICE_GROUP=\$svc_group"
+          echo "AIIF_DIAG_WORKDIR=\$workdir"
+          echo "AIIF_DIAG_FRAGMENT=\$fragment"
+          echo "AIIF_DIAG_ACTIVE_STATE=\$(systemctl show "\$svc" -p ActiveState --value 2>/dev/null)"
+          echo "AIIF_DIAG_SUB_STATE=\$(systemctl show "\$svc" -p SubState --value 2>/dev/null)"
+          echo "AIIF_DIAG_RESULT=\$(systemctl show "\$svc" -p Result --value 2>/dev/null)"
+          if [ -n "\$svc_user" ] && getent passwd "\$svc_user" >/tmp/aiif-runner-passwd 2>/dev/null; then
+            echo 'AIIF_DIAG_SERVICE_USER_RESOLVES=yes'
+            awk -F: '{printf "AIIF_DIAG_RESOLVED_UID=%s\nAIIF_DIAG_RESOLVED_GID=%s\nAIIF_DIAG_RESOLVED_HOME=%s\nAIIF_DIAG_RESOLVED_SHELL=%s\n", \$3, \$4, \$6, \$7}' /tmp/aiif-runner-passwd
+          else
+            echo 'AIIF_DIAG_SERVICE_USER_RESOLVES=no'
           fi
+          if [ -n "\$workdir" ] && [ -e "\$workdir" ]; then
+            stat -c 'AIIF_DIAG_WORKDIR_UID=%u AIIF_DIAG_WORKDIR_GID=%g AIIF_DIAG_WORKDIR_MODE=%a' "\$workdir"
+            if [ -e "\$workdir/runsvc.sh" ]; then
+              stat -c 'AIIF_DIAG_RUNSVC_UID=%u AIIF_DIAG_RUNSVC_GID=%g AIIF_DIAG_RUNSVC_MODE=%a' "\$workdir/runsvc.sh"
+            else
+              echo 'AIIF_DIAG_RUNSVC_PRESENT=no'
+            fi
+          else
+            echo 'AIIF_DIAG_WORKDIR_PRESENT=no'
+          fi
+          ledger_count=0
+          while IFS= read -r ledger; do
+            ledger_count=\$((ledger_count + 1))
+            stat -c 'AIIF_DIAG_LEDGER_UID=%u AIIF_DIAG_LEDGER_GID=%g AIIF_DIAG_LEDGER_MODE=%a' "\$ledger"
+          done < <(find /home /opt /srv -maxdepth 6 -type f -path '*/.aiif-note/delivery-ledger-v1.sqlite3' 2>/dev/null)
+          echo "AIIF_DIAG_LEDGER_COUNT=\$ledger_count"
+          echo 'AIIF_DIAG_FACTS_DONE=1'
+          exit 0
+          EOF
+          chmod 600 /tmp/aiif-diagnostic-startup.sh
+          gcloud compute instances add-metadata "$GCP_NOTE_VM_NAME" \
+            --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" \
+            --metadata-from-file=startup-script=/tmp/aiif-diagnostic-startup.sh --quiet
+          echo "Temporary diagnostic startup wrapper installed; original content was not printed."
+
+      - name: Start persistent note VM
+        run: |
+          set -euo pipefail
+          gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
           echo "VM start completed."
 
       - name: Inspect non-secret VM bootstrap facts
@@ -68,11 +139,6 @@ jobs:
           gcloud compute instances describe "$GCP_NOTE_VM_NAME" \
             --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" \
             --format='table(name,status,lastStartTimestamp)'
-          echo '### metadata keys only'
-          gcloud compute instances describe "$GCP_NOTE_VM_NAME" \
-            --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" \
-            --format='json(metadata.items)' \
-            | python -c 'import json,sys; d=json.load(sys.stdin); print("\n".join(sorted(str(x.get("key", "")) for x in ((d.get("metadata") or {}).get("items") or []) if x.get("key"))))'
           echo '### registered aiif-note-cloud runners'
           gh api "repos/${GITHUB_REPOSITORY}/actions/runners?per_page=100" \
             --jq '[.runners[] | select(any(.labels[]?; .name == "aiif-note-cloud")) | {id,name,status,busy,labels:[.labels[].name]}]'
@@ -80,7 +146,7 @@ jobs:
       - name: Allow boot diagnostics to settle
         run: sleep 75
 
-      - name: Read and sanitize serial console
+      - name: Read and sanitize runner diagnostic serial lines
         if: ${{ always() }}
         run: |
           set -euo pipefail
@@ -89,17 +155,14 @@ jobs:
           gcloud compute instances get-serial-port-output "$GCP_NOTE_VM_NAME" \
             --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" \
             --port=1 --start=0 >"$raw" 2>&1 || true
-          tail -n 800 "$raw" \
-            | sed -E \
-                -e 's/(gh[pousr]_[A-Za-z0-9_]{8,})/[REDACTED_GITHUB_TOKEN]/g' \
-                -e 's/([Tt][Oo][Kk][Ee][Nn][=:][[:space:]]*)[^[:space:]]+/\1[REDACTED]/g' \
-                -e 's/([Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*)[^[:space:]]+/\1[REDACTED]/g' \
-                -e 's/(credentials[^[:space:]]*[=:][[:space:]]*)[^[:space:]]+/\1[REDACTED]/g' \
-            >"$safe"
-          echo '### sanitized serial console tail'
-          cat "$safe"
-          echo '### runner-related serial lines'
-          grep -Eai 'runner|actions|github|systemd|service|cloud-init|startup|error|fail|denied|permission' "$safe" | tail -n 300 || true
+          sed -E \
+              -e 's/(gh[pousr]_[A-Za-z0-9_]{8,})/[REDACTED_GITHUB_TOKEN]/g' \
+              -e 's/([Tt][Oo][Kk][Ee][Nn][=:][[:space:]]*)[^[:space:]]+/\1[REDACTED]/g' \
+              -e 's/([Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*)[^[:space:]]+/\1[REDACTED]/g' \
+              -e 's/(credentials[^[:space:]]*[=:][[:space:]]*)[^[:space:]]+/\1[REDACTED]/g' \
+            "$raw" >"$safe"
+          echo '### runner diagnostic facts'
+          grep -E 'AIIF_DIAG_|actions\.runner\..*(217/USER|Failed to determine user credentials|Failed with result)' "$safe" | tail -n 120 || true
 
       - name: Recheck runner registration
         if: ${{ always() }}
@@ -117,3 +180,24 @@ jobs:
             gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
           fi
           echo "VM stop check completed."
+
+      - name: Restore original startup script exactly
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          if [ ! -s /tmp/aiif-original-startup.sh ]; then
+            echo '::error::Original startup script backup is unavailable; refusing to claim restoration.'
+            exit 1
+          fi
+          gcloud compute instances add-metadata "$GCP_NOTE_VM_NAME" \
+            --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" \
+            --metadata-from-file=startup-script=/tmp/aiif-original-startup.sh --quiet
+          restored="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" \
+            --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" \
+            --format='json(metadata.items)' \
+            | python -c 'import json,sys,hashlib; d=json.load(sys.stdin); items=((d.get("metadata") or {}).get("items") or []); v=next((str(i.get("value") or "") for i in items if i.get("key")=="startup-script"), ""); print(hashlib.sha256(v.encode()).hexdigest())')"
+          if [ "$restored" != "$ORIGINAL_STARTUP_SHA" ]; then
+            echo '::error::Startup script restoration hash mismatch.'
+            exit 1
+          fi
+          echo "Original startup script restored exactly by SHA-256."
