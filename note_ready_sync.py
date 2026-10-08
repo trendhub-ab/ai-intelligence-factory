@@ -25,7 +25,7 @@ from urllib.parse import urlencode
 import requests
 
 import publication_contract
-import note_delivery_compatibility as delivery_compat
+import note_document_contract as note_contract
 import eyecatch_publication_contract as eyecatch_contract
 from publication_source_contract import ACTIVE_PUBLIC_SOURCES
 from run285_operational_accounting import classify_note_ready_source_row
@@ -529,7 +529,7 @@ def sync_note_ready_db(*, target_sync_id: str = "", target_source_url: str = "")
         state["publication_contract"] = publication_contract.CONTRACT_ID
         state["publication_policy_sha256"] = publication_contract.policy_sha256()
         pre_delivery_states.append(state)
-        if not delivery_compat.ready_manuscript_compatible(state["title"], manuscript):
+        if not note_contract.ready_note_delivery_compatible(state["title"], manuscript):
             note_delivery_incompatible += 1
             delivery_incompatible_ids.add(state["sync_id"])
             continue
