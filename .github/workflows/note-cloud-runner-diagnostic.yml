@@ -103,8 +103,8 @@ jobs:
           fi
           if [ -n "\$workdir" ] && [ -e "\$workdir" ]; then
             stat -c 'AIIF_DIAG_WORKDIR_UID=%u AIIF_DIAG_WORKDIR_GID=%g AIIF_DIAG_WORKDIR_MODE=%a' "\$workdir"
-            if [ -e "\$workdir/runsvc.sh" ]; then
-              stat -c 'AIIF_DIAG_RUNSVC_UID=%u AIIF_DIAG_RUNSVC_GID=%g AIIF_DIAG_RUNSVC_MODE=%a' "\$workdir/runsvc.sh"
+            if [ -e "\$workdir"/runsvc.sh ]; then
+              stat -c 'AIIF_DIAG_RUNSVC_UID=%u AIIF_DIAG_RUNSVC_GID=%g AIIF_DIAG_RUNSVC_MODE=%a' "\$workdir"/runsvc.sh
             else
               echo 'AIIF_DIAG_RUNSVC_PRESENT=no'
             fi
