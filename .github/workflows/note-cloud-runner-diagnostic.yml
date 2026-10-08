@@ -24,7 +24,7 @@ jobs:
       GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
       GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
       GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      GH_TOKEN: ${{ secrets.GH_PAT }}
     steps:
       - name: Validate diagnostic controller configuration
         run: |
