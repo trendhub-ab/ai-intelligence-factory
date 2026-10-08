@@ -23,7 +23,7 @@ permissions:
 # Keep one writer through completion; retain up to 100 waiting runs instead
 # of replacing the previous pending Ready delivery (GitHub queue limit).
 concurrency:
-  group: note-draft-create
+  group: note-draft-create-v2
   cancel-in-progress: false
   queue: max
 

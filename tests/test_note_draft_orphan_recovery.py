@@ -10,9 +10,10 @@ CONTROL = ROOT / ".github" / "workflows" / "note-draft-control.yml"
 
 
 class NoteDraftOrphanRecoveryTests(unittest.TestCase):
-    def test_current_lossless_queue_contract_is_preserved(self) -> None:
+    def test_current_lossless_queue_uses_fresh_generation(self) -> None:
         text = NOTE_DRAFT.read_text(encoding="utf-8")
-        self.assertIn("group: note-draft-create", text)
+        self.assertIn("group: note-draft-create-v2", text)
+        self.assertNotIn("group: note-draft-create\n", text)
         self.assertIn("cancel-in-progress: false", text)
         self.assertIn("queue: max", text)
 
