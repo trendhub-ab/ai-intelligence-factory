@@ -61,10 +61,10 @@ jobs:
 
           gcloud compute instances describe "$GCP_NOTE_VM_NAME" \
             --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" \
-            --format='json(metadata.items)' \
-            | python - <<'PY'
-          import json, sys
-          data = json.load(sys.stdin)
+            --format='json(metadata.items)' > /tmp/aiif-metadata.json
+          python - <<'PY'
+          import json
+          data = json.load(open('/tmp/aiif-metadata.json', encoding='utf-8'))
           items = ((data.get('metadata') or {}).get('items') or [])
           value = next((str(i.get('value') or '') for i in items if i.get('key') == 'startup-script'), '')
           if not value:
