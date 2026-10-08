@@ -32,7 +32,7 @@ class NoteLosslessSerialDeliveryTests(unittest.TestCase):
         # up to 100 waiting runs; do not remove or target-scope the global lock.
         # https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency
         for name, group in [('note-ready-sync.yml', 'note-ready-article-sync'),
-                            ('note-create-draft.yml', 'note-draft-create')]:
+                            ('note-create-draft.yml', 'note-draft-create-v2')]:
             with self.subTest(workflow=name):
                 source = workflow(name)
                 block = re.search(r'(?m)^concurrency:\n((?:[ \t]+[^\n]*\n|\n)+)', source)
