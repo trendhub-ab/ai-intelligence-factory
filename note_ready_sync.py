@@ -8,8 +8,8 @@ Design:
 - The latest persisted Ready manuscript must carry the current automatic policy fingerprint
   and its caption manuscript SHA must match the actual body bytes.
 - A source eyecatch is mandatory before a row can enter/remain in the note posting queue.
-- Historical, corrupted, incomplete, or retired-source Ready inventory is excluded; existing
-  destination rows are quality-revoked on the next sync.
+- Historical, corrupted, incomplete, retired-source, or note-delivery-incompatible Ready
+  inventory is excluded; existing destination rows are quality-revoked on the next sync.
 - Human workflow fields (投稿状態, note公開URL, 投稿予定日, 投稿日) are never overwritten
   during normal Ready updates or automatic quality revocation.
 """
@@ -25,6 +25,7 @@ from urllib.parse import urlencode
 import requests
 
 import publication_contract
+import note_document_contract as note_contract
 import eyecatch_publication_contract as eyecatch_contract
 from publication_source_contract import ACTIVE_PUBLIC_SOURCES
 from run285_operational_accounting import classify_note_ready_source_row
@@ -497,10 +498,13 @@ def sync_note_ready_db(*, target_sync_id: str = "", target_source_url: str = "")
             raise ValueError("Exact Ready target is missing or ambiguous")
 
     states: list[dict[str, Any]] = []
+    pre_delivery_states: list[dict[str, Any]] = []
+    delivery_incompatible_ids: set[str] = set()
     stale_contract = 0
     incomplete_assets = 0
     unsupported_source = 0
     invalid_source_state = 0
+    note_delivery_incompatible = 0
     for page in source_pages:
         raw_source = _select((page.get("properties") or {}).get("情報源"))
         state = _source_state(page)
@@ -512,7 +516,8 @@ def sync_note_ready_db(*, target_sync_id: str = "", target_source_url: str = "")
             invalid_source_state += 1
             continue
         assert state is not None
-        if not _source_current_ready_manuscript(state["sync_id"]):
+        manuscript = _source_current_ready_manuscript(state["sync_id"])
+        if not manuscript:
             stale_contract += 1
             continue
         if not state.get("eyecatch_url"):
@@ -523,12 +528,18 @@ def sync_note_ready_db(*, target_sync_id: str = "", target_source_url: str = "")
             continue
         state["publication_contract"] = publication_contract.CONTRACT_ID
         state["publication_policy_sha256"] = publication_contract.policy_sha256()
+        pre_delivery_states.append(state)
+        if not note_contract.ready_note_delivery_compatible(state["title"], manuscript):
+            note_delivery_incompatible += 1
+            delivery_incompatible_ids.add(state["sync_id"])
+            continue
         states.append(state)
     if target_source_url:
-        target = select_exact_sync_id_for_source_url(states, target_source_url)
+        target = select_exact_sync_id_for_source_url(pre_delivery_states, target_source_url)
         states = [state for state in states if state["sync_id"] == target]
     source_by_id = {s["sync_id"]: s for s in states}
-    if target and target not in source_by_id:
+    exact_delivery_incompatible = bool(target and target in delivery_incompatible_ids)
+    if target and target not in source_by_id and not exact_delivery_incompatible:
         raise ValueError("Exact Ready target failed current publication contract or asset checks")
 
     dest_pages = _query_db(DEST_DATA_SOURCE_ID, DEST_DATABASE_ID)
@@ -593,6 +604,9 @@ def sync_note_ready_db(*, target_sync_id: str = "", target_source_url: str = "")
         revoked += 1
         time.sleep(0.34)
 
+    if exact_delivery_incompatible:
+        raise ValueError("Exact Ready target failed note delivery compatibility")
+
     return {
         "enabled": True,
         "zero_gemini_calls": True,
@@ -604,6 +618,7 @@ def sync_note_ready_db(*, target_sync_id: str = "", target_source_url: str = "")
         "incomplete_publication_assets": incomplete_assets,
         "unsupported_source": unsupported_source,
         "invalid_source_state": invalid_source_state,
+        "note_delivery_incompatible": note_delivery_incompatible,
         "destination_rows": len(dest_pages),
         "created": created,
         "updated": updated,

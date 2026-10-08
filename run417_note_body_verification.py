@@ -29,22 +29,8 @@ _ALLOWED_NOTE_NORMALIZATIONS = (
 )
 
 
-def _contains_inline_code(node: Any) -> bool:
-    if isinstance(node, contract.InlineCode):
-        return True
-    for attr in ("children", "items"):
-        value = getattr(node, attr, None)
-        if value and any(_contains_inline_code(child) for child in value):
-            return True
-    return False
-
-
 def _expected_note_document(markdown_text: str) -> contract.Document:
-    expected = contract.parse_presentation_markdown(markdown_text)
-    expected = contract.normalize_document(expected)
-    if _contains_inline_code(expected):
-        raise contract.CanonicalContractError("unsupported_note_inline_code")
-    return expected
+    return contract.expected_note_delivery_document(markdown_text)
 
 
 def markdown_to_safe_html(markdown_text: str) -> str:
