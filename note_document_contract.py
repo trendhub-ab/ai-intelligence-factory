@@ -612,3 +612,54 @@ def parse_safe_html(html_text: str) -> Document:
     if parser.stack:
         raise CanonicalContractError('unsupported_safe_html')
     return normalize_document(Document(tuple(parser.document)))
+
+
+def _contains_inline_code_for_note(node: Any) -> bool:
+    if isinstance(node, InlineCode):
+        return True
+    for attr in ("children", "items"):
+        value = getattr(node, attr, None)
+        if value and any(_contains_inline_code_for_note(child) for child in value):
+            return True
+    return False
+
+
+def expected_note_delivery_document(markdown_text: str) -> Document:
+    """Return the canonical document accepted by the current note delivery path."""
+    expected = normalize_document(parse_presentation_markdown(markdown_text))
+    if _contains_inline_code_for_note(expected):
+        raise CanonicalContractError("unsupported_note_inline_code")
+    return expected
+
+
+def body_manuscript_for_note_delivery(title: str, manuscript: str) -> str:
+    """Project stored article Markdown into note's separate title/body editor shape."""
+    text = str(manuscript or "").strip()
+    if not text:
+        raise CanonicalContractError("empty_manuscript")
+    lines = text.splitlines()
+    if lines and re.match(r"^#(?!#)\s+", lines[0]):
+        h1 = re.sub(r"\s+", " ", re.sub(r"^#(?!#)\s+", "", lines[0])).strip()
+        expected_title = re.sub(r"\s+", " ", str(title or "")).strip()
+        if h1 != expected_title:
+            raise CanonicalContractError("title_h1_mismatch")
+        text = "\n".join(lines[1:]).lstrip()
+    if re.search(r"(?m)^#(?!#)\s+\S", text):
+        raise CanonicalContractError("unexpected_body_h1")
+    return text
+
+
+def require_ready_note_delivery_compatible(title: str, manuscript: str) -> str:
+    """Validate the exact body that would be sent to note and return it."""
+    body = body_manuscript_for_note_delivery(title, manuscript)
+    document = expected_note_delivery_document(body)
+    render_safe_html(document)
+    return body
+
+
+def ready_note_delivery_compatible(title: str, manuscript: str) -> bool:
+    try:
+        require_ready_note_delivery_compatible(title, manuscript)
+    except CanonicalContractError:
+        return False
+    return True
