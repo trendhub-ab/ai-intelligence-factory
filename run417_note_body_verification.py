@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import note_delivery_compatibility as delivery_compat
 import note_document_contract as contract
 import note_document_dom as dom
 import note_draft_automation as base
@@ -31,7 +30,7 @@ _ALLOWED_NOTE_NORMALIZATIONS = (
 
 
 def _expected_note_document(markdown_text: str) -> contract.Document:
-    return delivery_compat.expected_note_document(markdown_text)
+    return contract.expected_note_delivery_document(markdown_text)
 
 
 def markdown_to_safe_html(markdown_text: str) -> str:
