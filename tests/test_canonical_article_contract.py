@@ -45,6 +45,35 @@ def test_writer_contract_preserves_fact_evidence_and_rejects_invented_specificit
     assert "専門語の固定個数制限は設けない" in text
 
 
+def test_writer_contract_repairs_repeated_ai_style_without_banning_natural_single_use():
+    cac = _load()
+    text = cac.canonical_writer_contract()
+    assert "単語や一文を機械的に禁止しない" in text
+    assert "私なら" in text
+    assert "定型句として反復" in text
+    assert "具体的な意思決定・条件・代償" in text
+
+
+def test_writer_contract_breaks_uniform_textbook_section_cadence():
+    cac = _load()
+    text = cac.canonical_writer_contract()
+    assert "説明→意味→強い結論" in text
+    assert "事実だけで止める節" in text
+    assert "短い節、長い節" in text
+    assert "節長を均一化" in text
+
+
+def test_writer_contract_reduces_repeated_meta_summaries_and_grand_closings():
+    cac = _load()
+    text = cac.canonical_writer_contract()
+    for token in ("つまり", "要するに", "重要なのは"):
+        assert token in text
+    assert "必要な一回は許容" in text
+    assert "抽象的な大結論を各節" in text
+    assert "二種類以上" in text
+    assert "情報を減らさず文章の運びだけを再編集" in text
+
+
 def test_deconflict_removes_legacy_numeric_quotas_before_contract():
     cac = _load()
     legacy = "\n".join(
