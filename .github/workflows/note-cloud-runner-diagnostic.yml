@@ -1,0 +1,119 @@
+name: Note Cloud Runner Diagnostic
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+
+concurrency:
+  group: note-cloud-runner-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    if: ${{ github.event.issue.number == 71 && github.event.comment.body == '/aiif diagnose note-cloud-runner' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+    steps:
+      - name: Validate diagnostic controller configuration
+        run: |
+          set -euo pipefail
+          for name in GCP_PROJECT_ID GCP_NOTE_VM_ZONE GCP_NOTE_VM_NAME GCP_WORKLOAD_IDENTITY_PROVIDER GCP_SERVICE_ACCOUNT GH_TOKEN; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing repository variable or secret: ${name}"
+              exit 1
+            fi
+          done
+
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Start persistent note VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+          echo "VM start completed."
+
+      - name: Inspect non-secret VM bootstrap facts
+        run: |
+          set -euo pipefail
+          echo '### instance state'
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" \
+            --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" \
+            --format='table(name,status,lastStartTimestamp)'
+          echo '### metadata keys only'
+          gcloud compute instances describe "$GCP_NOTE_VM_NAME" \
+            --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" \
+            --format='json(metadata.items)' \
+            | python -c 'import json,sys; d=json.load(sys.stdin); print("\n".join(sorted(str(x.get("key", "")) for x in ((d.get("metadata") or {}).get("items") or []) if x.get("key"))))'
+          echo '### registered aiif-note-cloud runners'
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runners?per_page=100" \
+            --jq '[.runners[] | select(any(.labels[]?; .name == "aiif-note-cloud")) | {id,name,status,busy,labels:[.labels[].name]}]'
+
+      - name: Allow boot diagnostics to settle
+        run: sleep 75
+
+      - name: Read and sanitize serial console
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          raw="$(mktemp)"
+          safe="$(mktemp)"
+          gcloud compute instances get-serial-port-output "$GCP_NOTE_VM_NAME" \
+            --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" \
+            --port=1 --start=0 >"$raw" 2>&1 || true
+          tail -n 800 "$raw" \
+            | sed -E \
+                -e 's/(gh[pousr]_[A-Za-z0-9_]{8,})/[REDACTED_GITHUB_TOKEN]/g' \
+                -e 's/([Tt][Oo][Kk][Ee][Nn][=:][[:space:]]*)[^[:space:]]+/\1[REDACTED]/g' \
+                -e 's/([Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]:[[:space:]]*)[^[:space:]]+/\1[REDACTED]/g' \
+                -e 's/(credentials[^[:space:]]*[=:][[:space:]]*)[^[:space:]]+/\1[REDACTED]/g' \
+            >"$safe"
+          echo '### sanitized serial console tail'
+          cat "$safe"
+          echo '### runner-related serial lines'
+          grep -Eai 'runner|actions|github|systemd|service|cloud-init|startup|error|fail|denied|permission' "$safe" | tail -n 300 || true
+
+      - name: Recheck runner registration
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runners?per_page=100" \
+            --jq '[.runners[] | select(any(.labels[]?; .name == "aiif-note-cloud")) | {id,name,status,busy,labels:[.labels[].name]}]'
+
+      - name: Stop persistent note VM
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+          echo "VM stop check completed."
