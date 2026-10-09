@@ -1,43 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-09T09:42:51.689554+00:00",
+  "updated_at": "2026-10-09T09:44:24.277842+00:00",
   "items": [
-    {
-      "key": "https://openai.com/products/release-notes?aif_revision=7dd2d1f29bae1301",
-      "deferred_at": "2026-10-09T09:42:51.689369+00:00",
-      "expires_at": "2026-10-23T09:42:51.689369+00:00",
-      "repo": {
-        "source": "OfficialVendor",
-        "nameWithOwner": "OpenAI — Updated the chat-latest snapshot, which points to the latest model available in ChatGPT for Plus, Pro, Business and Enterprise users. We recommend leveraging the GPT‐6 model family for production API usage, but feel free",
-        "originalTitle": "OpenAI — Updated the chat-latest snapshot, which points to the latest model available in ChatGPT for Plus, Pro, Business and Enterprise users. We recommend leveraging the GPT‐6 model family for production API usage, but feel free",
-        "displayName": "OpenAI — Updated the chat-latest snapshot, which points to the latest model available in ChatGPT for Plus, Pro, Business and Enterprise users. We recommend leveraging the GPT‐6 model family for production API usage, but feel free",
-        "sourceLanguage": "en",
-        "url": "https://openai.com/products/release-notes/?aif_revision=7dd2d1f29bae1301",
-        "description": "Updated the chat-latest snapshot, which points to the latest model available in ChatGPT for Plus, Pro, Business and Enterprise users. We recommend leveraging the GPT‑6 model family for production API usage, but feel free to use this model to test the latest improvements for chat use cases. The underlying model snapshot will be regularly updated.",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "Oct 7, 2026",
-        "sourceContext": "Updated the chat-latest snapshot, which points to the latest model available in ChatGPT for Plus, Pro, Business and Enterprise users. We recommend leveraging the GPT‑6 model family for production API usage, but feel free to use this model to test the latest improvements for chat use cases. The underlying model snapshot will be regularly updated.",
-        "primaryUrl": "https://openai.com/products/release-notes/",
-        "sourceDetails": {
-          "vendor": "OpenAI",
-          "vendor_region": "US",
-          "source_role": "commercial_primary_source",
-          "official_release_url": "https://openai.com/products/release-notes/",
-          "candidate_revision": "7dd2d1f29bae1301",
-          "vendor_record_kind": "structured_html",
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3f4479ff-dca9-81cf-ab86-c41daedf7c06",
-      "score": 75,
-      "reason": "プロダクション環境への導入判断に必須の情報。",
-      "commercial_score": 90,
-      "shelf_life_score": 40,
-      "shelf_life": "TREND",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 80.25
-    },
     {
       "key": "https://cloud.google.com/blog/products/ai-machine-learning/welcome-to-gemini-at-work-2026",
       "deferred_at": "2026-10-09T09:42:51.689450+00:00",
