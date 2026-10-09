@@ -3,8 +3,8 @@ from types import SimpleNamespace
 import pytest
 
 from a_plus_editorial_orchestration import install
-from editorial_naturalness import editorial_naturalness_v2_diagnostics
-from local_skills.a_plus import build_targeted_naturalness_repair_guidance
+from editorial_naturalness_v2 import editorial_naturalness_v2_diagnostics
+from local_skills.naturalness_v2 import build_targeted_naturalness_repair_guidance
 from ready_yield_guard import compute_ready_yield_metrics
 
 

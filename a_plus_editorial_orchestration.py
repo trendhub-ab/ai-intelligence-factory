@@ -16,6 +16,7 @@ from local_skills.a_plus import (
     render_provider_compatible_fallback,
     repair_unbalanced_japanese_quotes,
 )
+from local_skills.naturalness_v2 import build_targeted_naturalness_repair_guidance
 
 
 _MARKER = "_a_plus_editorial_orchestration_installed"
@@ -166,9 +167,18 @@ def install(pipeline_module):
                 state["force_local_fallback"] = False
                 return result
 
+        effective_prompt = prompt
+        if request_kind == "quality_retry":
+            guidance = build_targeted_naturalness_repair_guidance(prompt)
+            if guidance:
+                effective_prompt = prompt.rstrip() + "\n\n" + guidance + "\n"
+                logger = getattr(p, "logger", None)
+                if logger:
+                    logger.info("[A+ NATURALNESS V2] targeted repair guidance attached")
+
         try:
             return original_call(
-                prompt,
+                effective_prompt,
                 repo,
                 source_info,
                 request_kind=request_kind,
