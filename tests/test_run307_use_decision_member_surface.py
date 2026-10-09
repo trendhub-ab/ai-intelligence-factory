@@ -81,16 +81,18 @@ class Run307UseDecisionMemberSurfaceTests(unittest.TestCase):
         self.assertFalse(contract["notion_schema_changed"])
         self.assertTrue(contract["zero_gemini_calls"])
 
-    def test_body_is_use_decision_not_client_first(self):
+    def test_body_uses_same_scan_first_decision_path_as_brief(self):
         children = run307._build_children(self._state())
         headings = {text for _, text in body._body_fingerprint(children) if text}
-        self.assertIn("いま、使える？", headings)
-        self.assertIn("こんな時に向いています", headings)
-        self.assertIn("ここは確認してください", headings)
-        self.assertIn("まずやること", headings)
+        self.assertIn("いまの判断", headings)
+        self.assertIn("何ができる？", headings)
+        self.assertIn("誰・どんな仕事向け？", headings)
+        self.assertIn("まず何を試す？", headings)
+        self.assertIn("注意点", headings)
         self.assertNotIn("顧客にどう答える？", headings)
         self.assertNotIn("提案できる場面", headings)
-        self.assertNotIn("提案前に確認すること", headings)
+        self.assertNotIn("いま、使える？", headings)
+        self.assertNotIn("今、見る理由", headings)
 
     def test_body_uses_existing_authoritative_fields_without_mutation(self):
         state = self._state()
@@ -115,9 +117,8 @@ class Run307UseDecisionMemberSurfaceTests(unittest.TestCase):
         self.assertIn("根拠の確認日", texts)
         self.assertIn("2026年8月29日に確認", texts)
         self.assertNotIn("2026年9月29日", texts)
-        # Source-review disclosure precedes any current-use recommendation.
         ordered = [text for _, text in body._body_fingerprint(run307._build_children(state))]
-        self.assertLess(ordered.index("根拠の確認日"), ordered.index("いま、使える？"))
+        self.assertLess(ordered.index("根拠の確認日"), ordered.index("いまの判断"))
         state["last_reviewed"] = ""
         missing = " | ".join(text for _, text in body._body_fingerprint(run307._build_children(state)))
         self.assertIn("最終確認日が記録されていません", missing)
@@ -128,23 +129,22 @@ class Run307UseDecisionMemberSurfaceTests(unittest.TestCase):
         old["last_reviewed"] = "2026-08-23"
         new = self._state()
         new["last_reviewed"] = ""
-        # A new page and an old page both enter the same renderer.
         for record in (old, new):
             display = [text for _, text in body._body_fingerprint(run307._build_children(record))]
             self.assertIn(policy.DATE_PREFIX, display)
-            self.assertLess(display.index(policy.DATE_PREFIX), display.index("いま、使える？"))
+            self.assertLess(display.index(policy.DATE_PREFIX), display.index("いまの判断"))
             self.assertIn(policy.review_disclosure(record["last_reviewed"]), display)
         self.assertIn("最終確認日が記録されていません",
                       policy.review_disclosure(new["last_reviewed"]))
 
-    def test_vague_topic_is_omitted_without_inventing_a_recency_claim(self):
+    def test_topic_is_not_a_separate_primary_section_after_benefit_alignment(self):
         state = self._state()
         state["topic"] = "制作・検証環境として非常に有力。"
         texts = [text for kind, text in body._body_fingerprint(run307._build_children(state)) if kind == "heading_3"]
         self.assertNotIn("今、見る理由", texts)
         state["topic"] = "公式APIと利用条件が更新された。"
         texts = [text for kind, text in body._body_fingerprint(run307._build_children(state)) if kind == "heading_3"]
-        self.assertIn("今、見る理由", texts)
+        self.assertNotIn("今、見る理由", texts)
         self.assertEqual("", run307._last_reviewed_label("2026-99-33"))
 
     def test_status_copy_is_generic(self):
@@ -207,11 +207,11 @@ class Run307UseDecisionMemberSurfaceTests(unittest.TestCase):
             [
                 "これは何？",
                 "根拠の確認日",
-                "いま、使える？",
-                "こんな時に向いています",
-                "今、見る理由",
-                "ここは確認してください",
-                "まずやること",
+                "いまの判断",
+                "何が楽になる？ / 何ができる？",
+                "誰・どんな仕事向け？",
+                "まず何を試す？",
+                "注意点",
             ],
             result["reader_order"],
         )
@@ -224,9 +224,10 @@ class Run307UseDecisionMemberSurfaceTests(unittest.TestCase):
             "callout": {"rich_text": body._rich_text(run219.NEW_VISIBLE_CALLOUT_LABEL)},
         }
         current_children = [
-            body._heading("いま、使える？"),
-            body._heading("こんな時に向いています"),
-            body._heading("まずやること"),
+            body._heading("いまの判断"),
+            body._heading("誰・どんな仕事向け？"),
+            body._heading("まず何を試す？"),
+            body._heading("注意点"),
         ]
         self.assertTrue(
             run219._looks_like_generated_member_callout(
