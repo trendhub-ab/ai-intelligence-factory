@@ -37,7 +37,6 @@ PUBLICATION_POLICY_FILES = (
     "evidence_context.py",
     "reader_experience_signals.py",
     "editorial_naturalness.py",
-    "naturalness_v2_ready_corpus.py",
     "candidate_identity.py",
     "note_manuscript.py",
     "publication_source_contract.py",
