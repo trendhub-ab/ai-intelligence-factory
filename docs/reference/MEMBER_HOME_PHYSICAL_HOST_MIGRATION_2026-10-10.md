@@ -154,7 +154,7 @@ Proof:
 
 The E2E preserved the 240-record identity contract and produced no create/archive/delete churn. The two Presentation updates were ordinary synchronization updates against existing canonical records, not identity replacement. All 240 page bodies were already current and therefore remained unchanged.
 
-The branch-only E2E workflow is temporary proof infrastructure and is removed after this evidence is recorded; it is not part of the permanent production contract.
+The branch-only E2E workflow was removed after this evidence was recorded. It is not part of the permanent production contract.
 
 ## Rollback contract
 
@@ -191,13 +191,13 @@ Completed:
 - E2E body sync = **240/240 readable and unchanged**;
 - E2E Decision Brief refresh = **PASS**;
 - final E2E API proof = **HTTP 200 for all four targets**;
+- temporary branch-only E2E workflow removed after evidence capture;
 - PR #746 created as **Draft** against `main`;
 - Gemini/model calls = **0**;
 - Daily = **not run**.
 
 Still required before completion:
 
-- remove the temporary branch-only E2E workflow after preserving its run evidence;
 - final guest-account navigation check succeeds: member home → Decision Brief → judgment DB/views → individual page → judgment memo;
 - no merge before explicit `MERGE GO`.
 
