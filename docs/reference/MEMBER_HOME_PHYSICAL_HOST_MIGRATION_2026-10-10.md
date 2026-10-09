@@ -1,6 +1,6 @@
 # Member Home Physical Host Migration — 2026-10-10
 
-Status: **pre-move contract staged; live move and post-move proof pending**  
+Status: **live physical move and post-move API proof complete; full regression / PR / E2E / guest check pending**  
 Gemini/model calls: **0**  
 Daily: **not run**
 
@@ -26,7 +26,7 @@ Target structure:
 
 No replacement DB may be created. `MEMBER_PRESENTATION_ALLOW_CREATE=false` remains mandatory.
 
-## Gate 1 — production integration read proof
+## Gate 1 — production integration read proof before the move
 
 Before moving anything, a dedicated branch-only GitHub Actions workflow used the same production secret as Member Presentation Sync: `NOTION_DECISION_INTELLIGENCE_API_KEY`.
 
@@ -39,32 +39,80 @@ Proof:
 - Decision Brief: **HTTP 200**
 - result: `READ_PROOF=PASS`
 
-This satisfies the prerequisite that Run221 itself required before reconsidering physical placement under the member home.
+This satisfied the prerequisite that Run221 itself required before reconsidering physical placement under the member home.
 
-## Code contract staged before the move
+## TDD contract before the move
+
+A successor contract was written before the live move. Its initial RED run failed only because the repository still encoded the old Run221 state:
+
+- RED workflow run ID: `38003610289`
+- RED job ID: `114067212697`
+- failures: current identity still used the old host; production workflow still pinned the old host; Run221 still declared itself current; successor migration record did not yet exist.
+
+After the minimal contract changes, the same focused migration test became GREEN before the Notion move.
 
 The successor contract keeps Run220 fail-closed identity protection and changes only the expected physical host:
 
-- `API_HOST_PAGE_ID` becomes the member home ID `3c5479ff-dca9-8103-bff0-f2d5f408d35f`.
+- `API_HOST_PAGE_ID` is the member home ID `3c5479ff-dca9-8103-bff0-f2d5f408d35f`.
 - bootstrap parent defaults to that same member home through the existing identity authority.
 - Member Presentation Sync pins the same member-home host.
+- Cross DB Contract Guard uses the same host for its live member check.
 - canonical DB/Data Source IDs remain unchanged.
 - no fallback by title and no automatic replacement DB creation are introduced.
 - Run221 remains in the repository as superseded historical incident evidence.
 
-## Live migration sequence
+## Live move — completed
 
-1. Move the same canonical Database `b2787ee0-5b58-4ca7-b4eb-774f60237f1f` under the member home.
-2. Move the same Decision Brief page `3d0479ff-dca9-81de-b614-fef528d2f32c` under the member home.
-3. Re-fetch both objects and verify their parent is the member home.
-4. Verify the canonical Data Source ID is still `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`.
-5. Verify row count, distinct `同期ID`, blank `同期ID`, and representative member pages.
-6. Re-run the GitHub Actions read-only proof after the move.
-7. Only if all API checks stay HTTP 200 may the successor contract proceed to PR/full regression.
+The exact existing objects were physically moved under the member home in one migration operation:
 
-## Rollback
+1. canonical Database `b2787ee0-5b58-4ca7-b4eb-774f60237f1f`;
+2. Decision Brief page `3d0479ff-dca9-81de-b614-fef528d2f32c`.
 
-If the post-move GitHub Actions proof returns HTTP 404 or otherwise cannot read the canonical Database/Data Source/Brief, perform an immediate **rollback** before any main-branch change:
+No new database was created and no identity was replaced.
+
+Post-move Notion reads confirmed:
+
+- canonical Database parent = `AI Decision Intelligence｜会員ホーム`;
+- Decision Brief parent = `AI Decision Intelligence｜会員ホーム`;
+- Database ID unchanged: `b2787ee0-5b58-4ca7-b4eb-774f60237f1f`;
+- Data Source ID unchanged: `7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404`;
+- Decision Brief Page ID unchanged: `3d0479ff-dca9-81de-b614-fef528d2f32c`.
+
+## Data-integrity audit after the move
+
+A direct read-only query of the canonical Data Source returned:
+
+- rows: **240**;
+- distinct `同期ID`: **240**;
+- blank `同期ID`: **0**.
+
+Representative record proof:
+
+- record: `huggingface/datasets`;
+- Page ID: `3d0479ff-dca9-8127-8b47-e0dccc7bb166`;
+- ancestor chain: `AI Decision Intelligence｜会員ホーム` → `AI・技術一覧｜判断DB` → individual record;
+- `同期ID`: `github:huggingface/datasets`;
+- page body remained readable after the move.
+
+## Gate 2 — production integration read proof after the move
+
+The same GitHub Actions proof was rerun after physical placement changed.
+
+Proof:
+- Workflow run ID: `38003761092`
+- post-move job ID: `114067929747`
+- focused migration contract: **4 tests OK**
+- member home: **HTTP 200**
+- canonical Database: **HTTP 200**
+- canonical Data Source: **HTTP 200**
+- Decision Brief: **HTTP 200**
+- result: `READ_PROOF=PASS`
+
+The Run221 failure mode did not recur. **Rollback was not invoked.**
+
+## Rollback contract
+
+If a later pre-merge validation discovers that the production integration can no longer read the canonical Database/Data Source/Brief, rollback remains the fail-safe action before any main-branch change:
 
 - move the same Database ID back to `3c5479ff-dca9-8178-867c-d9249a3ff5c8` (`mlflow/mlflow`);
 - move the same Decision Brief ID back with it;
@@ -73,22 +121,29 @@ If the post-move GitHub Actions proof returns HTTP 404 or otherwise cannot read 
 - re-run the read-only proof and require HTTP 200 after rollback;
 - leave `main` unchanged.
 
-## Post-move acceptance gates
+## Remaining acceptance gates
 
-The migration is not complete until all of the following are evidenced:
+Completed:
 
 - physical parent = member home for canonical DB;
 - physical parent = member home for Decision Brief;
 - Database ID unchanged;
 - Data Source ID unchanged;
 - Decision Brief Page ID unchanged;
-- member row count preserved at the actual pre-move count;
-- distinct/blank `同期ID` audit passes;
-- representative individual pages remain readable;
+- member row count = **240**;
+- distinct/blank `同期ID` audit = **240 / 0 blank**;
+- representative individual page readable;
 - GitHub Actions post-move read proof = HTTP 200 for all four targets;
 - focused migration tests GREEN;
+- Gemini/model calls = **0**;
+- Daily = **not run**.
+
+Still required before completion:
+
 - full pytest / guards / synthetic smoke GREEN;
-- Member Presentation Sync E2E succeeds with Gemini/model calls 0 and Daily not run;
+- PR created against `main` with no merge before explicit `MERGE GO`;
+- Member Presentation Sync E2E succeeds and preserves the 240-record contract;
+- Decision Brief sync and representative individual body sync are verified;
 - final guest-account navigation check succeeds.
 
-The historical Run221 incident is not erased. This migration supersedes only its old-host-as-current-host rule after all live acceptance gates pass.
+The historical Run221 incident is not erased. This migration supersedes only its old-host-as-current-host rule after the live read and integrity gates above succeeded.
