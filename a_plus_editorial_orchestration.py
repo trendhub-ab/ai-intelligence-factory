@@ -10,6 +10,8 @@ from functools import wraps
 from types import SimpleNamespace
 from typing import Any
 
+from editorial_naturalness import build_naturalness_retry_contract
+
 from local_skills.a_plus import (
     build_prewrite_contract,
     can_use_local_fallback,
@@ -67,6 +69,7 @@ def install(pipeline_module):
         "last_retry_rows": [],
         "last_evidence_result": {},
         "force_local_fallback": False,
+        "retry_article": "",
     }
 
     @wraps(original_generate)
@@ -75,11 +78,14 @@ def install(pipeline_module):
         state["last_retry_rows"] = []
         state["last_evidence_result"] = {}
         state["force_local_fallback"] = False
+        state["retry_article"] = ""
         return original_generate(*args, **kwargs)
 
     @wraps(original_prompt)
     def build_decision_prompt_a_plus(*args, **kwargs):
         prompt = str(original_prompt(*args, **kwargs) or "")
+        # Match the polished manuscript actually supplied to the retry prompt.
+        state["retry_article"] = str(kwargs.get("previous_article") or "")
         evidence_result = kwargs.get("evidence_result") or {}
         evidence_metadata = kwargs.get("evidence_metadata") or {}
         contract = build_prewrite_contract(evidence_result, evidence_metadata)
@@ -165,6 +171,11 @@ def install(pipeline_module):
             if result is not None:
                 state["force_local_fallback"] = False
                 return result
+
+        if request_kind == "quality_retry":
+            advice = build_naturalness_retry_contract(state["retry_article"])
+            if advice:
+                prompt = prompt.rstrip() + "\n\n" + advice
 
         try:
             return original_call(
