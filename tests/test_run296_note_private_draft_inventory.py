@@ -56,6 +56,22 @@ class Run296InventoryContractTests(unittest.TestCase):
             run296.draft_routes_from_api_payload(payload)
         self.assertEqual(ctx.exception.code, "draft_api_identity_missing")
 
+    def test_quality_diagnostics_explain_ai_smell_without_private_text(self):
+        body = (
+            "私たちは無意識に新しい技術を難しく考えがちです。そんな経験は少なくないでしょう。"
+            "こうした背景から、この技術はどれほど便利であっても判断が必要です。"
+            "私ならこの変化を踏まえ、今すぐ全面導入する必要はないと考えます。"
+            "まずはできるところから小さく始めたいところです。"
+        )
+        result = run296.quality_diagnostics(body)
+        self.assertTrue(result["naturalness_high"])
+        self.assertGreaterEqual(result["naturalness_score"], 5)
+        self.assertIn("generic_business_scaffold_count", result)
+        self.assertIn("human_depth_score", result)
+        self.assertIn("reader_accessibility", result)
+        self.assertIn("reader_curiosity_pull", result)
+        self.assertNotIn(body, repr(result))
+
     def test_eyecatch_only_empty_body_is_discard_candidate_when_untracked(self):
         result = run296.classify_draft(
             title_chars=18,
@@ -129,6 +145,11 @@ class Run296InventoryContractTests(unittest.TestCase):
             "naturalness_high": False,
             "current_aiif_linked": False,
             "classification": "KEEP",
+            "quality": {
+                "naturalness_score": 2,
+                "reader_accessibility": "GOOD",
+                "accessibility_issues": [],
+            },
             "reasons": [],
         }
         safe = run296.safe_record(raw)
