@@ -1,7 +1,7 @@
 """Regression probes derived from real Ready manuscripts in Notion."""
 
 import editorial_naturalness as en
-import naturalness_v2_ready_corpus as rc
+from local_skills import a_plus as rc
 
 
 def ready_like_article():
@@ -13,7 +13,7 @@ def ready_like_article():
 
 
 def test_real_ready_style_clusters_are_detected_without_becoming_a_gate():
-    signals = rc.ready_corpus_signals(ready_like_article())
+    signals = rc.ready_corpus_naturalness_signals(ready_like_article())
     assert signals["repeated_dramatic_scaffolding"] == [1, 2]
     assert signals["repeated_abstract_closings"] == [1, 2]
     assert signals["repair_recommended"] is True
@@ -29,14 +29,14 @@ def test_one_editorial_emphasis_is_not_enough_to_recommend_repair():
         "公式仕様ではレイテンシが短縮されています。\n\n"
         "## 判断\n本番環境では固定バージョンを使います。"
     )
-    signals = rc.ready_corpus_signals(article)
+    signals = rc.ready_corpus_naturalness_signals(article)
     assert signals["repeated_dramatic_scaffolding"] == []
     assert signals["repeated_abstract_closings"] == []
     assert signals["repair_recommended"] is False
 
 
 def test_retry_contract_names_the_real_ready_habits_and_preserves_substance():
-    contract = rc.build_naturalness_retry_contract(ready_like_article())
+    contract = rc.build_ready_corpus_naturalness_retry_contract(ready_like_article())
     assert "ドラマ化" in contract
     assert "抽象" in contract
     assert "節 1, 2" in contract
