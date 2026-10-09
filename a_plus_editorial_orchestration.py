@@ -10,7 +10,7 @@ from functools import wraps
 from types import SimpleNamespace
 from typing import Any
 
-from editorial_naturalness import build_naturalness_retry_contract
+from naturalness_v2_ready_corpus import build_naturalness_retry_contract
 
 from local_skills.a_plus import (
     build_prewrite_contract,
