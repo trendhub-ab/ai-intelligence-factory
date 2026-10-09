@@ -1,7 +1,7 @@
 # Member Home Physical Host Migration — 2026-10-10
 
-Status: **live physical move, post-move API proof, full regression, and production E2E complete; guest check pending**  
-Gemini/model calls: **0**  
+Status: **live physical move, post-move API proof, full regression, and production E2E complete; guest check pending**
+Gemini/model calls: **0**
 Daily: **not run**
 
 ## Objective
