@@ -10,10 +10,9 @@ from functools import wraps
 from types import SimpleNamespace
 from typing import Any
 
-from naturalness_v2_ready_corpus import build_naturalness_retry_contract
-
 from local_skills.a_plus import (
     build_prewrite_contract,
+    build_ready_corpus_naturalness_retry_contract as build_naturalness_retry_contract,
     can_use_local_fallback,
     render_provider_compatible_fallback,
     repair_unbalanced_japanese_quotes,
