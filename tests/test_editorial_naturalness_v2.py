@@ -3,9 +3,11 @@ from types import SimpleNamespace
 import pytest
 
 from a_plus_editorial_orchestration import install
-from editorial_naturalness_v2 import editorial_naturalness_v2_diagnostics
-from local_skills.naturalness_v2 import build_targeted_naturalness_repair_guidance
-from ready_yield_guard import compute_ready_yield_metrics
+from local_skills.a_plus import (
+    build_targeted_naturalness_repair_guidance,
+    editorial_naturalness_v2_diagnostics,
+)
+from publish_yield_benchmark import compute_ready_yield_metrics
 
 
 TEMPLATED_ARTICLE = """
@@ -53,7 +55,6 @@ def _codes(result):
 
 def test_v2_detects_repeated_section_shape_without_hard_blocking():
     result = editorial_naturalness_v2_diagnostics(TEMPLATED_ARTICLE)
-
     assert "section_structure_repetition" in _codes(result)
     assert result["repair_required"] is True
     assert result["hard_block"] is False
@@ -62,7 +63,6 @@ def test_v2_detects_repeated_section_shape_without_hard_blocking():
 
 def test_v2_detects_repeated_conclusion_and_speaker_position():
     result = editorial_naturalness_v2_diagnostics(TEMPLATED_ARTICLE)
-
     codes = _codes(result)
     assert "uniform_conclusion_cadence" in codes
     assert "speaker_voice_position_repetition" in codes
@@ -71,7 +71,6 @@ def test_v2_detects_repeated_conclusion_and_speaker_position():
 
 def test_v2_natural_control_never_gains_hard_gate_authority():
     result = editorial_naturalness_v2_diagnostics(VARIED_ARTICLE)
-
     assert result["hard_block"] is False
     assert result["blocking_authority"] == "none"
     assert not any(row["severity"] == "P1" for row in result["signals"])
@@ -79,7 +78,6 @@ def test_v2_natural_control_never_gains_hard_gate_authority():
 
 def test_targeted_guidance_is_issue_specific_and_preserves_evidence_contract():
     guidance = build_targeted_naturalness_repair_guidance(TEMPLATED_ARTICLE)
-
     assert "Editorial Naturalness v2" in guidance
     assert "section_structure_repetition" in guidance
     assert "uniform_conclusion_cadence" in guidance
@@ -91,45 +89,18 @@ def test_targeted_guidance_is_issue_specific_and_preserves_evidence_contract():
 
 
 def test_advisory_only_or_natural_text_does_not_force_repair_guidance():
-    guidance = build_targeted_naturalness_repair_guidance(VARIED_ARTICLE)
-
-    assert guidance == ""
+    assert build_targeted_naturalness_repair_guidance(VARIED_ARTICLE) == ""
 
 
 def test_ready_yield_guard_is_metrics_only_and_separates_style_only_loss():
     result = compute_ready_yield_metrics(
         [
-            {
-                "ready": True,
-                "hard_gate_blocked": False,
-                "naturalness_repair_attempted": False,
-                "naturalness_retry_succeeded": None,
-                "style_only_non_ready": False,
-            },
-            {
-                "ready": True,
-                "hard_gate_blocked": False,
-                "naturalness_repair_attempted": True,
-                "naturalness_retry_succeeded": True,
-                "style_only_non_ready": False,
-            },
-            {
-                "ready": False,
-                "hard_gate_blocked": True,
-                "naturalness_repair_attempted": False,
-                "naturalness_retry_succeeded": None,
-                "style_only_non_ready": False,
-            },
-            {
-                "ready": False,
-                "hard_gate_blocked": False,
-                "naturalness_repair_attempted": True,
-                "naturalness_retry_succeeded": False,
-                "style_only_non_ready": True,
-            },
+            {"ready": True, "hard_gate_blocked": False, "naturalness_repair_attempted": False, "naturalness_retry_succeeded": None, "style_only_non_ready": False},
+            {"ready": True, "hard_gate_blocked": False, "naturalness_repair_attempted": True, "naturalness_retry_succeeded": True, "style_only_non_ready": False},
+            {"ready": False, "hard_gate_blocked": True, "naturalness_repair_attempted": False, "naturalness_retry_succeeded": None, "style_only_non_ready": False},
+            {"ready": False, "hard_gate_blocked": False, "naturalness_repair_attempted": True, "naturalness_retry_succeeded": False, "style_only_non_ready": True},
         ]
     )
-
     assert result["total_candidates"] == 4
     assert result["ready_count"] == 2
     assert result["ready_rate"] == pytest.approx(0.5)
@@ -146,7 +117,6 @@ def test_ready_yield_guard_is_metrics_only_and_separates_style_only_loss():
 
 def test_ready_yield_guard_handles_empty_window_without_invented_threshold():
     result = compute_ready_yield_metrics([])
-
     assert result["total_candidates"] == 0
     assert result["ready_rate"] == 0.0
     assert result["naturalness_retry_success_rate"] == 0.0
@@ -157,14 +127,7 @@ def test_ready_yield_guard_handles_empty_window_without_invented_threshold():
 def test_a_plus_injects_targeted_guidance_only_into_existing_quality_retry():
     calls = []
 
-    def original_call(
-        prompt,
-        repo,
-        source_info,
-        request_kind="deep_dive",
-        request_context="",
-        request_origin="new",
-    ):
+    def original_call(prompt, repo, source_info, request_kind="deep_dive", request_context="", request_origin="new"):
         calls.append((prompt, request_kind))
         return SimpleNamespace(text="ok", candidates=[]), {}
 
@@ -177,23 +140,13 @@ def test_a_plus_injects_targeted_guidance_only_into_existing_quality_retry():
     )
     install(pipeline)
 
-    pipeline.call_gemini_grounded_deep_dive(
-        TEMPLATED_ARTICLE,
-        {},
-        {},
-        request_kind="quality_retry",
-    )
+    pipeline.call_gemini_grounded_deep_dive(TEMPLATED_ARTICLE, {}, {}, request_kind="quality_retry")
     quality_prompt, quality_kind = calls[-1]
     assert quality_kind == "quality_retry"
     assert "Editorial Naturalness v2" in quality_prompt
     assert "Fact / Evidence / Decision" in quality_prompt
 
-    pipeline.call_gemini_grounded_deep_dive(
-        TEMPLATED_ARTICLE,
-        {},
-        {},
-        request_kind="deep_dive",
-    )
+    pipeline.call_gemini_grounded_deep_dive(TEMPLATED_ARTICLE, {}, {}, request_kind="deep_dive")
     normal_prompt, normal_kind = calls[-1]
     assert normal_kind == "deep_dive"
     assert normal_prompt == TEMPLATED_ARTICLE

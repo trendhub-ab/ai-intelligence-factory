@@ -12,11 +12,11 @@ from typing import Any
 
 from local_skills.a_plus import (
     build_prewrite_contract,
+    build_targeted_naturalness_repair_guidance,
     can_use_local_fallback,
     render_provider_compatible_fallback,
     repair_unbalanced_japanese_quotes,
 )
-from local_skills.naturalness_v2 import build_targeted_naturalness_repair_guidance
 
 
 _MARKER = "_a_plus_editorial_orchestration_installed"
