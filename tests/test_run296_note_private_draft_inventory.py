@@ -21,6 +21,41 @@ class Run296InventoryContractTests(unittest.TestCase):
             ],
         )
 
+    def test_draft_routes_from_api_payload_uses_only_confirmed_drafts(self):
+        payload = {
+            "data": {
+                "notes": [
+                    {"key": "naaa111", "status": "draft"},
+                    {"key": "nbbb222", "status": "draft"},
+                ],
+                "isLastPage": True,
+            }
+        }
+        self.assertEqual(
+            run296.draft_routes_from_api_payload(payload),
+            [
+                "https://editor.note.com/notes/naaa111/edit/",
+                "https://editor.note.com/notes/nbbb222/edit/",
+            ],
+        )
+
+    def test_draft_routes_from_api_payload_fails_closed_on_non_draft_item(self):
+        payload = {
+            "data": {
+                "notes": [{"key": "naaa111", "status": "published"}],
+                "isLastPage": True,
+            }
+        }
+        with self.assertRaises(run296.InventoryError) as ctx:
+            run296.draft_routes_from_api_payload(payload)
+        self.assertEqual(ctx.exception.code, "draft_api_scope_violation")
+
+    def test_draft_routes_from_api_payload_fails_closed_on_missing_key(self):
+        payload = {"data": {"notes": [{"status": "draft"}], "isLastPage": True}}
+        with self.assertRaises(run296.InventoryError) as ctx:
+            run296.draft_routes_from_api_payload(payload)
+        self.assertEqual(ctx.exception.code, "draft_api_identity_missing")
+
     def test_eyecatch_only_empty_body_is_discard_candidate_when_untracked(self):
         result = run296.classify_draft(
             title_chars=18,
