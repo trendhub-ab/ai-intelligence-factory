@@ -2,15 +2,15 @@
 """Resolve the one canonical paid-member presentation database.
 
 Run220 removes the old "search by title, then auto-create" ambiguity from the
-normal member sync path. Run221 additionally separates the customer-facing
-member home from the physical API host that must retain Notion-integration
-access. Production must write only to the canonical database and must verify
-that the database remains under the API-accessible host page.
+normal member sync path. Run221 added a temporary physical-host isolation after
+moving the database under the member home caused the production Notion
+integration to receive HTTP 404.
 
-The member home exposes linked views of the canonical data source. Moving the
-physical database under the member home without explicitly sharing that parent
-with the GitHub Actions Notion integration can revoke API readability; therefore
-normal Production fails closed on a physical-host mismatch.
+The 2026-10-10 member-home migration supersedes that temporary host split after
+the production GitHub Actions integration was proven able to read the member
+home both before and after the live move. Production still writes only to the
+same canonical database and still verifies its physical parent fail-closed;
+the expected physical parent is now the canonical member home itself.
 
 A bootstrap search/create path remains available only when an operator
 explicitly clears both canonical IDs *and* sets MEMBER_PRESENTATION_ALLOW_CREATE
@@ -174,7 +174,7 @@ def _verify_api_host() -> None:
         raise RuntimeError(
             "Canonical member presentation physical host mismatch: "
             f"expected page={API_HOST_PAGE_ID!r}, actual page={actual_host!r}. "
-            "Keep the physical DB under the API-accessible host and expose it to members with linked views."
+            "Keep the canonical DB under the configured member product host; do not fall back or auto-create a replacement."
         )
 
 
