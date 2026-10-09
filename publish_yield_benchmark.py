@@ -15,9 +15,10 @@ Fact/Evidence/core-comprehension safety.
 from __future__ import annotations
 
 import argparse
+from collections.abc import Iterable, Mapping, Sequence
 import json
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from gate_reasoning import (
     GATE_DISPOSITION_BLOCK,
@@ -87,8 +88,6 @@ def evaluate_benchmark(cases: Iterable[dict[str, Any]]) -> dict[str, Any]:
     publishable = sum(row["actual"] == EXPECTED_PUBLISHABLE for row in results)
     exact = sum(bool(row["matched"]) for row in results)
 
-    # Any expected BLOCK becoming publishable is a safety regression. Any expected REVIEW in a
-    # core/final-surface/unknown risk class becoming publishable is a comprehension fail-open.
     safety_false_passes = [
         row for row in results
         if row["expected"] == EXPECTED_BLOCK and row["actual"] == EXPECTED_PUBLISHABLE
@@ -119,6 +118,49 @@ def evaluate_benchmark(cases: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "core_false_pass_ids": [row["id"] for row in core_false_passes],
         "unnecessary_hold_ids": [row["id"] for row in unnecessary_holds],
         "results": results,
+    }
+
+
+def _rate(numerator: int, denominator: int) -> float:
+    return numerator / denominator if denominator else 0.0
+
+
+def compute_ready_yield_metrics(outcomes: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Measure yield loss without acquiring any authority to block publication.
+
+    No threshold is defined here. A future threshold must be evidence-backed from a
+    labelled corpus rather than invented as part of a style-detector implementation.
+    """
+    rows = [dict(row) for row in outcomes]
+    total = len(rows)
+    ready_count = sum(bool(row.get("ready")) for row in rows)
+    hard_gate_block_count = sum(bool(row.get("hard_gate_blocked")) for row in rows)
+    repair_rows = [row for row in rows if bool(row.get("naturalness_repair_attempted"))]
+    retry_observed = [
+        row for row in repair_rows
+        if row.get("naturalness_retry_succeeded") is not None
+    ]
+    retry_success_count = sum(
+        bool(row.get("naturalness_retry_succeeded")) for row in retry_observed
+    )
+    style_only_non_ready_count = sum(
+        bool(row.get("style_only_non_ready")) and not bool(row.get("ready"))
+        for row in rows
+    )
+    return {
+        "total_candidates": total,
+        "ready_count": ready_count,
+        "ready_rate": _rate(ready_count, total),
+        "hard_gate_block_count": hard_gate_block_count,
+        "hard_gate_block_rate": _rate(hard_gate_block_count, total),
+        "naturalness_repair_count": len(repair_rows),
+        "naturalness_repair_rate": _rate(len(repair_rows), total),
+        "naturalness_retry_success_count": retry_success_count,
+        "naturalness_retry_success_rate": _rate(retry_success_count, len(retry_observed)),
+        "style_only_non_ready_count": style_only_non_ready_count,
+        "style_only_non_ready_rate": _rate(style_only_non_ready_count, total),
+        "blocks_ready": False,
+        "policy": "diagnostic_only",
     }
 
 
