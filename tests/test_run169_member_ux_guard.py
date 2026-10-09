@@ -50,6 +50,29 @@ class ReviewSummaryRecoveryTests(unittest.TestCase):
         self.assertIn("Chain-of-Thought", summary)
         self.assertIn("研究・技術", summary)
 
+    def test_fallback_best_for_is_natural_japanese_for_real_production_shape(self):
+        state = {
+            "name": "trusted-ai/adversarial-robustness-toolbox",
+            "category": "セキュリティ",
+            "classification": "実務判断",
+            "best_for": (
+                "PyTorch、TensorFlow、scikit-learn等の機械学習モデルに対する回避（Evasion）・"
+                "データ毒入れ（Poisoning）・モデル抽出（Extraction）・推論（Inference）攻撃の検証"
+                "および防御機構の実装。"
+            ),
+            "judgment_reason": "",
+            "topic": "",
+        }
+        summary = guard.fallback_summary(state)
+        self.assertNotIn("実装ときに検討する", summary)
+        self.assertEqual(
+            "「trusted-ai/adversarial-robustness-toolbox」は、セキュリティの技術・サービスで、"
+            "PyTorch、TensorFlow、scikit-learn等の機械学習モデルに対する回避（Evasion）・"
+            "データ毒入れ（Poisoning）・モデル抽出（Extraction）・推論（Inference）攻撃の検証"
+            "および防御機構の実装といった用途に向いています。",
+            summary,
+        )
+
     def test_presentation_guard_sets_three_item_contract_and_repairs_blank(self):
         original_source_state = mps._source_state
         original_home_max = mps.MEMBER_HOME_MAX
@@ -82,6 +105,53 @@ class ReviewSummaryRecoveryTests(unittest.TestCase):
             self.assertEqual("AI開発を支援するツールです。", repaired["plain_summary"])
             self.assertEqual(1, stats["review_recovered"])
             self.assertEqual(0, stats["missing"])
+        finally:
+            mps._source_state = original_source_state
+            mps.MEMBER_HOME_MAX = original_home_max
+
+    def test_presentation_guard_repairs_only_exact_legacy_fallback_summary(self):
+        original_source_state = mps._source_state
+        original_home_max = mps.MEMBER_HOME_MAX
+        try:
+            best_for = "機械学習モデルへの攻撃検証および防御機構の実装。"
+            fake_state = {
+                "sync_id": "github:trusted-ai/adversarial-robustness-toolbox",
+                "name": "trusted-ai/adversarial-robustness-toolbox",
+                "plain_summary": (
+                    "「trusted-ai/adversarial-robustness-toolbox」は、機械学習モデルへの攻撃検証および"
+                    "防御機構の実装ときに検討するセキュリティの技術・サービスです。"
+                ),
+                "primary_url": "https://github.com/Trusted-AI/adversarial-robustness-toolbox",
+                "category": "セキュリティ",
+                "classification": "実務判断",
+                "judgment_reason": "",
+                "topic": "",
+                "best_for": best_for,
+            }
+            mps._source_state = lambda page: dict(fake_state)
+            with mock.patch.object(
+                guard,
+                "load_review_summary_index",
+                return_value={"by_url": {}, "by_name": {}},
+            ):
+                stats = guard.install_presentation_guard()
+                repaired = mps._source_state({})
+            self.assertEqual(guard.fallback_summary(fake_state), repaired["plain_summary"])
+            self.assertNotIn("実装ときに検討する", repaired["plain_summary"])
+            self.assertEqual(1, stats["legacy_summary_repaired"])
+
+            manual_state = dict(fake_state)
+            manual_state["plain_summary"] = "機械学習モデルの安全性を検証するためのツールです。"
+            mps._source_state = lambda page: dict(manual_state)
+            with mock.patch.object(
+                guard,
+                "load_review_summary_index",
+                return_value={"by_url": {}, "by_name": {}},
+            ):
+                stats = guard.install_presentation_guard()
+                untouched = mps._source_state({})
+            self.assertEqual(manual_state["plain_summary"], untouched["plain_summary"])
+            self.assertEqual(0, stats["legacy_summary_repaired"])
         finally:
             mps._source_state = original_source_state
             mps.MEMBER_HOME_MAX = original_home_max

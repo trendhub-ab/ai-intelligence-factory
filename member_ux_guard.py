@@ -98,6 +98,16 @@ def _usable(text: Any) -> str:
     return text
 
 
+def _legacy_fallback_summary(state: dict[str, Any]) -> str:
+    """Rebuild the exact historical malformed best-for fallback for safe matching."""
+    name = _clean(state.get("name")) or "この項目"
+    category = _clean(state.get("category")) or "AI関連"
+    best_for = _usable(state.get("best_for"))
+    if not best_for:
+        return ""
+    return f"「{name}」は、{best_for.rstrip('。')}ときに検討する{category}の技術・サービスです。"
+
+
 def fallback_summary(state: dict[str, Any]) -> str:
     """Last-resort non-empty explanation for future records not in review artifacts.
 
@@ -114,7 +124,10 @@ def fallback_summary(state: dict[str, Any]) -> str:
     if classification == "Deep Tech" and reason:
         return f"「{name}」は、{reason.rstrip('。')}という論点を扱う研究・技術です。"
     if best_for:
-        return f"「{name}」は、{best_for.rstrip('。')}ときに検討する{category}の技術・サービスです。"
+        return (
+            f"「{name}」は、{category}の技術・サービスで、"
+            f"{best_for.rstrip('。')}といった用途に向いています。"
+        )
     if topic:
         return f"「{name}」は、{topic.rstrip('。')}という動きを追う{category}の技術・サービスです。"
     if reason:
@@ -125,11 +138,31 @@ def fallback_summary(state: dict[str, Any]) -> str:
     )
 
 
+def repair_legacy_fallback_summary(state: dict[str, Any], text: Any) -> str:
+    """Repair only the exact malformed fallback once emitted by this module.
+
+    Arbitrary/manual Japanese is intentionally left untouched. This keeps the
+    migration high precision while allowing existing persisted member rows to
+    heal on the next presentation sync without a model call.
+    """
+    value = _clean(text)
+    legacy = _legacy_fallback_summary(state)
+    if legacy and value == legacy:
+        return fallback_summary(state)
+    return value
+
+
 def install_presentation_guard() -> dict[str, int]:
     """Patch the presentation mapper so every outgoing member row has a summary."""
     index = load_review_summary_index()
     original_source_state = mps._source_state
-    stats = {"existing": 0, "review_recovered": 0, "fallback": 0, "missing": 0}
+    stats = {
+        "existing": 0,
+        "review_recovered": 0,
+        "fallback": 0,
+        "legacy_summary_repaired": 0,
+        "missing": 0,
+    }
 
     def guarded_source_state(page: dict[str, Any]) -> dict[str, Any] | None:
         state = original_source_state(page)
@@ -138,12 +171,18 @@ def install_presentation_guard() -> dict[str, int]:
         existing = _clean(state.get("plain_summary"))
         if existing:
             stats["existing"] += 1
-            state["plain_summary"] = existing
+            repaired = repair_legacy_fallback_summary(state, existing)
+            if repaired != existing:
+                stats["legacy_summary_repaired"] += 1
+            state["plain_summary"] = repaired
             return state
         recovered = review_summary_for_state(state, index)
         if recovered:
             stats["review_recovered"] += 1
-            state["plain_summary"] = recovered
+            repaired = repair_legacy_fallback_summary(state, recovered)
+            if repaired != _clean(recovered):
+                stats["legacy_summary_repaired"] += 1
+            state["plain_summary"] = repaired
         else:
             stats["fallback"] += 1
             state["plain_summary"] = fallback_summary(state)
