@@ -2,7 +2,8 @@
 """Run296: read-only inventory of all remaining unpublished note drafts.
 
 Safety contract:
-- navigate only to note's draft-only management listing and existing edit routes;
+- list drafts only through note's authenticated read-only GET endpoint;
+- navigate only to existing private edit routes returned by that draft-only listing;
 - never click, fill, type, upload, save, delete, publish, withdraw, or screenshot;
 - never call Gemini/model providers;
 - never emit unpublished title/body, draft URL, draft ID, or content fingerprint;
@@ -20,7 +21,7 @@ import os
 import re
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.parse import urljoin, urlparse
 
 import editorial_naturalness
 import note_draft_automation as note_base
@@ -32,9 +33,12 @@ import run190_note_persistent_cloud as run190
 
 CONFIRM_TOKEN = "AUDIT_ALL_NOTE_DRAFTS"
 DRAFT_LIST_URL = "https://note.com/notes?page=1&status=draft"
+DRAFT_LIST_API = "https://note.com/api/v2/note_list/contents"
 MAX_LIST_PAGES = 50
+LIST_LIMIT = 20
 MIN_SUBSTANTIAL_BODY_CHARS = 200
 _EDIT_PATH = re.compile(r"^/notes/([A-Za-z0-9_-]+)/edit/?$")
+_OPAQUE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 _ALLOWED_SAFE_KEYS = {
     "position",
     "title_chars",
@@ -89,6 +93,34 @@ def extract_edit_routes(hrefs: list[str]) -> list[str]:
     return result
 
 
+def draft_routes_from_api_payload(payload: dict[str, Any]) -> list[str]:
+    """Convert only API-confirmed draft identities into private editor routes."""
+    if not isinstance(payload, dict):
+        raise InventoryError("draft_api_schema_invalid")
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        raise InventoryError("draft_api_schema_invalid")
+    notes = data.get("notes")
+    if not isinstance(notes, list):
+        raise InventoryError("draft_api_schema_invalid")
+
+    routes: list[str] = []
+    seen: set[str] = set()
+    for item in notes:
+        if not isinstance(item, dict):
+            raise InventoryError("draft_api_schema_invalid")
+        if str(item.get("status") or "").strip().lower() != "draft":
+            raise InventoryError("draft_api_scope_violation")
+        key = str(item.get("key") or "").strip()
+        if not key or len(key) > 200 or not _OPAQUE_ID.fullmatch(key):
+            raise InventoryError("draft_api_identity_missing")
+        route = f"https://editor.note.com/notes/{key}/edit/"
+        if route not in seen:
+            seen.add(route)
+            routes.append(route)
+    return routes
+
+
 def classify_draft(
     *,
     title_chars: int,
@@ -103,8 +135,6 @@ def classify_draft(
     body_chars = max(0, int(body_chars or 0))
     reasons: list[str] = []
 
-    # A tracked AIIF draft is always protected: incomplete tracked output is repair work,
-    # never an automatic discard recommendation.
     if current_aiif_linked:
         if body_chars == 0 or title_chars == 0:
             reasons.append("tracked_draft_incomplete")
@@ -144,7 +174,7 @@ def classify_draft(
 
 
 def safe_record(raw: dict[str, Any]) -> dict[str, Any]:
-    """Strip all private content/identity fields before any persistence or logging."""
+    """Strip all private content/identity fields before persistence or logging."""
     safe = {key: raw.get(key) for key in _ALLOWED_SAFE_KEYS if key in raw}
     safe["position"] = int(safe.get("position") or 0)
     safe["title_chars"] = int(safe.get("title_chars") or 0)
@@ -161,7 +191,7 @@ def safe_record(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def _tracked_draft_ids() -> set[str]:
-    """Read all AIIF destination identities so tracked drafts can never be discard candidates."""
+    """Read AIIF destination identities so tracked drafts can never be discard candidates."""
     try:
         pages = ready_sync._query_db(
             ready_sync.DEST_DATA_SOURCE_ID,
@@ -180,20 +210,6 @@ def _tracked_draft_ids() -> set[str]:
     return tracked
 
 
-def _is_draft_listing_url(value: str) -> bool:
-    try:
-        parsed = urlparse(str(value or ""))
-        query = parse_qs(parsed.query)
-    except Exception:
-        return False
-    return (
-        parsed.scheme == "https"
-        and (parsed.hostname or "").lower() == "note.com"
-        and (parsed.path or "").rstrip("/") == "/notes"
-        and query.get("status") == ["draft"]
-    )
-
-
 def _seed_if_needed(context: Any, page: Any, target_url: str) -> None:
     if not note_base._looks_logged_out(page):
         return
@@ -209,65 +225,73 @@ def _seed_if_needed(context: Any, page: Any, target_url: str) -> None:
         raise InventoryError("note_auth_inactive")
 
 
-def _hrefs_on_current_listing(page: Any) -> list[str]:
-    """Read href attributes while scrolling; scrolling changes no note content."""
-    seen: list[str] = []
-    seen_set: set[str] = set()
-    stable_rounds = 0
-    last_route_count = -1
-    for _ in range(40):
-        try:
-            hrefs = page.locator("a[href]").evaluate_all(
-                "els => els.map(el => el.getAttribute('href') || '')"
-            )
-        except Exception as exc:
-            raise InventoryError("draft_listing_href_read_failed") from exc
-        for href in hrefs or []:
-            text = str(href or "")
-            if text and text not in seen_set:
-                seen_set.add(text)
-                seen.append(text)
-        route_count = len(extract_edit_routes(seen))
-        if route_count == last_route_count:
-            stable_rounds += 1
-        else:
-            stable_rounds = 0
-            last_route_count = route_count
-        if stable_rounds >= 3:
-            break
-        try:
-            page.evaluate("window.scrollBy(0, Math.max(window.innerHeight * 0.85, 700))")
-            page.wait_for_timeout(350)
-        except Exception as exc:
-            raise InventoryError("draft_listing_scroll_failed") from exc
-    return seen
+def _open_authenticated_draft_management(context: Any, page: Any) -> None:
+    try:
+        page.goto(DRAFT_LIST_URL, wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(1000)
+    except Exception as exc:
+        raise InventoryError("draft_listing_open_failed") from exc
+    _seed_if_needed(context, page, DRAFT_LIST_URL)
+    parsed = urlparse(str(page.url or ""))
+    if parsed.scheme != "https" or (parsed.hostname or "").lower() != "note.com":
+        raise InventoryError("draft_listing_scope_not_confirmed")
+
+
+def _fetch_draft_api_page(page: Any, page_number: int) -> tuple[list[str], bool | None]:
+    endpoint = (
+        f"{DRAFT_LIST_API}?limit={LIST_LIMIT}&page={int(page_number)}"
+        "&status=draft&without_magazines=true"
+    )
+    try:
+        response = page.evaluate(
+            """async (url) => {
+                const res = await fetch(url, {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {'Accept': 'application/json'}
+                });
+                let body = null;
+                try { body = await res.json(); } catch (_) { body = null; }
+                return {ok: res.ok, status: res.status, body};
+            }""",
+            endpoint,
+        )
+    except Exception as exc:
+        raise InventoryError("draft_api_request_failed") from exc
+    if not isinstance(response, dict) or not response.get("ok"):
+        raise InventoryError("draft_api_request_failed")
+    payload = response.get("body")
+    if not isinstance(payload, dict):
+        raise InventoryError("draft_api_schema_invalid")
+    routes = draft_routes_from_api_payload(payload)
+    data = payload.get("data") or {}
+    marker = data.get("isLastPage")
+    is_last = marker if isinstance(marker, bool) else None
+    return routes, is_last
 
 
 def _discover_all_draft_routes(context: Any, page: Any) -> list[str]:
+    """List all drafts from the authenticated draft-only GET endpoint; no DOM inference."""
+    _open_authenticated_draft_management(context, page)
     routes: list[str] = []
-    seen_routes: set[str] = set()
+    seen: set[str] = set()
 
     for page_number in range(1, MAX_LIST_PAGES + 1):
-        target = f"https://note.com/notes?page={page_number}&status=draft"
-        try:
-            page.goto(target, wait_until="domcontentloaded", timeout=60000)
-            page.wait_for_timeout(1000)
-        except Exception as exc:
-            raise InventoryError("draft_listing_open_failed") from exc
-        _seed_if_needed(context, page, target)
-        if not _is_draft_listing_url(str(page.url or "")):
-            raise InventoryError("draft_listing_scope_not_confirmed")
-
-        page_routes = extract_edit_routes(_hrefs_on_current_listing(page))
-        new_routes = [route for route in page_routes if route not in seen_routes]
-        if page_number == 1 and not page_routes:
-            # Zero routes is ambiguous: it may mean zero drafts or a changed DOM. Do not guess.
-            raise InventoryError("draft_listing_no_edit_routes")
-        if page_number > 1 and not new_routes:
-            break
+        page_routes, is_last = _fetch_draft_api_page(page, page_number)
+        new_routes = [route for route in page_routes if route not in seen]
         for route in new_routes:
-            seen_routes.add(route)
+            seen.add(route)
             routes.append(route)
+
+        if is_last is True:
+            break
+        if not page_routes or len(page_routes) < LIST_LIMIT:
+            break
+        if page_number > 1 and not new_routes:
+            raise InventoryError("draft_api_pagination_stalled")
+    else:
+        raise InventoryError("draft_api_pagination_unbounded")
+
     return routes
 
 
@@ -319,7 +343,7 @@ def _inspect_one(page: Any, route: str, *, position: int, tracked_ids: set[str])
         try:
             naturalness = editorial_naturalness.ai_style_composite_signals(normalized_body, [])
         except Exception:
-            # A diagnostic failure must never turn a draft into discard candidate.
+            # Diagnostic failure must never turn a draft into a discard candidate.
             naturalness = {"score": 0, "high": False}
 
     try:
@@ -405,7 +429,11 @@ def run(*, confirm: str) -> dict[str, Any]:
                 except InventoryError as exc:
                     if exc.code == "note_auth_inactive":
                         raise
-                    # Preserve the item in the inventory, but never discard something we could not inspect.
+                    # Preserve uncertain items as repair work; never discard what could not be inspected.
+                    try:
+                        draft_id = note_lifecycle.draft_identity_from_url(route, error_type=InventoryError)
+                    except Exception:
+                        draft_id = ""
                     raw_records.append(
                         {
                             "position": position,
@@ -415,7 +443,7 @@ def run(*, confirm: str) -> dict[str, Any]:
                             "eyecatch_state": "unconfirmed",
                             "naturalness_high": False,
                             "naturalness_score": 0,
-                            "current_aiif_linked": False,
+                            "current_aiif_linked": bool(draft_id and draft_id in tracked_ids),
                             "exact_duplicate_of": None,
                             "classification": "REPAIR",
                             "reasons": [f"inspection_failed:{exc.code}"],
