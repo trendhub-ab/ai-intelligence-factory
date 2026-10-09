@@ -177,3 +177,73 @@ def policy_sha256(root: Path | None = None, *, style_name: str | None = None) ->
         digest.update(_semantic_python_bytes(path, style_name=style) if path.suffix == ".py" else path.read_bytes())
         digest.update(b"\0")
     return digest.hexdigest()
+
+
+def current_ready_caption(
+    manuscript: str,
+    *,
+    root: Path | None = None,
+    style_name: str | None = None,
+) -> str:
+    style = _normalized_style(style_name)
+    return (
+        f"{READY_CAPTION_PREFIX}contract={CONTRACT_ID}"
+        f"|style={style}"
+        f"|policy_sha256={policy_sha256(root, style_name=style)}"
+        f"|manuscript_sha256={manuscript_sha256(manuscript)}"
+    )
+
+
+def _caption_fields(value: str) -> dict[str, str]:
+    text = str(value or "").strip()
+    if not text.startswith(READY_CAPTION_PREFIX):
+        return {}
+    fields: dict[str, str] = {}
+    for token in text[len(READY_CAPTION_PREFIX):].split("|"):
+        if "=" not in token:
+            return {}
+        key, val = token.split("=", 1)
+        key, val = key.strip(), val.strip()
+        if not key or key in fields:
+            return {}
+        fields[key] = val
+    return fields
+
+
+def is_current_ready_caption(value: str, *, root: Path | None = None) -> bool:
+    """Validate policy provenance only; use is_current_ready_block for publication."""
+    fields = _caption_fields(value)
+    policy = fields.get("policy_sha256", "")
+    manuscript = fields.get("manuscript_sha256", "")
+    if fields.get("contract") != CONTRACT_ID or not _SHA_RE.fullmatch(policy) or not _SHA_RE.fullmatch(manuscript):
+        return False
+    style = fields.get("style", DEFAULT_EDITORIAL_STYLE)
+    try:
+        return policy == policy_sha256(root, style_name=style)
+    except (RuntimeError, ValueError):
+        return False
+
+
+def is_current_ready_block(manuscript: str, caption: str, *, root: Path | None = None) -> bool:
+    fields = _caption_fields(caption)
+    if not is_current_ready_caption(caption, root=root):
+        return False
+    return fields.get("manuscript_sha256") == manuscript_sha256(manuscript)
+
+
+def is_exact_current_ready_block(
+    stored_manuscript: str,
+    caption: str,
+    expected_manuscript: str,
+    *,
+    root: Path | None = None,
+) -> bool:
+    return (
+        is_current_ready_block(stored_manuscript, caption, root=root)
+        and manuscript_sha256(stored_manuscript) == manuscript_sha256(expected_manuscript)
+    )
+
+
+def is_ready_family_caption(value: str) -> bool:
+    text = str(value or "").strip()
+    return text == LEGACY_READY_CAPTION or text.startswith(READY_CAPTION_PREFIX)
