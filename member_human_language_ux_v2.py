@@ -148,16 +148,20 @@ def _deep_tech_reason(state: dict[str, Any]) -> str:
 def refine_judgment_reason(
     state: dict[str, Any], review_copy: dict[str, str] | None = None
 ) -> str:
-    """Keep ``判断理由`` distinct from ``なぜ今見る？`` and ``次にやること``."""
+    """Keep a decision rationale distinct from topic, action, and risk."""
     review_copy = review_copy or {}
     current = base._humanize_terms(state.get("judgment_reason"))
+    status = base._clean(state.get("status"))
     topic_key = mps._norm_key(state.get("topic"))
     action_key = mps._norm_key(state.get("next_action"))
+    risk_key = mps._norm_key(state.get("main_risk"))
+    current_key = mps._norm_key(current)
 
     if (
         current
         and not base.BAD_REASON_RE.search(current)
-        and mps._norm_key(current) != topic_key
+        and current_key != topic_key
+        and current_key != risk_key
         and len(mps._sentences(current)) == 1
     ):
         return current
@@ -167,7 +171,7 @@ def refine_judgment_reason(
     descriptive: list[str] = []
     for sentence in mps._sentences(raw):
         key = mps._norm_key(sentence)
-        if not key:
+        if not key or key == risk_key:
             continue
         if action_key and key == action_key:
             continue
@@ -183,11 +187,14 @@ def refine_judgment_reason(
     if distinct:
         return distinct[0]
 
-    risk_reason = base._natural_reason_from_risk(
-        base._clean(state.get("status")), base._clean(state.get("main_risk"))
-    )
-    if risk_reason:
-        return risk_reason
+    # Risk can explain why TEST/WATCH/AVOID is cautious, but it must never be
+    # manufactured into a positive ADOPT rationale.
+    if status != "ADOPT":
+        risk_reason = base._natural_reason_from_risk(
+            status, base._clean(state.get("main_risk"))
+        )
+        if risk_reason:
+            return risk_reason
 
     if base._clean(state.get("classification")) == "Deep Tech":
         deep_reason = _deep_tech_reason(state)
@@ -196,6 +203,8 @@ def refine_judgment_reason(
 
     if descriptive:
         return descriptive[0]
+    if status == "ADOPT" and current_key == risk_key:
+        return ""
     return current
 
 
