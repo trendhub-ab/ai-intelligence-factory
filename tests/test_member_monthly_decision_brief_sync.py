@@ -184,8 +184,13 @@ class MemberMonthlyDecisionBriefTests(unittest.TestCase):
             if block.get("type") != "toggle"
         )
         self.assertIn("いまの判断：まず小さく試す", top_level)
-        self.assertIn("向いている場面：", top_level)
-        self.assertIn("まずやること：", top_level)
+        self.assertIn("何が楽になる？：", top_level)
+        self.assertIn("誰・どんな仕事向け？：", top_level)
+        self.assertIn("まず何を試す？：", top_level)
+        self.assertIn("注意点：", top_level)
+        self.assertNotIn("向いている場面：", top_level)
+        self.assertNotIn("まずやること：", top_level)
+        self.assertNotIn("今月のポイント：", top_level)
         self.assertNotIn("参考スコア", top_level)
         self.assertNotIn("Decision Score", top_level)
         toggles = [b for b in blocks if b.get("type") == "toggle"]

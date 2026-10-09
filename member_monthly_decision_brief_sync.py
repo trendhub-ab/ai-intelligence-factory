@@ -191,7 +191,7 @@ def _change_direction_text(state: dict[str, Any]) -> str:
 
 
 def build_blocks(states: list[dict[str, Any]], *, now: datetime | None = None) -> tuple[str, list[dict[str, Any]], int, int]:
-    """Build a scan-first member brief: decision -> meaning -> action -> evidence.
+    """Build a scan-first member brief: decision -> benefit -> fit -> action -> risk -> evidence.
 
     The shortlist is still selected only from records reviewed inside the shared
     freshness window. Scores remain an internal ranking aid and are intentionally
@@ -217,8 +217,8 @@ def build_blocks(states: list[dict[str, Any]], *, now: datetime | None = None) -
     if top:
         opening = (
             f"{local_now.month}月は、まず下の{len(top)}件を見れば十分です。"
-            "最初に『いまどうするか』と『まず何をするか』だけ確認し、"
-            "根拠や注意点は必要なときに開いてください。"
+            "最初に『いまの判断』と4つの要点だけ確認し、"
+            "詳しい根拠は必要なときに開いてください。"
         )
     else:
         opening = (
@@ -240,9 +240,9 @@ def build_blocks(states: list[dict[str, Any]], *, now: datetime | None = None) -
     for idx, state in enumerate(top, 1):
         status = quality.status_short(state.get("status"))
         review = quality.review_badge(state.get("last_reviewed"), as_of=as_of)
-        use_case = str(state.get("best_for") or state.get("plain_summary") or "").strip()
+        benefit = str(state.get("topic") or state.get("plain_summary") or "").strip()
+        audience = str(state.get("best_for") or "").strip()
         action = quality.reader_action(state)
-        topic = str(state.get("topic") or "").strip()
         reason = quality.reader_reason(state)
         risk = str(state.get("main_risk") or "").strip()
         score = int(round(_score(state.get("score"))))
@@ -255,18 +255,18 @@ def build_blocks(states: list[dict[str, Any]], *, now: datetime | None = None) -
             _rt(review),
         ))
         blocks.append(_callout(f"いまの判断：{status}", emoji="✅" if str(state.get("status")).upper() == "ADOPT" else "🧪"))
-        if use_case:
-            blocks.append(_paragraph(_rt("向いている場面：", bold=True), _rt(use_case)))
+        if benefit:
+            blocks.append(_paragraph(_rt("何が楽になる？：", bold=True), _rt(benefit)))
+        if audience:
+            blocks.append(_paragraph(_rt("誰・どんな仕事向け？：", bold=True), _rt(audience)))
         if action:
-            blocks.append(_paragraph(_rt("まずやること：", bold=True), _rt(action)))
-        if topic:
-            blocks.append(_paragraph(_rt("今月のポイント：", bold=True), _rt(topic)))
+            blocks.append(_paragraph(_rt("まず何を試す？：", bold=True), _rt(action)))
+        if risk:
+            blocks.append(_paragraph(_rt("注意点：", bold=True), _rt(risk)))
 
         detail_children: list[dict[str, Any]] = []
         if reason:
             detail_children.append(_paragraph(_rt("判断の理由：", bold=True), _rt(reason)))
-        if risk:
-            detail_children.append(_paragraph(_rt("注意点：", bold=True), _rt(risk)))
         detail_children.append(_paragraph(_rt(
             quality.review_disclosure(state.get("last_reviewed"), as_of=as_of)
         )))
