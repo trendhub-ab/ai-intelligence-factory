@@ -1,6 +1,7 @@
 import unittest
 
 import run296_note_private_draft_inventory as run296
+import run296_note_private_draft_quality_eval as quality_eval
 
 
 class Run296InventoryContractTests(unittest.TestCase):
@@ -63,7 +64,7 @@ class Run296InventoryContractTests(unittest.TestCase):
             "私ならこの変化を踏まえ、今すぐ全面導入する必要はないと考えます。"
             "まずはできるところから小さく始めたいところです。"
         )
-        result = run296.quality_diagnostics(body)
+        result = quality_eval.quality_diagnostics(body)
         self.assertTrue(result["naturalness_high"])
         self.assertGreaterEqual(result["naturalness_score"], 5)
         self.assertIn("generic_business_scaffold_count", result)
@@ -145,11 +146,6 @@ class Run296InventoryContractTests(unittest.TestCase):
             "naturalness_high": False,
             "current_aiif_linked": False,
             "classification": "KEEP",
-            "quality": {
-                "naturalness_score": 2,
-                "reader_accessibility": "GOOD",
-                "accessibility_issues": [],
-            },
             "reasons": [],
         }
         safe = run296.safe_record(raw)
