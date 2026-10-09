@@ -166,6 +166,8 @@ def _looks_like_generated_member_callout(
             "使う前に確認すること",
             "こんな時に向いています",
             "ここは確認してください",
+            "誰・どんな仕事向け？",
+            "注意点",
         }
         & headings
     )
@@ -177,6 +179,7 @@ def _looks_like_generated_member_callout(
             "提案・検証の次の一手",
             "試す・導入する次の一手",
             "まずやること",
+            "まず何を試す？",
         }
         & headings
     )
@@ -314,11 +317,11 @@ def run_body_sync() -> dict[str, Any]:
         result["reader_order"] = [
             "これは何？",
             "根拠の確認日",
-            "いま、使える？",
-            "こんな時に向いています",
-            "今、見る理由",
-            "ここは確認してください",
-            "まずやること",
+            "いまの判断",
+            "何が楽になる？ / 何ができる？",
+            "誰・どんな仕事向け？",
+            "まず何を試す？",
+            "注意点",
         ]
     elif run270 is not None:
         result["reader_order"] = [
