@@ -77,7 +77,7 @@ jobs:
   inventory:
     needs: [contract, start-cloud-vm]
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -108,6 +108,21 @@ jobs:
           NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
           NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
         run: xvfb-run -a python run296_note_private_draft_inventory.py
+      - name: Evaluate repair candidates without mutation
+        env:
+          NOTE_INVENTORY_CONFIRM: 'AUDIT_ALL_NOTE_DRAFTS'
+          NOTE_QUALITY_RESULT_FILE: ${{ runner.temp }}/run296-quality.json
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+        run: xvfb-run -a python run296_note_private_draft_quality_eval.py
       - name: Summarize safe classification only
         if: ${{ always() }}
         env:
@@ -139,12 +154,52 @@ jobs:
                   reasons = ', '.join(row.get('reasons') or [])
                   fh.write(f'| {row.get("position")} | {row.get("classification")} | {row.get("body_chars")} | {row.get("eyecatch_present")} | {row.get("current_aiif_linked")} | {reasons} |\n')
           PY
+      - name: Summarize safe quality evaluation
+        if: ${{ always() }}
+        env:
+          RESULT_FILE: ${{ runner.temp }}/run296-quality.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ['RESULT_FILE'])
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('\n### REPAIR quality evaluation (read-only)\n')
+              if not p.exists():
+                  fh.write('- result: `FAIL-CLOSED`\n')
+                  raise SystemExit(0)
+              data = json.loads(p.read_text(encoding='utf-8'))
+              fh.write(f'- status: `{data.get("status")}`\n')
+              fh.write(f'- repair_candidates: `{data.get("repair_candidates")}`\n')
+              fh.write('- raw private text exposed: `false`\n')
+              for row in data.get('records') or []:
+                  q = row.get('quality') or {}
+                  fh.write(f'\n#### position {row.get("position")}\n')
+                  fh.write(f'- body_chars: `{row.get("body_chars")}`\n')
+                  fh.write(f'- AIIF tracked: `{row.get("current_aiif_linked")}`\n')
+                  fh.write(f'- repair_priority: `{q.get("repair_priority")}`\n')
+                  fh.write(f'- naturalness: `{q.get("naturalness_score")}` / high=`{q.get("naturalness_high")}`\n')
+                  fh.write(f'- human_depth: `{q.get("human_depth_score")}` / high=`{q.get("human_depth_high")}`\n')
+                  fh.write(f'- reader accessibility: `{q.get("reader_accessibility")}`\n')
+                  fh.write(f'- reader curiosity: `{q.get("reader_curiosity_pull")}`\n')
+                  fh.write(f'- reader enjoyment: `{q.get("reader_enjoyment")}`\n')
+                  fh.write(f'- reader return pull: `{q.get("reader_return_pull")}`\n')
+                  fh.write(f'- recommended actions: `{", ".join(q.get("recommended_actions") or [])}`\n')
+          PY
       - name: Upload safe inventory result
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: run296-safe-note-draft-inventory
           path: ${{ runner.temp }}/run296-inventory.json
+          if-no-files-found: ignore
+          retention-days: 1
+      - name: Upload safe quality result
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: run296-safe-note-draft-quality
+          path: ${{ runner.temp }}/run296-quality.json
           if-no-files-found: ignore
           retention-days: 1
 
