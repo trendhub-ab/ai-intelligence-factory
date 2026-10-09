@@ -1,8 +1,8 @@
 # Run221 — Member DB API Host Isolation
 
 Date: 2026-09-04  
-Status: **superseded as the current hosting contract; retained as historical incident evidence**  
-Superseded by: `MEMBER_HOME_PHYSICAL_HOST_MIGRATION_2026-10-10.md` after its live migration gates pass  
+Status: **superseded as the current hosting contract; retained as historical incident evidence**
+Superseded by: `MEMBER_HOME_PHYSICAL_HOST_MIGRATION_2026-10-10.md` after its live migration gates pass
 Gemini/model requests used for this run: **0**
 
 ## Why this run existed
