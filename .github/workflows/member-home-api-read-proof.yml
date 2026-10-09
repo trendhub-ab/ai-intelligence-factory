@@ -1,0 +1,49 @@
+name: Member Home API Read Proof
+
+on:
+  push:
+    branches:
+      - ops/member-home-host-migration-proof
+    paths:
+      - '.github/workflows/member-home-api-read-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  read-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Prove GitHub Actions Notion integration can read migration targets
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_VERSION: '2026-03-11'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${NOTION_TOKEN:-}" ]]; then
+            echo 'NOTION_DECISION_INTELLIGENCE_API_KEY is unavailable'
+            exit 1
+          fi
+
+          check_get() {
+            local label="$1"
+            local url="$2"
+            local code
+            code="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+              --header "Authorization: Bearer ${NOTION_TOKEN}" \
+              --header "Notion-Version: ${NOTION_VERSION}" \
+              --header 'Content-Type: application/json' \
+              "$url")"
+            echo "${label}: HTTP ${code}"
+            [[ "$code" == '200' ]]
+          }
+
+          check_get 'member_home' 'https://api.notion.com/v1/pages/3c5479ff-dca9-8103-bff0-f2d5f408d35f'
+          check_get 'canonical_database' 'https://api.notion.com/v1/databases/b2787ee0-5b58-4ca7-b4eb-774f60237f1f'
+          check_get 'canonical_data_source' 'https://api.notion.com/v1/data_sources/7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404'
+          check_get 'decision_brief' 'https://api.notion.com/v1/pages/3d0479ff-dca9-81de-b614-fef528d2f32c'
+
+          echo 'READ_PROOF=PASS'
