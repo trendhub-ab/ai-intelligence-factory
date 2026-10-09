@@ -123,11 +123,9 @@ class MemberMonthlyDecisionBriefTests(unittest.TestCase):
         self.assertNotIn("現在の一次情報を基に判断しています", rendered)
         self.assertNotIn("'公式'", rendered)
 
-        # First compact view must declare review age before offering advice.
         bullet = next(b for b in blocks if b["type"] == "bulleted_list_item")
         line = bullet["bulleted_list_item"]["rich_text"][0]["text"]["content"]
         self.assertLess(line.index("確認："), line.index("前回の判断："))
-        # The detailed and changed-item views must disclose the same real date.
         self.assertGreaterEqual(rendered.count("2026年8月23日に確認"), 2)
 
     def test_future_date_is_not_exposed_as_verified_in_brief(self):
@@ -155,7 +153,6 @@ class MemberMonthlyDecisionBriefTests(unittest.TestCase):
         recent_at = rendered.index("今月、まず見るもの")
         reference_at = rendered.index("再確認してから使いたいもの")
         self.assertLess(recent_at, reference_at)
-        # An old homepage rank must never silently appear in current advice.
         current_view = rendered[:reference_at]
         self.assertIn("RecentlyReviewed", current_view)
         self.assertNotIn("PreviouslyRanked", current_view)
@@ -184,7 +181,8 @@ class MemberMonthlyDecisionBriefTests(unittest.TestCase):
             if block.get("type") != "toggle"
         )
         self.assertIn("いまの判断：まず小さく試す", top_level)
-        self.assertIn("何が楽になる？：", top_level)
+        self.assertIn("何ができる？：", top_level)
+        self.assertNotIn("何が楽になる？：", top_level)
         self.assertIn("誰・どんな仕事向け？：", top_level)
         self.assertIn("まず何を試す？：", top_level)
         self.assertIn("注意点：", top_level)

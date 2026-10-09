@@ -30,7 +30,21 @@ class Run307UseDecisionProductGuardTests(unittest.TestCase):
             root = Path(tmp)
             self._copy_contract(root)
             module = root / guard.MODULE
-            module.write_text(module.read_text(encoding="utf-8").replace('"いま、使える？"', '"いま、どうする？"'), encoding="utf-8")
+            module.write_text(module.read_text(encoding="utf-8").replace('"いまの判断"', '"いま、どうする？"'), encoding="utf-8")
+            self.assertTrue(any("member_surface_missing" in error for error in guard.collect_errors(root)))
+
+    def test_missing_shared_benefit_policy_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._copy_contract(root)
+            module = root / guard.MODULE
+            module.write_text(
+                module.read_text(encoding="utf-8").replace(
+                    "benefit_label, benefit = quality.reader_benefit(state)",
+                    "benefit_label, benefit = ('何ができる？', _clean(state.get('topic')))",
+                ),
+                encoding="utf-8",
+            )
             self.assertTrue(any("member_surface_missing" in error for error in guard.collect_errors(root)))
 
     def test_client_proposal_cannot_be_promoted_back_to_primary(self):

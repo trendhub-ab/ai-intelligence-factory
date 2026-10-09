@@ -240,7 +240,7 @@ def build_blocks(states: list[dict[str, Any]], *, now: datetime | None = None) -
     for idx, state in enumerate(top, 1):
         status = quality.status_short(state.get("status"))
         review = quality.review_badge(state.get("last_reviewed"), as_of=as_of)
-        benefit = str(state.get("topic") or state.get("plain_summary") or "").strip()
+        benefit_label, benefit = quality.reader_benefit(state)
         audience = str(state.get("best_for") or "").strip()
         action = quality.reader_action(state)
         reason = quality.reader_reason(state)
@@ -255,8 +255,8 @@ def build_blocks(states: list[dict[str, Any]], *, now: datetime | None = None) -
             _rt(review),
         ))
         blocks.append(_callout(f"いまの判断：{status}", emoji="✅" if str(state.get("status")).upper() == "ADOPT" else "🧪"))
-        if benefit:
-            blocks.append(_paragraph(_rt("何が楽になる？：", bold=True), _rt(benefit)))
+        if benefit_label and benefit:
+            blocks.append(_paragraph(_rt(f"{benefit_label}：", bold=True), _rt(benefit)))
         if audience:
             blocks.append(_paragraph(_rt("誰・どんな仕事向け？：", bold=True), _rt(audience)))
         if action:
@@ -341,6 +341,7 @@ def build_blocks(states: list[dict[str, Any]], *, now: datetime | None = None) -
         ),
     ])
     return title, blocks, len(top), len(changes)
+
 
 def _children(page_id: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []

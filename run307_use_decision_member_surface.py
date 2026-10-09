@@ -63,7 +63,7 @@ def _use_update_text(state: dict[str, Any]) -> str:
 
 
 def _show_topic(value: str) -> bool:
-    """Omit vague filler instead of manufacturing a 'why now' from stale data."""
+    """Historical compatibility helper; topic is no longer a primary detail section."""
     text = _clean(value).strip("。！？!?. ")
     if not text:
         return False
@@ -82,7 +82,7 @@ def _last_reviewed_label(value: Any) -> str:
 
 
 def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
-    """Render current generic use-decision copy using existing authoritative fields only."""
+    """Render the same scan-first decision path used by the monthly Brief."""
     children: list[dict[str, Any]] = []
 
     summary = _clean(state.get("plain_summary"))
@@ -90,35 +90,34 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
         children.append(body._heading("これは何？"))
         children.append(body._paragraph(summary))
 
-    # One evidence-age disclosure policy for both existing/new DB rows
-    # and the monthly Brief. Never confuse presentation edits with rechecks.
+    # One evidence-age disclosure policy for both existing/new DB rows and the Brief.
     children.append(body._heading(quality.DATE_PREFIX))
     children.append(body._paragraph(
         quality.review_disclosure(state.get("last_reviewed"))
     ))
 
-    children.append(body._heading("いま、使える？"))
+    children.append(body._heading("いまの判断"))
     children.append(body._paragraph(_use_decision_text(state)))
+
+    benefit_label, benefit = quality.reader_benefit(state)
+    if benefit_label and benefit:
+        children.append(body._heading(benefit_label))
+        children.append(body._paragraph(_clean(benefit)))
 
     use_case = alignment.work_case_text(state)
     if use_case:
-        children.append(body._heading("こんな時に向いています"))
+        children.append(body._heading("誰・どんな仕事向け？"))
         children.append(body._paragraph(use_case))
-
-    topic = _clean(state.get("topic"))
-    if _show_topic(topic):
-        children.append(body._heading("今、見る理由"))
-        children.append(body._paragraph(topic))
-
-    checks = alignment.work_check_text(state)
-    if checks:
-        children.append(body._heading("ここは確認してください"))
-        children.append(body._paragraph(checks))
 
     action = alignment.work_action_text({**state, "next_action": quality.reader_action(state)})
     if action:
-        children.append(body._heading("まずやること"))
+        children.append(body._heading("まず何を試す？"))
         children.append(body._paragraph(action))
+
+    checks = alignment.work_check_text(state)
+    if checks:
+        children.append(body._heading("注意点"))
+        children.append(body._paragraph(checks))
 
     update = _use_update_text(state)
     if update:
@@ -141,7 +140,7 @@ def _build_children(state: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _body_matches_use_decision(children: list[dict[str, Any]], state: dict[str, Any]) -> bool:
-    """Exact deterministic body contract; superseded Proposal-First bodies rewrite once."""
+    """Exact deterministic body contract; superseded bodies rewrite once."""
     return body._body_fingerprint(children) == body._body_fingerprint(_build_children(state))
 
 
@@ -178,10 +177,11 @@ def contract() -> dict[str, Any]:
         "zero_gemini_calls": True,
         "paid_surface": [
             quality.DATE_PREFIX,
-            "いま、使える？",
-            "こんな時に向いています",
-            "ここは確認してください",
-            "まずやること",
+            "いまの判断",
+            "何が楽になる？ / 何ができる？",
+            "誰・どんな仕事向け？",
+            "まず何を試す？",
+            "注意点",
             "前回から判断が変わったところ",
         ],
     }
