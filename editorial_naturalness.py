@@ -203,6 +203,98 @@ def ai_style_composite_signals(text: str, article_display_variants: list[dict]) 
     }
 
 
+def naturalness_v2_signals(text: str) -> dict:
+    """Located self-edit advice only; never contributes to Gate score/high.
+
+    Require two independent repeated habits. Section numbers refer to H2/H3
+    blocks in the supplied article, including excluded metadata blocks.
+    """
+    lines = []
+    fence = None
+    for line in (text or "").splitlines():
+        marker = re.match(r"^\s{0,3}(`{3,}|~{3,})", line)
+        if fence:
+            if re.fullmatch(r"\s{0,3}" + re.escape(fence[0]) + "{" + str(len(fence)) + r",}\s*", line):
+                fence = None
+            lines.append("")
+            continue
+        if marker:
+            fence = marker.group(1)
+            lines.append("")
+            continue
+        lines.append("" if re.match(r"^\s*>", line) else line)
+    body = "\n".join(lines)
+    body = re.sub(r"`[^`\n]*`|「[^」]*」|『[^』]*』", "引用", body)
+    headings = list(re.finditer(r"^(#{2,3})\s+(.+)$", body, re.M))
+    sections = []
+    excluded_level = None
+    for i, match in enumerate(headings):
+        level = len(match.group(1))
+        if excluded_level is not None and level <= excluded_level:
+            excluded_level = None
+        if match.group(2).strip() in {
+            "Reader-first summary", "Reader Summary", "どんな内容？", "なぜ重要？",
+            "結論は？", "元情報", "Sources / Evidence", "Sources", "Evidence",
+        }:
+            excluded_level = level
+        if excluded_level is not None:
+            continue
+        end = headings[i + 1].start() if i + 1 < len(headings) else len(body)
+        prose = body[match.end():end].strip()
+        if prose:
+            sections.append((i + 1, prose))
+
+    self_closings, summaries, grand_closings, lengths = [], [], [], []
+    for number, prose in sections:
+        sentences = [s.strip() for s in re.split(r"(?<=[。！？!?])|\n", prose) if s.strip()]
+        closing = sentences[-1] if sentences else ""
+        if re.search(r"(?:私なら|私であれば)", closing):
+            self_closings.append(number)
+        if re.search(r"(?:^|[。！？!?\n])\s*(?:つまり|要するに|重要なのは|ここで重要なのは|言い換えると)", prose):
+            summaries.append(number)
+        if re.search(r"(?:未来を変える|大きな転換点|大きな岐路|新たな時代|可能性を切り開く)", closing):
+            grand_closings.append(number)
+        length = len(re.sub(r"\s+", "", prose))
+        if length >= 80:
+            lengths.append(length)
+    uniform = False
+    if len(lengths) >= 5:
+        mean = sum(lengths) / len(lengths)
+        uniform = (sum((n - mean) ** 2 for n in lengths) / len(lengths)) ** 0.5 / mean < 0.18
+    signals = {
+        "repeated_self_closings": self_closings if len(self_closings) >= 2 else [],
+        "repeated_meta_summaries": summaries if len(summaries) >= 2 else [],
+        "repeated_grand_closings": grand_closings if len(grand_closings) >= 2 else [],
+        "uniform_sections": uniform,
+    }
+    signals["repair_recommended"] = sum(bool(v) for v in signals.values()) >= 2
+    return signals
+
+
+def build_naturalness_retry_contract(article: str) -> str:
+    """Enrich an already-authorized Quality Retry without scheduling another call."""
+    signals = naturalness_v2_signals(article)
+    if not signals["repair_recommended"]:
+        return ""
+    advice = []
+    for key, instruction in (
+        ("repeated_self_closings", "『私なら』を節末の定型句として反復せず、具体的な判断・条件・代償は残す。"),
+        ("repeated_meta_summaries", "メタ要約の反復を減らし、接続句なしで伝わる箇所は事実を直接置く。"),
+        ("repeated_grand_closings", "抽象的な大結論の反復を減らし、根拠のある判断は必要な箇所に集約する。"),
+    ):
+        if signals[key]:
+            advice.append(f"・節 {', '.join(map(str, signals[key]))}: {instruction}")
+    if signals["uniform_sections"]:
+        advice.append("・節長が均一。意味に応じて短い節や事実だけで終える節を混ぜる。長短のノルマは設けない。")
+    return "\n".join([
+        "[naturalness-v2｜既存Quality Retryの補助指示]",
+        "節番号は元記事のH2/H3の出現順。検出は編集上の目安であり、新しい不合格理由ではない。",
+        *advice,
+        "自然な単発表現は残す。Fact / Evidence / Decision・数値・URL・条件・制約・情報量を維持し、文章の運びだけを直す。",
+        "既存Gateの修正を優先する。追加生成や再試行を要求しない。",
+    ])
+
+
 def sentence_shingles(value: str, width: int = 5) -> set[str]:
     compact = re.sub(r"https?://\S+|`[^`]+`|[A-Za-z0-9_.:/+-]+", " ", value or "")
     compact = re.sub(r"[\s。、！？!?「」『』（）()【】#*_>・:：;；,，.-]+", "", compact)
