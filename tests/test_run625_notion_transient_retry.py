@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import requests
 
@@ -41,12 +41,17 @@ class Run625NotionTransientRetryTests(unittest.TestCase):
                 sync._request("GET", "https://api.notion.com/v1/blocks/page/children")
 
         self.assertEqual(request.call_count, 5)
-        self.assertEqual(sleep.call_args_list, [
-            unittest.mock.call(1),
-            unittest.mock.call(2),
-            unittest.mock.call(3),
-            unittest.mock.call(4),
-        ])
+        self.assertEqual(sleep.call_args_list, [call(1), call(2), call(3), call(4)])
+
+    def test_request_does_not_retry_non_idempotent_page_create_after_timeout(self):
+        failure = requests.ReadTimeout("response lost after create")
+        with patch.object(sync.requests, "request", side_effect=failure) as request, \
+             patch.object(sync.time, "sleep") as sleep:
+            with self.assertRaises(requests.ReadTimeout):
+                sync._request("POST", "https://api.notion.com/v1/pages", json={"properties": {}})
+
+        self.assertEqual(request.call_count, 1)
+        sleep.assert_not_called()
 
 
 if __name__ == "__main__":
