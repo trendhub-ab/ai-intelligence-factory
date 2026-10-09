@@ -95,8 +95,18 @@ def _parent(data_source_id: str, database_id: str) -> dict[str, str]:
 
 def _request(method: str, url: str, *, json: dict | None = None) -> requests.Response:
     last: requests.Response | None = None
+    method_upper = str(method or "").upper()
+    retry_transport_error = method_upper in {"GET", "HEAD"} or (
+        method_upper == "POST" and url.rstrip("/").endswith("/query")
+    )
     for attempt in range(5):
-        last = requests.request(method, url, headers=_headers(), json=json, timeout=25)
+        try:
+            last = requests.request(method, url, headers=_headers(), json=json, timeout=25)
+        except (requests.Timeout, requests.ConnectionError):
+            if not retry_transport_error or attempt >= 4:
+                raise
+            time.sleep(1 + attempt)
+            continue
         if last.status_code == 429:
             time.sleep(max(0.8, float(last.headers.get("Retry-After") or 1)))
             continue
