@@ -75,6 +75,7 @@ jobs:
           python -m unittest tests/test_run219_member_human_language_ui.py
           python -m unittest tests/test_run220_member_db_canonical_cutover.py
           python -m unittest tests/test_run221_member_db_host_isolation.py
+          python -m unittest tests/test_member_home_physical_host_migration.py
           python -m unittest tests/test_run225_stock_lifecycle.py
           python -m unittest tests/test_run225_member_lifecycle_ui.py
           python -m unittest tests/test_run250_member_client_action_product.py
