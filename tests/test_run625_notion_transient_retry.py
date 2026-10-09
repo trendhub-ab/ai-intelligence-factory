@@ -33,6 +33,23 @@ class Run625NotionTransientRetryTests(unittest.TestCase):
         self.assertEqual(request.call_count, 2)
         sleep.assert_called_once_with(1)
 
+    def test_request_retries_read_only_query_post_after_timeout(self):
+        success = MagicMock(status_code=200)
+        with patch.object(
+            sync.requests,
+            "request",
+            side_effect=[requests.ReadTimeout("query timeout"), success],
+        ) as request, patch.object(sync.time, "sleep") as sleep:
+            result = sync._request(
+                "POST",
+                "https://api.notion.com/v1/data_sources/source/query",
+                json={"page_size": 100},
+            )
+
+        self.assertIs(result, success)
+        self.assertEqual(request.call_count, 2)
+        sleep.assert_called_once_with(1)
+
     def test_request_reraises_transient_exception_after_bounded_attempts(self):
         failure = requests.ReadTimeout("persistent timeout")
         with patch.object(sync.requests, "request", side_effect=failure) as request, \
