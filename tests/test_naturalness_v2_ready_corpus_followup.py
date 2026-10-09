@@ -1,7 +1,7 @@
 """Regression probes derived from real Ready manuscripts in Notion."""
 
+import a_plus_editorial_orchestration as rc
 import editorial_naturalness as en
-from local_skills import a_plus as rc
 
 
 def ready_like_article():
