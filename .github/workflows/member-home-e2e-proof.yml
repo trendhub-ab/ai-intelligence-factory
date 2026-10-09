@@ -1,0 +1,166 @@
+name: Member Home E2E Proof
+
+on:
+  push:
+    branches:
+      - ops/member-home-host-migration-proof
+    paths:
+      - '.github/workflows/member-home-e2e-proof.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: member-home-e2e-proof
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout migration branch
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Resolve exact canonical member DB under member home
+        run: python provision_member_presentation_db.py
+        env:
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          MEMBER_PRESENTATION_DB_TITLE: 'AI・技術一覧｜判断DB'
+          MEMBER_PRESENTATION_CANONICAL_DATABASE_ID: 'b2787ee0-5b58-4ca7-b4eb-774f60237f1f'
+          MEMBER_PRESENTATION_CANONICAL_DATA_SOURCE_ID: '7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404'
+          MEMBER_PRESENTATION_API_HOST_PAGE_ID: '3c5479ff-dca9-8103-bff0-f2d5f408d35f'
+          MEMBER_PRESENTATION_ALLOW_CREATE: 'false'
+
+      - name: Read-only preflight — require exact 240-to-240 identity set
+        env:
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_SUBSCRIBER_TECH_DATABASE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATABASE_ID }}
+          NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID }}
+          DI_PRODUCT_TIMEZONE: 'Asia/Tokyo'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import decision_intelligence
+          import member_presentation_sync as member
+
+          source_pages = decision_intelligence._query_external_db(
+              decision_intelligence.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID,
+              decision_intelligence.NOTION_SUBSCRIBER_TECH_DATABASE_ID,
+              max_records=5000,
+          )
+          source_states = [s for s in (member._source_state(p) for p in source_pages) if s]
+          dest_pages = decision_intelligence._query_external_db(
+              member.NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID,
+              member.NOTION_MEMBER_PRESENTATION_DATABASE_ID,
+              max_records=5000,
+          )
+          dest_states = [member._destination_state(p) for p in dest_pages]
+          source_ids = [str(s.get('sync_id') or '').strip() for s in source_states]
+          dest_ids = [str(s.get('sync_id') or '').strip() for s in dest_states]
+
+          assert len(source_states) == 240, f'preflight source count changed: {len(source_states)}'
+          assert len(dest_states) == 240, f'preflight destination count changed: {len(dest_states)}'
+          assert all(source_ids), 'preflight source has blank sync id'
+          assert all(dest_ids), 'preflight destination has blank sync id'
+          assert len(set(source_ids)) == 240, f'preflight source duplicate sync ids: {240-len(set(source_ids))}'
+          assert len(set(dest_ids)) == 240, f'preflight destination duplicate sync ids: {240-len(set(dest_ids))}'
+          assert set(source_ids) == set(dest_ids), 'preflight source/member sync-id sets differ; aborting before writes'
+          print('E2E_PREFLIGHT=PASS source=240 destination=240 sync_ids_exact=true')
+          PY
+
+      - name: Sync member presentation from branch code
+        run: python run219_member_human_language_ui.py presentation
+        env:
+          TZ: 'Asia/Tokyo'
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_SUBSCRIBER_TECH_DATABASE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATABASE_ID }}
+          NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID }}
+          DI_PRODUCT_TIMEZONE: 'Asia/Tokyo'
+          MEMBER_HOME_MAX: '3'
+          MEMBER_HOME_DIVERSITY_TOLERANCE: '3'
+          STOCK_FRESH_DAYS: '30'
+          STOCK_ARCHIVE_DAYS: '90'
+
+      - name: Post-presentation identity audit
+        env:
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import decision_intelligence
+          import member_presentation_sync as member
+
+          pages = decision_intelligence._query_external_db(
+              member.NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID,
+              member.NOTION_MEMBER_PRESENTATION_DATABASE_ID,
+              max_records=5000,
+          )
+          states = [member._destination_state(p) for p in pages]
+          ids = [str(s.get('sync_id') or '').strip() for s in states]
+          assert len(states) == 240, f'post-sync destination count changed: {len(states)}'
+          assert all(ids), 'post-sync destination has blank sync id'
+          assert len(set(ids)) == 240, f'post-sync duplicate sync ids: {240-len(set(ids))}'
+          print('E2E_PRESENTATION_AUDIT=PASS rows=240 distinct_sync_ids=240 blank_sync_ids=0')
+          PY
+
+      - name: Sync all readable member page bodies
+        run: python run219_member_human_language_ui.py body
+        env:
+          TZ: 'Asia/Tokyo'
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+
+      - name: Refresh paid monthly Decision Brief
+        run: python member_monthly_decision_brief_sync.py
+        env:
+          TZ: 'Asia/Tokyo'
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_MEMBER_PRESENTATION_DATABASE_ID: ${{ env.NOTION_MEMBER_PRESENTATION_DATABASE_ID }}
+          NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID: ${{ env.NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID }}
+          MEMBER_MONTHLY_BRIEF_PAGE_ID: '3d0479ff-dca9-81de-b614-fef528d2f32c'
+          MEMBER_MONTHLY_BRIEF_TOP_LIMIT: '5'
+          MEMBER_MONTHLY_BRIEF_CHANGE_LIMIT: '5'
+          DI_PRODUCT_TIMEZONE: 'Asia/Tokyo'
+
+      - name: Final read-only API proof
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_VERSION: '2026-03-11'
+        shell: bash
+        run: |
+          set -euo pipefail
+          check_get() {
+            local label="$1"
+            local url="$2"
+            local code
+            code="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+              --header "Authorization: Bearer ${NOTION_TOKEN}" \
+              --header "Notion-Version: ${NOTION_VERSION}" \
+              --header 'Content-Type: application/json' \
+              "$url")"
+            echo "${label}: HTTP ${code}"
+            [[ "$code" == '200' ]]
+          }
+          check_get 'member_home' 'https://api.notion.com/v1/pages/3c5479ff-dca9-8103-bff0-f2d5f408d35f'
+          check_get 'canonical_database' 'https://api.notion.com/v1/databases/b2787ee0-5b58-4ca7-b4eb-774f60237f1f'
+          check_get 'canonical_data_source' 'https://api.notion.com/v1/data_sources/7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404'
+          check_get 'decision_brief' 'https://api.notion.com/v1/pages/3d0479ff-dca9-81de-b614-fef528d2f32c'
+          echo 'E2E_FINAL_API_PROOF=PASS'
