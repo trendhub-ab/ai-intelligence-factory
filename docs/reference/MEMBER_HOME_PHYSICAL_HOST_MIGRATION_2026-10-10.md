@@ -1,6 +1,6 @@
 # Member Home Physical Host Migration — 2026-10-10
 
-Status: **live physical move, post-move API proof, and full regression complete; PR / E2E / guest check pending**  
+Status: **live physical move, post-move API proof, full regression, and production E2E complete; guest check pending**  
 Gemini/model calls: **0**  
 Daily: **not run**
 
@@ -130,7 +130,31 @@ Final fresh proof:
 - synthetic critical failures: **0**
 - production write isolation: **true**
 
-Temporary proof workflows and the RED trigger were removed from the branch after their evidence was captured. They are not part of the permanent production contract.
+Temporary regression/read-proof workflows and the RED trigger were removed from the branch after their evidence was captured. They are not part of the permanent production contract.
+
+## Gate 4 — bounded production E2E after the move
+
+A branch-only production E2E was run only after a fail-closed read-only preflight proved exact source/destination identity equality. It used the production Notion integrations, branch code, and the existing canonical objects. It did not call Gemini or another model.
+
+Proof:
+- Workflow run ID: `38005131012`
+- Job ID: `114072048123`
+- head SHA: `49e18246bf32813c20bb9f92c33b8e9b28fd33b9`
+- canonical resolver: `created=false`, `canonical=true`, `auto_create_enabled=false`
+- preflight: `source=240`, `destination=240`, exact `同期ID` set equality = **true**
+- Presentation sync: `source_records=240`, `created=0`, `archived=0`, `duplicates_archived=0`, `updated=2`, `unchanged=238`, `zero_gemini_calls=true`
+- post-Presentation audit: `rows=240`, `distinct_sync_ids=240`, `blank_sync_ids=0`
+- body sync: `scanned_body_pages=240`, `total=240`, `unchanged=240`, `created=0`, `duplicates_removed=0`, `zero_gemini_calls=true`
+- Decision Brief refresh: `source_records=240`, `top_count=5`, `important_change_count=0`, `zero_model_calls=true`
+- final member home: **HTTP 200**
+- final canonical Database: **HTTP 200**
+- final canonical Data Source: **HTTP 200**
+- final Decision Brief: **HTTP 200**
+- result: `E2E_FINAL_API_PROOF=PASS`
+
+The E2E preserved the 240-record identity contract and produced no create/archive/delete churn. The two Presentation updates were ordinary synchronization updates against existing canonical records, not identity replacement. All 240 page bodies were already current and therefore remained unchanged.
+
+The branch-only E2E workflow is temporary proof infrastructure and is removed after this evidence is recorded; it is not part of the permanent production contract.
 
 ## Rollback contract
 
@@ -161,14 +185,20 @@ Completed:
 - Integration Stability Guard GREEN;
 - Repository Falsification Guard GREEN;
 - synthetic Production smoke = **30/30**;
+- bounded production E2E = **PASS**;
+- E2E source/member identity preflight = **240 / 240 exact match**;
+- E2E Presentation post-audit = **240 rows / 240 distinct IDs / 0 blank IDs**;
+- E2E body sync = **240/240 readable and unchanged**;
+- E2E Decision Brief refresh = **PASS**;
+- final E2E API proof = **HTTP 200 for all four targets**;
+- PR #746 created as **Draft** against `main`;
 - Gemini/model calls = **0**;
 - Daily = **not run**.
 
 Still required before completion:
 
-- PR created against `main` with no merge before explicit `MERGE GO`;
-- Member Presentation Sync E2E succeeds and preserves the 240-record contract;
-- Decision Brief sync and representative individual body sync are verified;
-- final guest-account navigation check succeeds.
+- remove the temporary branch-only E2E workflow after preserving its run evidence;
+- final guest-account navigation check succeeds: member home → Decision Brief → judgment DB/views → individual page → judgment memo;
+- no merge before explicit `MERGE GO`.
 
-The historical Run221 incident is not erased. This migration supersedes only its old-host-as-current-host rule after the live read and integrity gates above succeeded.
+The historical Run221 incident is not erased. This migration supersedes only its old-host-as-current-host rule after the live read, regression, integrity, and E2E gates above succeeded.
