@@ -24,6 +24,8 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
+      - name: Install unit-test runtime dependency
+        run: pip install requests
       - name: Run read-only inventory contract tests
         run: python -m unittest tests.test_run296_note_private_draft_inventory -v
 
