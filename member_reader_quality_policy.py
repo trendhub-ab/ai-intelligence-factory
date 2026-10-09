@@ -162,3 +162,30 @@ def reader_reason(state: dict[str, Any]) -> str:
     if reason.endswith(risk):
         return reason[:-len(risk)].strip()
     return reason
+
+
+_BENEFIT_CUE_RE = re.compile(
+    r"(?:減ら|短縮|省け|省力|手間|負担|楽に|効率|一元管理|まとめて|探しやす|簡単|自動化)"
+)
+_EVALUATION_CUE_RE = re.compile(
+    r"(?:採用価値|有力|成熟|標準比較基盤|注目|完成度|相互運用性|重要です)"
+)
+
+
+def reader_benefit(state: dict[str, Any]) -> tuple[str, str]:
+    """Return an evidence-neutral benefit/capability label and existing source copy.
+
+    Never rewrite a technical observation into an unproven productivity claim. A topic
+    is labelled as a benefit only when its own wording states a concrete reduction or
+    simplification. Otherwise the already-reviewed plain summary is presented neutrally
+    as capability copy.
+    """
+    topic = " ".join(str(state.get("topic") or "").split()).strip()
+    summary = " ".join(str(state.get("plain_summary") or "").split()).strip()
+    if topic and _BENEFIT_CUE_RE.search(topic) and not _EVALUATION_CUE_RE.search(topic):
+        return "何が楽になる？", topic
+    if summary:
+        return "何ができる？", summary
+    if topic:
+        return "何ができる？", topic
+    return "", ""
