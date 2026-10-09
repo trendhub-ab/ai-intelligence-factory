@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - ops/member-home-host-migration-proof
-    paths:
-      - '.github/workflows/member-home-api-read-proof.yml'
   workflow_dispatch:
 
 permissions:
@@ -16,6 +14,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Run migration contract test
+        run: python -m unittest tests/test_member_home_physical_host_migration.py
+
       - name: Prove GitHub Actions Notion integration can read migration targets
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
