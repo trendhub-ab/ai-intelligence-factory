@@ -1,6 +1,6 @@
 # Member Home Physical Host Migration — 2026-10-10
 
-Status: **live physical move and post-move API proof complete; full regression / PR / E2E / guest check pending**  
+Status: **live physical move, post-move API proof, and full regression complete; PR / E2E / guest check pending**  
 Gemini/model calls: **0**  
 Daily: **not run**
 
@@ -110,6 +110,28 @@ Proof:
 
 The Run221 failure mode did not recur. **Rollback was not invoked.**
 
+## Gate 3 — deterministic regression and synthetic Production smoke
+
+A branch-only, zero-external-write regression workflow reproduced the current Integration Reconciliation CI contract: locked dependencies, compile, focused migration tests, Integration Stability Guard, repository falsification guard, full pytest, and synthetic Production smoke.
+
+The first full run exposed three stale Run220 tests that still hard-coded the pre-migration `mlflow/mlflow` host. This was not a new production defect: **3,553 tests passed and the only three failures were the old physical-host expectation**. The canonical Database/Data Source IDs, no-fallback policy, and no-auto-create policy were already correct. The fix changed only the expected physical host in that historical cutover test to the member home.
+
+Final fresh proof:
+- Workflow run ID: `38004546138`
+- Job ID: `114070207081`
+- focused migration contract: **4/4 OK**
+- Run221 successor/incident contract: **8/8 OK**
+- Run220 canonical cutover contract: **7/7 OK**
+- `INTEGRATION_STABILITY_GUARD=PASS`
+- `REPOSITORY_FALSIFICATION_GUARD=PASS`
+- full pytest: **3,556 passed, 0 failed**
+- warning: **1 existing Pillow deprecation warning** unrelated to this migration
+- synthetic Production smoke: **30/30 passed**
+- synthetic critical failures: **0**
+- production write isolation: **true**
+
+Temporary proof workflows and the RED trigger were removed from the branch after their evidence was captured. They are not part of the permanent production contract.
+
 ## Rollback contract
 
 If a later pre-merge validation discovers that the production integration can no longer read the canonical Database/Data Source/Brief, rollback remains the fail-safe action before any main-branch change:
@@ -134,13 +156,16 @@ Completed:
 - distinct/blank `同期ID` audit = **240 / 0 blank**;
 - representative individual page readable;
 - GitHub Actions post-move read proof = HTTP 200 for all four targets;
-- focused migration tests GREEN;
+- focused migration / Run220 / Run221 tests GREEN;
+- full pytest = **3,556 passed**;
+- Integration Stability Guard GREEN;
+- Repository Falsification Guard GREEN;
+- synthetic Production smoke = **30/30**;
 - Gemini/model calls = **0**;
 - Daily = **not run**.
 
 Still required before completion:
 
-- full pytest / guards / synthetic smoke GREEN;
 - PR created against `main` with no merge before explicit `MERGE GO`;
 - Member Presentation Sync E2E succeeds and preserves the 240-record contract;
 - Decision Brief sync and representative individual body sync are verified;
