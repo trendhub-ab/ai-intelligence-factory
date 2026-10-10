@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import types
 import unittest
+from unittest.mock import patch
 
 import run260_gemini_model_routing as run260
 
@@ -94,6 +95,21 @@ class GeminiLaneContractTests(unittest.TestCase):
         self.assertEqual(routed[0], "gemini-3.1-flash-lite")
         self.assertEqual(set(routed), {"gemini-3.5-flash-lite", "gemini-3.1-flash-lite"})
         self.assertNotIn("gemini-3.8-flash", routed)
+
+    def test_health_backstop_is_scoped_to_requested_lane(self):
+        history = [
+            self._row("gemini-3.5-flash-lite", "error", minutes_ago=30, error_type="ServiceUnavailable"),
+            self._row("gemini-3.1-flash-lite", "success", minutes_ago=1800),
+            self._row("gemini-3.1-flash-lite", "success", minutes_ago=1860),
+            self._row("gemini-3.6-flash", "success", minutes_ago=5),
+            self._row("gemini-3.5-flash", "success", minutes_ago=6),
+            self._row("gemini-3.7-flash", "success", minutes_ago=7),
+            self._row("gemini-3.8-flash", "success", minutes_ago=8),
+        ]
+        with patch.dict(run260.os.environ, {"GEMINI_PROVIDER_HEALTH_RECENT_ATTEMPTS": "4"}, clear=False):
+            stats = run260._model_health_stats(run260.DEFAULT_SCREENING_POOL, history)
+        self.assertEqual(stats["gemini-3.1-flash-lite"]["attempts"], 2)
+        self.assertEqual(stats["gemini-3.5-flash-lite"]["attempts"], 1)
 
     def test_live_screening_health_routing_survives_later_provider_wrapper_replacement(self):
         history = [
