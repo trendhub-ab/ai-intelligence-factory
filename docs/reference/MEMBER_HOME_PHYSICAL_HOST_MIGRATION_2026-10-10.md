@@ -1,6 +1,6 @@
 # Member Home Physical Host Migration — 2026-10-10
 
-Status: **live physical move, post-move API proof, full regression, and production E2E complete; guest check pending**
+Status: **live physical move, post-move API proof, full regression, production E2E, and guest-account UI navigation proof complete; awaiting explicit MERGE GO**
 Gemini/model calls: **0**
 Daily: **not run**
 
@@ -156,6 +156,20 @@ The E2E preserved the 240-record identity contract and produced no create/archiv
 
 The branch-only E2E workflow was removed after this evidence was recorded. It is not part of the permanent production contract.
 
+## Gate 5 — guest-account UI navigation proof
+
+Manual guest-account UAT was completed on 2026-10-10 after the live move and member quick-link correction.
+
+The guest account successfully opened the full paid-member navigation path without an access-denied, request-access, or not-found interruption:
+
+- member home;
+- Decision Brief;
+- judgment DB and its views;
+- an individual record page;
+- judgment memo.
+
+Result: **PASS**.
+
 ## Rollback contract
 
 If a later pre-merge validation discovers that the production integration can no longer read the canonical Database/Data Source/Brief, rollback remains the fail-safe action before any main-branch change:
@@ -192,13 +206,13 @@ Completed:
 - E2E Decision Brief refresh = **PASS**;
 - final E2E API proof = **HTTP 200 for all four targets**;
 - temporary branch-only E2E workflow removed after evidence capture;
+- guest-account UI navigation proof = **PASS**;
 - PR #746 created as **Draft** against `main`;
 - Gemini/model calls = **0**;
 - Daily = **not run**.
 
-Still required before completion:
+No technical acceptance gate remains. Before merge, one administrative authorization is still required:
 
-- final guest-account navigation check succeeds: member home → Decision Brief → judgment DB/views → individual page → judgment memo;
 - no merge before explicit `MERGE GO`.
 
-The historical Run221 incident is not erased. This migration supersedes only its old-host-as-current-host rule after the live read, regression, integrity, and E2E gates above succeeded.
+The historical Run221 incident is not erased. This migration supersedes only its old-host-as-current-host rule after the live read, regression, integrity, E2E, and guest-account UI gates above succeeded.
