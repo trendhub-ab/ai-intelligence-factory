@@ -27,22 +27,25 @@ jobs:
 
           path = Path("member_presentation_sync.py")
           text = path.read_text(encoding="utf-8")
-          old = '''_MEMBER_PRESENTATION_TITLE_OVERRIDES = {
-    "github:mintplex-labs/anything-llm": "AnythingLLM",
-}
-'''
-          new = '''_MEMBER_PRESENTATION_TITLE_OVERRIDES = {
-    "github:langgenius/dify": "Dify",
-    "github:mintplex-labs/anything-llm": "AnythingLLM",
-    "github:browser-use/browser-use": "browser-use",
-    "github:comfyanonymous/comfyui": "ComfyUI",
-    "github:cline/cline": "Cline",
-}
-'''
+          old = "\n".join([
+              "_MEMBER_PRESENTATION_TITLE_OVERRIDES = {",
+              "    \"github:mintplex-labs/anything-llm\": \"AnythingLLM\",",
+              "}",
+              "",
+          ])
+          new = "\n".join([
+              "_MEMBER_PRESENTATION_TITLE_OVERRIDES = {",
+              "    \"github:langgenius/dify\": \"Dify\",",
+              "    \"github:mintplex-labs/anything-llm\": \"AnythingLLM\",",
+              "    \"github:browser-use/browser-use\": \"browser-use\",",
+              "    \"github:comfyanonymous/comfyui\": \"ComfyUI\",",
+              "    \"github:cline/cline\": \"Cline\",",
+              "}",
+              "",
+          ])
           if text.count(old) != 1:
               raise SystemExit("title override anchor mismatch")
-          text = text.replace(old, new, 1)
-          path.write_text(text, encoding="utf-8")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
           PY
           python -m compileall -q member_presentation_sync.py tests/test_member_presentation_display_names.py
           git diff --check
