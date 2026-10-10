@@ -5,6 +5,7 @@ This module intentionally:
 - reads the paid decision source DB but never mutates Notion;
 - selects a deterministic, source-diverse queue from records older than 30 days;
 - reuses the existing source resolver + Evidence gate before any model could run;
+- compares retrieved evidence with an optional prior Evidence Ledger baseline;
 - never calls Gemini or any other model;
 - re-reads the selected DB rows and fails closed if review date, score, or status changed;
 - emits aggregate counts only (no paid record names, IDs, URLs, or evidence extracts).
@@ -24,6 +25,7 @@ from typing import Any, Callable
 from urllib.parse import urlparse
 
 import decision_intelligence
+import evidence_ledger
 import member_presentation_sync as member
 
 
@@ -142,14 +144,12 @@ def select_diverse_stale_queue(
     )
 
     selected: list[dict[str, Any]] = []
-    # First pass: one record per acquisition bucket.
     for bucket in bucket_order:
         if len(selected) >= limit:
             break
         if buckets[bucket]:
             selected.append(buckets[bucket].pop(0))
 
-    # Fill remaining capacity globally by the same value/age policy.
     remainder = [row for rows in buckets.values() for row in rows]
     remainder.sort(key=lambda s: _queue_priority(s, brief_ids))
     selected.extend(remainder[: max(0, limit - len(selected))])
@@ -188,9 +188,102 @@ def build_repo_for_existing_evidence(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def material_change_from_baseline(
+    source_info: dict[str, Any], baseline: list[dict[str, Any]]
+) -> bool | None:
+    """Compare current evidence with a prior ledger snapshot, without a model.
+
+    ``None`` means there is no trustworthy baseline and therefore the caller must
+    preserve the old review behaviour.  ``False`` is returned only when every
+    current/baseline URL matches and each changed document still contains the old
+    evidence extract (the Evidence Ledger's existing cosmetic-change contract).
+    Any missing/new URL or lost extract is treated as material so we never suppress
+    a potentially important Product Review.
+    """
+    if not baseline:
+        return None
+
+    current_by_url: dict[str, dict[str, Any]] = {}
+    for doc in source_info.get("evidence_documents", []) or []:
+        if not doc.get("retrieved"):
+            continue
+        key = evidence_ledger.canonical_url(str(doc.get("url") or ""))
+        if key:
+            current_by_url[key] = doc
+
+    baseline_by_url: dict[str, dict[str, Any]] = {}
+    for prior in baseline:
+        key = evidence_ledger.canonical_url(str(prior.get("url") or ""))
+        if key:
+            baseline_by_url[key] = prior
+
+    if not current_by_url or not baseline_by_url:
+        return None
+    if set(current_by_url) != set(baseline_by_url):
+        return True
+
+    for key, prior in baseline_by_url.items():
+        doc = current_by_url[key]
+        current_text = str(doc.get("document_text") or doc.get("evidence_extract") or "")
+        if not current_text:
+            return True
+        current_hash = evidence_ledger.content_hash(current_text)
+        if current_hash and current_hash == str(prior.get("document_hash") or ""):
+            continue
+        prior_extract = evidence_ledger.normalize_text(str(prior.get("extract") or ""))
+        normalized_current = evidence_ledger.normalize_text(current_text)
+        if prior_extract and prior_extract in normalized_current:
+            continue
+        return True
+    return False
+
+
+def _active_evidence_baseline(entity_id: str) -> list[dict[str, Any]]:
+    """Read active ledger snapshots for one entity; failure preserves review eligibility."""
+    if not evidence_ledger.ENABLE_EVIDENCE_LEDGER or not entity_id:
+        return []
+    token = (
+        os.environ.get("NOTION_DECISION_INTELLIGENCE_API_KEY", "").strip()
+        or os.environ.get("NOTION_API_KEY", "").strip()
+    )
+    if not token or not (
+        evidence_ledger.NOTION_EVIDENCE_DATA_SOURCE_ID
+        or evidence_ledger.NOTION_EVIDENCE_DATABASE_ID
+    ):
+        return []
+    payload = {
+        "filter": {
+            "and": [
+                {
+                    "property": evidence_ledger.P_ENTITY,
+                    "rich_text": {"equals": entity_id},
+                },
+                {
+                    "property": evidence_ledger.P_ACTIVE,
+                    "checkbox": {"equals": True},
+                },
+            ]
+        },
+        "page_size": 100,
+    }
+    try:
+        response = evidence_ledger.requests.post(
+            evidence_ledger._query_url(),
+            headers=evidence_ledger._headers(token),
+            json=payload,
+            timeout=20,
+        )
+        response.raise_for_status()
+        return [
+            evidence_ledger.page_to_state(page)
+            for page in response.json().get("results", [])
+        ]
+    except Exception:
+        return []
+
+
 def _live_verify_one(state: dict[str, Any]) -> dict[str, Any]:
-    """Run the exact zero-model evidence preflight used before Product Review."""
-    # Suppress existing source-resolver URL/name logs because this repository is public.
+    """Run zero-model evidence preflight and optional deterministic change check."""
     logging.disable(logging.CRITICAL)
     import pipeline
 
@@ -214,10 +307,15 @@ def _live_verify_one(state: dict[str, Any]) -> dict[str, Any]:
             and evidence.get("state") != pipeline.EVIDENCE_INSUFFICIENT
             and evidence.get("decision_scope_safe")
         )
+        material_change = None
+        if gate_pass:
+            baseline = _active_evidence_baseline(str(repo.get("canonicalEntityId") or ""))
+            material_change = material_change_from_baseline(source_info, baseline)
         return {
             "retrieved": retrieved,
             "gate_pass": gate_pass,
             "result": "PASS" if gate_pass else ("EVIDENCE_FAIL" if retrieved else "UNAVAILABLE"),
+            "material_change": material_change,
         }
     except Exception:
         return {"retrieved": False, "gate_pass": False, "result": "UNAVAILABLE"}
@@ -306,7 +404,6 @@ def run_live(*, as_of: date, limit: int, stale_days: int) -> dict[str, Any]:
 
     counts = run_verification_batch(selected, _live_verify_one)
 
-    # Re-read the DB and prove the dry run did not alter protected decision state.
     after_states = _read_source_states()
     after_by_id = {str(s.get("sync_id") or ""): s for s in after_states}
     mutation_detected = 0

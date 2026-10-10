@@ -7,7 +7,8 @@ review-date writer.
 
 Safety contract:
 - real source retrieval + existing Evidence gate happens first;
-- only Evidence PASS candidates enter the Product Review allowlist;
+- verified evidence that is deterministically unchanged never enters Product Review;
+- only Evidence PASS candidates with new/unknown material change enter the allowlist;
 - the allowlist is deduped and capped at two records;
 - the existing Product Review path owns review date / score / status / history;
 - unavailable and Evidence-failed candidates must remain unchanged;
@@ -48,6 +49,7 @@ def build_verified_allowlist(
     allowlist: list[str] = []
     counts = {
         "verified": 0,
+        "unchanged": 0,
         "unavailable": 0,
         "evidence_fail": 0,
     }
@@ -64,6 +66,13 @@ def build_verified_allowlist(
             and bool(result.get("retrieved"))
             and bool(result.get("gate_pass"))
         ):
+            # False is authoritative: the zero-model verifier found the source
+            # materially unchanged against a prior Evidence Ledger baseline.
+            # Missing/None remains review-eligible so absence of a baseline can
+            # never suppress a potentially important Product Review.
+            if result.get("material_change") is False:
+                counts["unchanged"] += 1
+                continue
             sync_id = str(state.get("sync_id") or "")
             if sync_id and sync_id not in allowlist and len(allowlist) < cap:
                 allowlist.append(sync_id)
@@ -167,6 +176,7 @@ def execute_verified_apply(
             "selected_count": len(selected),
             "allowlist_count": 0,
             "verified": int(verified["verified"]),
+            "unchanged": int(verified["unchanged"]),
             "unavailable": int(verified["unavailable"]),
             "evidence_fail": int(verified["evidence_fail"]),
             "max_reviews": int(max_reviews),
@@ -191,6 +201,7 @@ def execute_verified_apply(
         "selected_count": len(selected),
         "allowlist_count": len(allowlist),
         "verified": int(verified["verified"]),
+        "unchanged": int(verified["unchanged"]),
         "unavailable": int(verified["unavailable"]),
         "evidence_fail": int(verified["evidence_fail"]),
         "max_reviews": effective_reviews,
