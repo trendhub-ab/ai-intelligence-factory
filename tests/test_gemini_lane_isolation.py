@@ -2,6 +2,7 @@ import types
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 import run260_gemini_model_routing as run260
 
@@ -21,6 +22,7 @@ class GeminiLaneIsolationTests(unittest.TestCase):
 
     def _fake_pipeline(self, history=None):
         calls = []
+        audit = types.SimpleNamespace(records=[])
 
         class NoAvailableModelError(Exception):
             pass
@@ -30,6 +32,17 @@ class GeminiLaneIsolationTests(unittest.TestCase):
             if not args[4]:
                 raise NoAvailableModelError("no available model")
             return "response", args[4][0]
+
+        def generate(model_name, prompt, config=None, request_kind="other", reserve=0,
+                     request_context="", count_as_deep_dive=False, request_origin="new"):
+            audit.records.append({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "model": model_name,
+                "kind": request_kind,
+                "outcome": "success",
+                "error_type": "",
+            })
+            return "provider-response"
 
         module = None
 
@@ -52,6 +65,8 @@ class GeminiLaneIsolationTests(unittest.TestCase):
         module = types.SimpleNamespace(
             _call_model_pool=original,
             _call_deep_dive_pool=original_deep_dive,
+            _generate_via_chat=generate,
+            GEMINI_USAGE_AUDIT=audit,
             SCREENING_MODEL_POOL=[
                 "gemini-3.5-flash-lite",
                 "gemini-3.1-flash-lite",
@@ -155,6 +170,20 @@ class GeminiLaneIsolationTests(unittest.TestCase):
         for args, _kwargs in calls:
             self.assertEqual(args[4], ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite"])
             self.assertTrue(all("flash-lite" in model for model in args[4]))
+
+    def test_lite_provider_outcome_is_persisted_even_below_pool_wrappers(self):
+        module, _ = self._fake_pipeline()
+        run260.install(module)
+        with patch.object(run260, "_persist_provider_health_history") as persist:
+            result = module._generate_via_chat(
+                "gemini-3.1-flash-lite",
+                "prompt",
+                request_kind="screening_batch",
+            )
+        self.assertEqual(result, "provider-response")
+        self.assertEqual(module._provider_health_history[-1]["model"], "gemini-3.1-flash-lite")
+        self.assertEqual(module._provider_health_history[-1]["outcome"], "success")
+        persist.assert_called_once_with(module)
 
     def test_article_lane_still_rejects_lite_models(self):
         ranked = run260._health_ranked_pool(
