@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
 """Run225 member-surface overlay for active Stock lifecycle.
 
-The authoritative member sync remains Run219/Run215. This zero-model overlay
-changes only recommendation eligibility/order:
-- Archive items remain searchable/history records but receive no homepage rank.
+The authoritative member sync remains Run219/Run215. This zero-model overlay now
+uses the existing lifecycle policy for both member visibility and homepage order:
+- Archive items are withheld from the member presentation surface, but never deleted
+  from Technology Intelligence / Decision History.
+- A later first-party update or review recomputes the lifecycle and can restore the
+  same canonical entity to the member surface.
 - Fresh/Evergreen are ranked first.
 - Aging can fill remaining homepage slots after active-current choices.
 
 Important integration boundary: Run170-Run215 wrap ``member_presentation_sync``
-source-state generation to preserve current copy authority. Run225 therefore
-NEVER replaces ``_source_state``. It classifies the fully prepared state only at
-the existing homepage-ranking boundary, after all copy/authority layers have run.
+source-state generation to preserve current copy authority. Run225 therefore wraps
+the fully prepared source state only after those layers are installed; it never
+reimplements or bypasses their copy/authority logic.
 
-Current score, decision, Evidence, source copy and Notion records are untouched.
+Current score, decision, Evidence, source copy and internal Notion records are untouched.
 """
 from __future__ import annotations
 
 import json
 import sys
-from typing import Any
+from typing import Any, Callable
 
 import member_presentation_sync as presentation
 import run219_member_human_language_ui as run219
@@ -26,6 +29,7 @@ import run225_stock_lifecycle as lifecycle
 
 _INSTALLED = False
 _ORIGINAL_ASSIGN_HOME_RANKS = presentation.assign_home_ranks
+_SOURCE_STATE_DELEGATE: Callable[[dict], dict[str, Any] | None] | None = None
 
 
 def _ensure_lifecycle(state: dict[str, Any]) -> str:
@@ -42,6 +46,26 @@ def _ensure_lifecycle(state: dict[str, Any]) -> str:
     state["stock_lifecycle"] = decision.label
     state["stock_lifecycle_reason"] = decision.reason
     return decision.label
+
+
+def member_visible_state(state: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Return only lifecycle-current records for the paid member presentation.
+
+    Archive is a presentation decision only.  The caller/source record is left in
+    the internal Technology/History stores.  Because lifecycle classification is
+    recomputed from the newest review anchor, a later fresh review naturally makes
+    the canonical entity visible again without a second lifecycle implementation.
+    """
+    if not state:
+        return None
+    return None if _ensure_lifecycle(state) == lifecycle.ARCHIVE else state
+
+
+def _source_state_with_lifecycle(page: dict) -> dict[str, Any] | None:
+    delegate = _SOURCE_STATE_DELEGATE
+    if delegate is None:
+        raise RuntimeError("Run225 member lifecycle source-state delegate is not installed")
+    return member_visible_state(delegate(page))
 
 
 def assign_home_ranks_with_lifecycle(
@@ -73,10 +97,13 @@ def assign_home_ranks_with_lifecycle(
 
 
 def install() -> None:
-    global _INSTALLED
+    global _INSTALLED, _SOURCE_STATE_DELEGATE
     if _INSTALLED:
         return
-    # Do not patch _source_state: Run170-Run215 own that current-authority chain.
+    # Capture the already-installed Run170-Run215 authority chain and delegate to
+    # it first.  Run225 only makes the final lifecycle visibility decision.
+    _SOURCE_STATE_DELEGATE = presentation._source_state
+    presentation._source_state = _source_state_with_lifecycle
     presentation.assign_home_ranks = assign_home_ranks_with_lifecycle
     _INSTALLED = True
 
@@ -85,19 +112,19 @@ def run_presentation_sync() -> dict[str, Any]:
     install()
     result = run219.run_presentation_sync()
     result["run225_stock_lifecycle"] = {
-        "archive_excluded_from_homepage": True,
+        "archive_excluded_from_member_surface": True,
         "fresh_evergreen_before_aging": True,
         "source_state_authority_preserved": True,
-        "records_deleted": 0,
+        "internal_records_deleted": 0,
     }
     result["zero_gemini_calls"] = True
     return result
 
 
 def run_body_sync() -> dict[str, Any]:
-    # Body rendering remains exactly Run219; lifecycle changes navigation only.
+    # Body rendering remains exactly Run219; visibility is owned by presentation sync.
     result = run219.run_body_sync()
-    result["run225_stock_lifecycle"] = "navigation_only"
+    result["run225_stock_lifecycle"] = "presentation_visibility_only"
     result["zero_gemini_calls"] = True
     return result
 
