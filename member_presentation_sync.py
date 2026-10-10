@@ -61,6 +61,20 @@ CATEGORY_JA = {
     "OTHER": "その他",
 }
 
+_MEMBER_PRESENTATION_TITLE_OVERRIDES = {
+    "github:langgenius/dify": "Dify",
+    "github:mintplex-labs/anything-llm": "AnythingLLM",
+    "github:browser-use/browser-use": "browser-use",
+    "github:comfyanonymous/comfyui": "ComfyUI",
+    "github:cline/cline": "Cline",
+}
+
+
+def _member_presentation_title(sync_id: str, source_name: str) -> str:
+    key = str(sync_id or "").strip().casefold()
+    return _MEMBER_PRESENTATION_TITLE_OVERRIDES.get(key, source_name)
+
+
 PUBLIC_SCHEMA = {
     "AI・技術名": "title",
     "これは何？": "rich_text",
@@ -385,6 +399,7 @@ def _source_state(page: dict) -> dict[str, Any] | None:
         or _strip_review_suffix(_text(p.get("日本語表示名")))
         or raw_name
     )
+    name = _member_presentation_title(sync_id, name)
     status = _select(p.get("採用判断（内部）"))
     score = _number(p.get("採用スコア（内部）"))
     confidence_raw = _select(p.get("根拠信頼度（内部）"))
