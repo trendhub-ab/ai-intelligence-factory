@@ -14,7 +14,7 @@
     "local_skills/compiler.py": "9f0f2e96bfe6b42666ceb9a8f302259a80404d01",
     "local_skills/a_plus.py": "595caa5a8bcf207dbf1e4df8f22a8ae2a241d128",
     "local_skills_daily_canary.py": "09e54e18eaf33dcdf91ed02b04e637468ceee48a",
-    "pipeline.py": "47243fb9df7ad1d6d9a965ff210ad35362340c87",
+    "pipeline.py": "20c61c7bfea34e96a5acc94602c64e44530360c4",
     "production_pipeline.py": "2f8a70e93f1698c8b7ff16440d2f94fab1527895",
     "run268_business_source_strategy.py": "d8563ea107231b5ed708466824054aac887b2845",
     "run269_business_source_precision.py": "aa8df7c9f2bb6dfcd6b97158cc0c06b04881e22a",
@@ -27,11 +27,11 @@
     "run248_first_real_publish_quality_calibration.py": "02bc1899ae8ff686b57d8c4782b266fff87df1c9",
     "run249_final_publication_surface_gate.py": "47a12ae0ebeafc701a038e3e0b19bca2f02c7511",
     "run194_publication_contract.py": "1a8f0268aac3e7f3bfdcb4e5dffa7cc45a6d4d44",
-    ".github/workflows/daily-one-shot.yml": "31d2e1acec370dc5431103588f776690a17793d0",
+    ".github/workflows/daily-one-shot.yml": "b6fa5f902360b0950b26df73f57f31c2e7f7e070",
     "fresh_protocol_quota_lock.py": "c8acf920fb417fcad8528f50a16b3866a3f99237",
     "fresh_model_fallback_budget.py": "ed495c7b4835a6e233414c89904b721f50713910",
     "gemini_provider_resilience.py": "76a20936fe39544f8c34ba0bd9d0ef2a44e7848b",
-    "run260_gemini_model_routing.py": "2584fb342b8c7d6ed8839063ae3a9d82e331eea9",
+    "run260_gemini_model_routing.py": "b88606a782b9df7833e0c413bbd73a221b5aa3b1",
     "gemini_transient_recovery.py": "d02f9d14ae199420f710a2be894bb29803aa14b2",
     "gemini_timeout_rpd_fail_closed.py": "dd50fe206f88b1730bdb13767dc2f1584df5449d",
     "local_skills/production_canary.py": "5c1e9239d1b3213371978b45ad697e285592f448",
@@ -62,7 +62,8 @@
     "v3 retains the bounded v2 503/429 fallback guard (6 pre-article and 4 article send slots), same source selection, unchanged Writer, Canonicalizer, Evidence Boundary, Gate thresholds, and one article after first attempted send.",
     "v3 does NOT claim the historical article now PASSes. Only independent untouched candidate evidence under v3 can count toward 4/4.",
     "2026-10-04 P0-B branch amendment re-fingerprints daily-one-shot.yml after the explicit Ready-only full-mode control and approved non-Lite model routing. Source membership, workflow limits, provider-send caps, quality retries, and Gates are unchanged; this amendment does not itself count as a new Fresh observation.",
-    "2026-10-08 cost-routing amendment re-fingerprints daily-one-shot.yml for Screening-only gemini-3.1-flash-lite first-choice routing and its run-scoped exclusion allowlist. Deep Dive and public Writer remain full-Flash-only; source membership, workflow limits, provider-send caps, quality retries, Evidence/Fact/Publication Gates, and article-generation routing are unchanged. This amendment does not itself count as a new Fresh observation."
+    "2026-10-08 cost-routing amendment re-fingerprints daily-one-shot.yml for Screening-only gemini-3.1-flash-lite first-choice routing and its run-scoped exclusion allowlist. Deep Dive and public Writer remain full-Flash-only; source membership, workflow limits, provider-send caps, quality retries, Evidence/Fact/Publication Gates, and article-generation routing are unchanged. This amendment does not itself count as a new Fresh observation.",
+    "2026-10-11 lane-isolation amendment re-fingerprints pipeline.py, run260_gemini_model_routing.py, and daily-one-shot.yml for the approved Screening/Global Calibration Lite-only lane (gemini-3.5-flash-lite then gemini-3.1-flash-lite), while Deep Dive/article/quality-repair routing remains full-Flash-only and provider-health ranking is constrained within each lane. Source membership, workflow limits, provider-send caps, quality retries, Evidence/Fact/Publication Gates, and Fresh observation counting are unchanged; this amendment does not itself count as a new Fresh observation."
   ],
   "max_article_candidates_after_send": 1,
   "max_provider_send_slots": {
