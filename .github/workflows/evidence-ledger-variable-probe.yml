@@ -1,0 +1,27 @@
+name: Evidence Ledger Variable Probe
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Report repository variable as boolean only
+        env:
+          ENABLE_EVIDENCE_LEDGER_VALUE: ${{ vars.ENABLE_EVIDENCE_LEDGER }}
+        shell: bash
+        run: |
+          case "${ENABLE_EVIDENCE_LEDGER_VALUE,,}" in
+            true|1|yes|on)
+              echo "ENABLE_EVIDENCE_LEDGER_EFFECTIVE=true"
+              ;;
+            *)
+              echo "ENABLE_EVIDENCE_LEDGER_EFFECTIVE=false"
+              ;;
+          esac
