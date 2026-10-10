@@ -1,0 +1,55 @@
+name: Member Display Name Patch
+
+on:
+  push:
+    branches:
+      - ops/member-home-host-migration-proof
+    paths:
+      - .github/workflows/member-display-name-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ops/member-home-host-migration-proof
+          fetch-depth: 0
+
+      - name: Apply bounded display-name fix
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("member_presentation_sync.py")
+          text = path.read_text(encoding="utf-8")
+
+          public_anchor = "\nPUBLIC_SCHEMA = {\n"
+          helper = '''\n_MEMBER_PRESENTATION_TITLE_OVERRIDES = {\n    "github:mintplex-labs/anything-llm": "AnythingLLM",\n}\n\n\ndef _member_presentation_title(sync_id: str, source_name: str) -> str:\n    key = str(sync_id or "").strip().casefold()\n    return _MEMBER_PRESENTATION_TITLE_OVERRIDES.get(key, source_name)\n\n\nPUBLIC_SCHEMA = {\n'''
+          if text.count(public_anchor) != 1:
+              raise SystemExit("PUBLIC_SCHEMA anchor mismatch")
+          text = text.replace(public_anchor, helper, 1)
+
+          name_block = '''    name = (\n        _text(p.get("AI・技術名"))\n        or _strip_review_suffix(_text(p.get("日本語表示名")))\n        or raw_name\n    )\n'''
+          replacement = name_block + "    name = _member_presentation_title(sync_id, name)\n"
+          if text.count(name_block) != 1:
+              raise SystemExit("source-state name anchor mismatch")
+          text = text.replace(name_block, replacement, 1)
+
+          path.write_text(text, encoding="utf-8")
+          PY
+          python -m compileall -q member_presentation_sync.py tests/test_member_presentation_display_names.py
+          git diff --check
+
+      - name: Commit bounded fix
+        shell: bash
+        run: |
+          git config user.name "TrendHub"
+          git config user.email "trendhub.biz@gmail.com"
+          git add member_presentation_sync.py
+          git commit -m "fix: preserve AnythingLLM member display name"
+          git push origin HEAD:ops/member-home-host-migration-proof
