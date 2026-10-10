@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ONE_SHOT = ROOT / ".github" / "workflows" / "daily-one-shot.yml"
 EXPECTED_ARTICLE_MODELS = "gemini-3.6-flash,gemini-3.5-flash,gemini-3.7-flash,gemini-3.8-flash"
-EXPECTED_SCREENING_MODELS = "gemini-3.1-flash-lite," + EXPECTED_ARTICLE_MODELS
+EXPECTED_SCREENING_MODELS = "gemini-3.5-flash-lite,gemini-3.1-flash-lite"
 
 
 class P0BDailyReadyOnlyWorkflowTests(unittest.TestCase):
@@ -37,11 +37,16 @@ class P0BDailyReadyOnlyWorkflowTests(unittest.TestCase):
         self.assertIn('-f target_source_url="$target_source_url"', self.source)
         self.assertIn("DELIVERY_CREATE_PRIVATE_DRAFT", self.source)
 
-    def test_daily_article_models_remain_non_lite_in_required_fallback_order(self) -> None:
+    def test_daily_screening_models_remain_lite_only_and_deep_dive_remains_non_lite(self) -> None:
         self.assertIn(
             f'GEMINI_SCREENING_MODEL_CANDIDATES: "{EXPECTED_SCREENING_MODELS}"',
             self.source,
         )
+        screening_line = next(
+            line for line in self.source.splitlines() if "GEMINI_SCREENING_MODEL_CANDIDATES:" in line
+        )
+        self.assertTrue(all("flash-lite" in model for model in EXPECTED_SCREENING_MODELS.split(",")))
+        self.assertNotIn("gemini-3.6-flash,", screening_line)
         self.assertIn(
             f'GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "{EXPECTED_ARTICLE_MODELS}"',
             self.source,
