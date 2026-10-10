@@ -40,6 +40,7 @@ from typing import Any, Iterable
 _INSTALLED_ATTR = "_run260_gemini_model_routing_installed"
 _ORIGINAL_CALL_ATTR = "_run260_original_call_model_pool"
 _ORIGINAL_DEEP_DIVE_ATTR = "_run261_original_call_deep_dive_pool"
+_ORIGINAL_GENERATE_ATTR = "_run260_original_generate_via_chat"
 
 # Revenue-first cold start: use the models that have been materially more available in
 # recent Production before spending attempts on the newer/high-contention models.
@@ -53,6 +54,9 @@ FALLBACK_MODELS = (
 DEFAULT_DEEP_DIVE_POOL = (PRIMARY_MODEL, QUALITY_MODEL, *FALLBACK_MODELS)
 DEFAULT_QUALITY_POOL = DEFAULT_DEEP_DIVE_POOL
 ARTICLE_MODELS = frozenset(DEFAULT_DEEP_DIVE_POOL)
+DEFAULT_SCREENING_POOL = ("gemini-3.5-flash-lite", "gemini-3.1-flash-lite")
+SCREENING_MODELS = frozenset(DEFAULT_SCREENING_POOL)
+ROUTABLE_MODELS = ARTICLE_MODELS | SCREENING_MODELS
 LAST_RESORT_ARTICLE_MODELS = frozenset()
 DEFAULT_FLASH_SAFETY_BUDGET = 18
 QUALITY_RETRY_MAX_DISTINCT_MODELS = 2
@@ -88,6 +92,10 @@ def _is_quality_repair_kind(kind: str) -> bool:
     return value == "quality_retry" or any(
         token in value for token in ("quality_repair", "quality_rescue", "recompose", "reader_repair")
     )
+
+
+def _is_screening_kind(kind: str) -> bool:
+    return str(kind or "").strip().lower() in {"screening", "screening_batch", "global_calibration"}
 
 
 def _replace_pool_argument(args: tuple, kwargs: dict, new_pool: list[str]) -> tuple[tuple, dict]:
@@ -153,7 +161,7 @@ def _normalize_health_record(row: Any) -> dict | None:
     model = str(row.get("model") or "").strip()
     outcome = str(row.get("outcome") or "").strip().lower()
     timestamp = _parse_timestamp(row.get("timestamp"))
-    if model not in ARTICLE_MODELS or outcome not in {"success", "error"} or timestamp is None:
+    if model not in ROUTABLE_MODELS or outcome not in {"success", "error"} or timestamp is None:
         return None
     return {
         "timestamp": timestamp.isoformat(),
@@ -210,9 +218,15 @@ def _health_window(history: Iterable[dict], now: datetime | None = None) -> list
 
 
 def _model_health_stats(models: Iterable[str], history: Iterable[dict], now: datetime | None = None) -> dict[str, dict]:
-    window = _health_window(history, now=now)
+    model_names = _dedupe(models)
+    model_set = set(model_names)
+    relevant_history = [
+        row for row in history
+        if isinstance(row, dict) and str(row.get("model") or "").strip() in model_set
+    ]
+    window = _health_window(relevant_history, now=now)
     stats: dict[str, dict] = {}
-    for model in _dedupe(models):
+    for model in model_names:
         rows = [row for row in window if row.get("model") == model]
         attempts = len(rows)
         successes = sum(1 for row in rows if row.get("outcome") == "success")
@@ -270,6 +284,22 @@ def _health_ranked_pool(pool: Iterable[str], history: Iterable[dict], now: datet
     article.sort(key=rank_key)
     last_resort.sort(key=rank_key)
     return article + last_resort + non_article
+
+
+def _health_ranked_screening_pool(
+    pool: Iterable[str], history: Iterable[dict], now: datetime | None = None
+) -> list[str]:
+    existing = allowed_pool([model for model in _dedupe(pool) if model in SCREENING_MODELS])
+    baseline = {model: index for index, model in enumerate(DEFAULT_SCREENING_POOL)}
+    stats = _model_health_stats(existing, history, now=now)
+    existing.sort(
+        key=lambda model: (
+            -float(stats.get(model, {}).get("score", 0.5)),
+            -int(stats.get(model, {}).get("attempts", 0)),
+            baseline.get(model, len(baseline)),
+        )
+    )
+    return existing
 
 
 def _session_usable_pool(pipeline_module: Any, pool: Iterable[str]) -> list[str]:
@@ -356,7 +386,7 @@ def _persist_provider_health_history(pipeline_module: Any) -> None:
     history = list(getattr(pipeline_module, "_provider_health_history", []) or [])[-PROVIDER_HEALTH_MAX_HISTORY:]
     payload_data = {
         "schema_version": PROVIDER_HEALTH_SCHEMA_VERSION,
-        "purpose": "Gemini article-model availability routing; no prompt/article content",
+        "purpose": "Gemini lane provider availability routing; no prompt/article content",
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "attempts": history,
     }
@@ -442,7 +472,7 @@ def _log_route(pipeline_module: Any, kind: str, pool: list[str]) -> None:
     stats = _model_health_stats(pool, history)
     summary = ", ".join(
         f"{model}:{stats.get(model, {}).get('success', 0)}/{stats.get(model, {}).get('attempts', 0)}"
-        for model in pool if model in ARTICLE_MODELS
+        for model in pool if model in ROUTABLE_MODELS
     )
     logger.info("[PROVIDER HEALTH ROUTING] kind=%s order=%s health=%s", kind, ">".join(pool), summary or "cold-start")
 
@@ -453,6 +483,7 @@ def install(pipeline_module: Any) -> Any:
         return pipeline_module
     original = getattr(pipeline_module, "_call_model_pool", None)
     original_deep_dive = getattr(pipeline_module, "_call_deep_dive_pool", None)
+    original_generate = getattr(pipeline_module, "_generate_via_chat", None)
     if not callable(original):
         raise RuntimeError("pipeline._call_model_pool is required for Run260")
     if not callable(original_deep_dive):
@@ -485,15 +516,37 @@ def install(pipeline_module: Any) -> Any:
     history, state_sha = _load_provider_health_history(pipeline_module)
     pipeline_module._provider_health_history = list(history)
     pipeline_module._provider_health_state_sha = state_sha
+
+    configured_screening = _dedupe(
+        getattr(pipeline_module, "SCREENING_MODEL_POOL", [])
+        or getattr(pipeline_module, "SCREENING_MODEL_CANDIDATES", [])
+        or list(DEFAULT_SCREENING_POOL)
+    )
+    screening_pool = _health_ranked_screening_pool(
+        list(DEFAULT_SCREENING_POOL) + configured_screening, history
+    )
+    screening_pool = _session_usable_pool(pipeline_module, screening_pool)
+    pipeline_module.SCREENING_MODEL_POOL = list(screening_pool)
+    pipeline_module.SCREENING_MODEL_CANDIDATES = list(screening_pool)
+
     setattr(pipeline_module, _ORIGINAL_CALL_ATTR, original)
     setattr(pipeline_module, _ORIGINAL_DEEP_DIVE_ATTR, original_deep_dive)
+    if callable(original_generate):
+        setattr(pipeline_module, _ORIGINAL_GENERATE_ATTR, original_generate)
 
     def call_model_pool_run260(*args, **kwargs):
         kind = _request_kind(args, kwargs)
-        current_pool = _request_pool(args, kwargs, production_pool)
+        fallback_pool = screening_pool if _is_screening_kind(kind) else production_pool
+        current_pool = _request_pool(args, kwargs, fallback_pool)
+        history_now = list(getattr(pipeline_module, "_provider_health_history", []) or [])
+        if _is_screening_kind(kind):
+            routed_pool = _health_ranked_screening_pool(current_pool, history_now)
+            routed_pool = _session_usable_pool(pipeline_module, routed_pool)
+            _log_route(pipeline_module, kind, routed_pool)
+            args2, kwargs2 = _replace_pool_argument(args, kwargs, routed_pool)
+            return original(*args2, **kwargs2)
         if not _is_deep_dive_call(args, kwargs, kind):
             return original(*args, **kwargs)
-        history_now = list(getattr(pipeline_module, "_provider_health_history", []) or [])
         routed_pool = _health_ranked_pool(current_pool, history_now)
         if _is_quality_repair_kind(kind):
             routed_pool = _session_usable_pool(pipeline_module, routed_pool)
@@ -507,6 +560,19 @@ def install(pipeline_module: Any) -> Any:
             _append_health_rows(pipeline_module, _new_audit_rows(pipeline_module, audit_start))
 
     pipeline_module._call_model_pool = call_model_pool_run260
+
+    if callable(original_generate):
+        def generate_via_chat_run260(*args, **kwargs):
+            model_name = str(kwargs.get("model_name") or (args[0] if args else "") or "").strip()
+            if model_name not in SCREENING_MODELS:
+                return original_generate(*args, **kwargs)
+            audit_start = _audit_length(pipeline_module)
+            try:
+                return original_generate(*args, **kwargs)
+            finally:
+                _append_health_rows(pipeline_module, _new_audit_rows(pipeline_module, audit_start))
+
+        pipeline_module._generate_via_chat = generate_via_chat_run260
 
     def call_deep_dive_pool_run261(
         prompt: str,
@@ -547,6 +613,7 @@ def install(pipeline_module: Any) -> Any:
 
     pipeline_module._call_deep_dive_pool = call_deep_dive_pool_run261
     pipeline_module.QUALITY_RETRY_MAX_DISTINCT_MODELS = QUALITY_RETRY_MAX_DISTINCT_MODELS
+    pipeline_module.SCREENING_PROVIDER_HEALTH_ROUTING_ENABLED = True
     pipeline_module.PROVIDER_HEALTH_ROUTING_ENABLED = True
     pipeline_module.PROVIDER_HEALTH_STATE_PATH = PROVIDER_HEALTH_STATE_PATH
     setattr(pipeline_module, _INSTALLED_ATTR, True)

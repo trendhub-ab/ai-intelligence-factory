@@ -338,7 +338,7 @@ def _generate_via_chat(model_name: str, prompt: str, config: dict | None = None,
 
 SCREENING_MODEL_CANDIDATES = os.environ.get(
     "GEMINI_SCREENING_MODEL_CANDIDATES",
-    "gemini-3.1-flash-lite"
+    "gemini-3.5-flash-lite,gemini-3.1-flash-lite"
 ).split(",")
 from gemini_temporary_exclusion import allowed_pool as _temporarily_allowed_models
 SCREENING_MODEL_CANDIDATES = _temporarily_allowed_models(SCREENING_MODEL_CANDIDATES)
