@@ -102,6 +102,13 @@ class GeminiLaneIsolationTests(unittest.TestCase):
             text,
         )
 
+    def test_daily_workflow_allows_both_lite_models_as_temporary_exclusions(self):
+        text = (ROOT / ".github" / "workflows" / "daily-one-shot.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            '""|gemini-3.5-flash-lite|gemini-3.1-flash-lite|',
+            text,
+        )
+
     def test_pipeline_default_screening_pool_contains_both_lite_models_only(self):
         text = (ROOT / "pipeline.py").read_text(encoding="utf-8")
         self.assertIn(
