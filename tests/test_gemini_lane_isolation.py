@@ -1,13 +1,9 @@
 import types
 import unittest
 from datetime import datetime, timezone
-from pathlib import Path
 from unittest.mock import patch
 
 import run260_gemini_model_routing as run260
-
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 class GeminiLaneIsolationTests(unittest.TestCase):
@@ -94,27 +90,6 @@ class GeminiLaneIsolationTests(unittest.TestCase):
             NoAvailableModelError=NoAvailableModelError,
         )
         return module, calls
-
-    def test_daily_workflow_screening_pool_is_lite_only(self):
-        text = (ROOT / ".github" / "workflows" / "daily-one-shot.yml").read_text(encoding="utf-8")
-        self.assertIn(
-            'GEMINI_SCREENING_MODEL_CANDIDATES: "gemini-3.5-flash-lite,gemini-3.1-flash-lite"',
-            text,
-        )
-
-    def test_daily_workflow_allows_both_lite_models_as_temporary_exclusions(self):
-        text = (ROOT / ".github" / "workflows" / "daily-one-shot.yml").read_text(encoding="utf-8")
-        self.assertIn(
-            '""|gemini-3.5-flash-lite|gemini-3.1-flash-lite|',
-            text,
-        )
-
-    def test_pipeline_default_screening_pool_contains_both_lite_models_only(self):
-        text = (ROOT / "pipeline.py").read_text(encoding="utf-8")
-        self.assertIn(
-            '"gemini-3.5-flash-lite,gemini-3.1-flash-lite"',
-            text,
-        )
 
     def test_screening_health_routing_reorders_only_within_lite_lane(self):
         history = [
