@@ -1,43 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-10T05:50:58.261470+00:00",
+  "updated_at": "2026-10-10T08:28:11.063620+00:00",
   "items": [
-    {
-      "key": "https://openai.com/products/release-notes?aif_revision=7ffc5916d1355ea3",
-      "deferred_at": "2026-10-10T05:50:53.441734+00:00",
-      "expires_at": "2026-10-24T05:50:53.441734+00:00",
-      "repo": {
-        "source": "OfficialVendor",
-        "nameWithOwner": "OpenAI — The beta is available to personal ChatGPT Pro users aged 18 and older in all supported regions, in the latest Codex desktop app. It supports local and SSH threads using GPT‐6 Astra or GPT‐6.1 Sol. Predictions are on by d",
-        "originalTitle": "OpenAI — The beta is available to personal ChatGPT Pro users aged 18 and older in all supported regions, in the latest Codex desktop app. It supports local and SSH threads using GPT‐6 Astra or GPT‐6.1 Sol. Predictions are on by d",
-        "displayName": "OpenAI — The beta is available to personal ChatGPT Pro users aged 18 and older in all supported regions, in the latest Codex desktop app. It supports local and SSH threads using GPT‐6 Astra or GPT‐6.1 Sol. Predictions are on by d",
-        "sourceLanguage": "en",
-        "url": "https://openai.com/products/release-notes/?aif_revision=7ffc5916d1355ea3",
-        "description": "The beta is available to personal ChatGPT Pro users aged 18 and older in all supported regions, in the latest Codex desktop app. It supports local and SSH threads using GPT‑6 Astra or GPT‑6.1 Sol. Predictions are on by default; turn off Show predictions in the Composer section of General settings. During the beta, generating predictions doesn’t count toward Codex usage limits or consume credits. Messages you send, including accepted predictions, follow normal Codex usage limits and billing.",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "Oct 9, 2026",
-        "sourceContext": "The beta is available to personal ChatGPT Pro users aged 18 and older in all supported regions, in the latest Codex desktop app. It supports local and SSH threads using GPT‑6 Astra or GPT‑6.1 Sol. Predictions are on by default; turn off Show predictions in the Composer section of General settings. During the beta, generating predictions doesn’t count toward Codex usage limits or consume credits. Messages you send, including accepted predictions, follow normal Codex usage limits and billing.",
-        "primaryUrl": "https://openai.com/products/release-notes/",
-        "sourceDetails": {
-          "vendor": "OpenAI",
-          "vendor_region": "US",
-          "source_role": "commercial_primary_source",
-          "official_release_url": "https://openai.com/products/release-notes/",
-          "candidate_revision": "7ffc5916d1355ea3",
-          "vendor_record_kind": "structured_html",
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3f5479ff-dca9-8188-99a0-d0733a0cb50b",
-      "score": 87,
-      "reason": "次世代モデル連携とデスクトップ環境整備の重要情報。",
-      "commercial_score": 90,
-      "shelf_life_score": 60,
-      "shelf_life": "TREND",
-      "portfolio_topic": "DEVTOOLS",
-      "deep_dive_priority_score": 88.05
-    },
     {
       "key": "https://ai.google.dev/gemini-api/docs/changelog?aif_revision=06a42dd6041882fb",
       "deferred_at": "2026-10-10T05:50:53.441883+00:00",
