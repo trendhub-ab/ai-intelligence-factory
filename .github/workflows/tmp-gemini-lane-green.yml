@@ -1,0 +1,104 @@
+name: Temporary Gemini Lane Green Patch
+
+on:
+  push:
+    branches:
+      - fix/gemini-lane-isolation
+    paths:
+      - .github/workflows/tmp-gemini-lane-green.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/gemini-lane-isolation
+          fetch-depth: 0
+      - name: Apply bounded lane-isolation patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected 1 match, got {count}: {old[:100]!r}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              ".github/workflows/daily-one-shot.yml",
+              'GEMINI_SCREENING_MODEL_CANDIDATES: "gemini-3.1-flash-lite,gemini-3.6-flash,gemini-3.5-flash,gemini-3.7-flash,gemini-3.8-flash"',
+              'GEMINI_SCREENING_MODEL_CANDIDATES: "gemini-3.5-flash-lite,gemini-3.1-flash-lite"',
+          )
+
+          replace_once(
+              "pipeline.py",
+              '"gemini-3.1-flash-lite"\n).split(",")',
+              '"gemini-3.5-flash-lite,gemini-3.1-flash-lite"\n).split(",")',
+          )
+
+          path = Path("run260_gemini_model_routing.py")
+          text = path.read_text(encoding="utf-8")
+
+          patches = [
+              (
+                  'ARTICLE_MODELS = frozenset(DEFAULT_DEEP_DIVE_POOL)\nLAST_RESORT_ARTICLE_MODELS = frozenset()\n',
+                  'ARTICLE_MODELS = frozenset(DEFAULT_DEEP_DIVE_POOL)\nDEFAULT_SCREENING_POOL = ("gemini-3.5-flash-lite", "gemini-3.1-flash-lite")\nSCREENING_MODELS = frozenset(DEFAULT_SCREENING_POOL)\nROUTABLE_MODELS = ARTICLE_MODELS | SCREENING_MODELS\nLAST_RESORT_ARTICLE_MODELS = frozenset()\n',
+              ),
+              (
+                  'def _is_quality_repair_kind(kind: str) -> bool:\n    value = str(kind or "").strip().lower()\n    return value == "quality_retry" or any(\n        token in value for token in ("quality_repair", "quality_rescue", "recompose", "reader_repair")\n    )\n\n\n',
+                  'def _is_quality_repair_kind(kind: str) -> bool:\n    value = str(kind or "").strip().lower()\n    return value == "quality_retry" or any(\n        token in value for token in ("quality_repair", "quality_rescue", "recompose", "reader_repair")\n    )\n\n\ndef _is_screening_kind(kind: str) -> bool:\n    return str(kind or "").strip().lower() in {"screening", "screening_batch", "global_calibration"}\n\n\n',
+              ),
+              (
+                  '    if model not in ARTICLE_MODELS or outcome not in {"success", "error"} or timestamp is None:\n',
+                  '    if model not in ROUTABLE_MODELS or outcome not in {"success", "error"} or timestamp is None:\n',
+              ),
+              (
+                  'def _model_health_stats(models: Iterable[str], history: Iterable[dict], now: datetime | None = None) -> dict[str, dict]:\n    window = _health_window(history, now=now)\n    stats: dict[str, dict] = {}\n    for model in _dedupe(models):\n',
+                  'def _model_health_stats(models: Iterable[str], history: Iterable[dict], now: datetime | None = None) -> dict[str, dict]:\n    model_names = _dedupe(models)\n    model_set = set(model_names)\n    relevant_history = [\n        row for row in history\n        if isinstance(row, dict) and str(row.get("model") or "").strip() in model_set\n    ]\n    window = _health_window(relevant_history, now=now)\n    stats: dict[str, dict] = {}\n    for model in model_names:\n',
+              ),
+              (
+                  '    last_resort.sort(key=rank_key)\n    return article + last_resort + non_article\n\n\ndef _session_usable_pool',
+                  '    last_resort.sort(key=rank_key)\n    return article + last_resort + non_article\n\n\ndef _health_ranked_screening_pool(\n    pool: Iterable[str], history: Iterable[dict], now: datetime | None = None\n) -> list[str]:\n    existing = allowed_pool([model for model in _dedupe(pool) if model in SCREENING_MODELS])\n    baseline = {model: index for index, model in enumerate(DEFAULT_SCREENING_POOL)}\n    stats = _model_health_stats(existing, history, now=now)\n    existing.sort(\n        key=lambda model: (\n            -float(stats.get(model, {}).get("score", 0.5)),\n            -int(stats.get(model, {}).get("attempts", 0)),\n            baseline.get(model, len(baseline)),\n        )\n    )\n    return existing\n\n\ndef _session_usable_pool',
+              ),
+              (
+                  '        for model in pool if model in ARTICLE_MODELS\n',
+                  '        for model in pool if model in ROUTABLE_MODELS\n',
+              ),
+              (
+                  '    pipeline_module._provider_health_history = list(history)\n    pipeline_module._provider_health_state_sha = state_sha\n    setattr(pipeline_module, _ORIGINAL_CALL_ATTR, original)\n',
+                  '    pipeline_module._provider_health_history = list(history)\n    pipeline_module._provider_health_state_sha = state_sha\n\n    configured_screening = _dedupe(\n        getattr(pipeline_module, "SCREENING_MODEL_POOL", [])\n        or getattr(pipeline_module, "SCREENING_MODEL_CANDIDATES", [])\n        or list(DEFAULT_SCREENING_POOL)\n    )\n    screening_pool = _health_ranked_screening_pool(\n        list(DEFAULT_SCREENING_POOL) + configured_screening, history\n    )\n    screening_pool = _session_usable_pool(pipeline_module, screening_pool)\n    pipeline_module.SCREENING_MODEL_POOL = list(screening_pool)\n    pipeline_module.SCREENING_MODEL_CANDIDATES = list(screening_pool)\n\n    setattr(pipeline_module, _ORIGINAL_CALL_ATTR, original)\n',
+              ),
+              (
+                  '    def call_model_pool_run260(*args, **kwargs):\n        kind = _request_kind(args, kwargs)\n        current_pool = _request_pool(args, kwargs, production_pool)\n        if not _is_deep_dive_call(args, kwargs, kind):\n            return original(*args, **kwargs)\n        history_now = list(getattr(pipeline_module, "_provider_health_history", []) or [])\n',
+                  '    def call_model_pool_run260(*args, **kwargs):\n        kind = _request_kind(args, kwargs)\n        fallback_pool = screening_pool if _is_screening_kind(kind) else production_pool\n        current_pool = _request_pool(args, kwargs, fallback_pool)\n        history_now = list(getattr(pipeline_module, "_provider_health_history", []) or [])\n        if _is_screening_kind(kind):\n            routed_pool = _health_ranked_screening_pool(current_pool, history_now)\n            routed_pool = _session_usable_pool(pipeline_module, routed_pool)\n            _log_route(pipeline_module, kind, routed_pool)\n            args2, kwargs2 = _replace_pool_argument(args, kwargs, routed_pool)\n            audit_start = _audit_length(pipeline_module)\n            try:\n                return original(*args2, **kwargs2)\n            finally:\n                _append_health_rows(pipeline_module, _new_audit_rows(pipeline_module, audit_start))\n        if not _is_deep_dive_call(args, kwargs, kind):\n            return original(*args, **kwargs)\n',
+              ),
+              (
+                  '    pipeline_module.QUALITY_RETRY_MAX_DISTINCT_MODELS = QUALITY_RETRY_MAX_DISTINCT_MODELS\n    pipeline_module.PROVIDER_HEALTH_ROUTING_ENABLED = True\n',
+                  '    pipeline_module.QUALITY_RETRY_MAX_DISTINCT_MODELS = QUALITY_RETRY_MAX_DISTINCT_MODELS\n    pipeline_module.SCREENING_PROVIDER_HEALTH_ROUTING_ENABLED = True\n    pipeline_module.PROVIDER_HEALTH_ROUTING_ENABLED = True\n',
+              ),
+          ]
+
+          for old, new in patches:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"run260 patch expected 1 match, got {count}: {old[:120]!r}")
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+      - name: Commit bounded implementation
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/daily-one-shot.yml pipeline.py run260_gemini_model_routing.py
+          git diff --cached --check
+          git commit -m "fix: isolate Gemini Lite and Flash routing lanes"
+          git push origin HEAD:fix/gemini-lane-isolation
