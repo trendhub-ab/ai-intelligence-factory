@@ -3,7 +3,9 @@ from __future__ import annotations
 import unittest
 from datetime import datetime, timedelta, timezone
 
+import evidence_ledger
 import member_verified_rereview_apply as apply
+import member_verified_rereview_dryrun as rereview
 import run225_member_lifecycle_ui as member_lifecycle
 
 
@@ -31,6 +33,60 @@ class MemberFreshnessReReviewContractTests(unittest.TestCase):
 
         self.assertEqual(result["allowlist"], [])
         self.assertEqual(result["unchanged"], 1)
+
+    def test_missing_evidence_baseline_never_suppresses_review(self):
+        source_info = {
+            "evidence_documents": [
+                {
+                    "retrieved": True,
+                    "url": "https://example.com/product",
+                    "document_text": "Current authoritative product evidence.",
+                }
+            ]
+        }
+
+        self.assertIsNone(rereview.material_change_from_baseline(source_info, []))
+
+    def test_same_or_cosmetic_evidence_is_not_material_change(self):
+        text = "Current authoritative product evidence remains valid."
+        baseline = [
+            {
+                "url": "https://example.com/product",
+                "document_hash": evidence_ledger.content_hash(text),
+                "extract": "authoritative product evidence remains valid",
+            }
+        ]
+        source_info = {
+            "evidence_documents": [
+                {
+                    "retrieved": True,
+                    "url": "https://example.com/product",
+                    "document_text": "  CURRENT authoritative product evidence remains valid.  ",
+                }
+            ]
+        }
+
+        self.assertFalse(rereview.material_change_from_baseline(source_info, baseline))
+
+    def test_changed_evidence_is_material_change(self):
+        baseline = [
+            {
+                "url": "https://example.com/product",
+                "document_hash": evidence_ledger.content_hash("Old supported feature set."),
+                "extract": "Old supported feature set.",
+            }
+        ]
+        source_info = {
+            "evidence_documents": [
+                {
+                    "retrieved": True,
+                    "url": "https://example.com/product",
+                    "document_text": "Pricing and supported features changed substantially.",
+                }
+            ]
+        }
+
+        self.assertTrue(rereview.material_change_from_baseline(source_info, baseline))
 
     def test_stale_member_record_is_withheld_but_fresh_review_restores_visibility(self):
         now = datetime.now(timezone.utc)
