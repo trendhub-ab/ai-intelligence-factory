@@ -1,7 +1,119 @@
 {
   "version": 1,
-  "updated_at": "2026-10-09T09:44:24.277842+00:00",
+  "updated_at": "2026-10-10T05:50:53.442177+00:00",
   "items": [
+    {
+      "key": "https://openai.com/products/release-notes?aif_revision=7ffc5916d1355ea3",
+      "deferred_at": "2026-10-10T05:50:53.441734+00:00",
+      "expires_at": "2026-10-24T05:50:53.441734+00:00",
+      "repo": {
+        "source": "OfficialVendor",
+        "nameWithOwner": "OpenAI — The beta is available to personal ChatGPT Pro users aged 18 and older in all supported regions, in the latest Codex desktop app. It supports local and SSH threads using GPT‐6 Astra or GPT‐6.1 Sol. Predictions are on by d",
+        "originalTitle": "OpenAI — The beta is available to personal ChatGPT Pro users aged 18 and older in all supported regions, in the latest Codex desktop app. It supports local and SSH threads using GPT‐6 Astra or GPT‐6.1 Sol. Predictions are on by d",
+        "displayName": "OpenAI — The beta is available to personal ChatGPT Pro users aged 18 and older in all supported regions, in the latest Codex desktop app. It supports local and SSH threads using GPT‐6 Astra or GPT‐6.1 Sol. Predictions are on by d",
+        "sourceLanguage": "en",
+        "url": "https://openai.com/products/release-notes/?aif_revision=7ffc5916d1355ea3",
+        "description": "The beta is available to personal ChatGPT Pro users aged 18 and older in all supported regions, in the latest Codex desktop app. It supports local and SSH threads using GPT‑6 Astra or GPT‑6.1 Sol. Predictions are on by default; turn off Show predictions in the Composer section of General settings. During the beta, generating predictions doesn’t count toward Codex usage limits or consume credits. Messages you send, including accepted predictions, follow normal Codex usage limits and billing.",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "Oct 9, 2026",
+        "sourceContext": "The beta is available to personal ChatGPT Pro users aged 18 and older in all supported regions, in the latest Codex desktop app. It supports local and SSH threads using GPT‑6 Astra or GPT‑6.1 Sol. Predictions are on by default; turn off Show predictions in the Composer section of General settings. During the beta, generating predictions doesn’t count toward Codex usage limits or consume credits. Messages you send, including accepted predictions, follow normal Codex usage limits and billing.",
+        "primaryUrl": "https://openai.com/products/release-notes/",
+        "sourceDetails": {
+          "vendor": "OpenAI",
+          "vendor_region": "US",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://openai.com/products/release-notes/",
+          "candidate_revision": "7ffc5916d1355ea3",
+          "vendor_record_kind": "structured_html",
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3f5479ff-dca9-8188-99a0-d0733a0cb50b",
+      "score": 87,
+      "reason": "次世代モデル連携とデスクトップ環境整備の重要情報。",
+      "commercial_score": 90,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "DEVTOOLS",
+      "deep_dive_priority_score": 88.05
+    },
+    {
+      "key": "https://ai.google.dev/gemini-api/docs/changelog?aif_revision=06a42dd6041882fb",
+      "deferred_at": "2026-10-10T05:50:53.441883+00:00",
+      "expires_at": "2026-10-24T05:50:53.441883+00:00",
+      "repo": {
+        "source": "OfficialVendor",
+        "nameWithOwner": "Google Gemini — Gemini 3.7 Flash deprecation : gemini-3.7-flash is deprecated and has been replaced by gemini-3.8-flash . All requests to gemini-3.7-flash are automatically routed to gemini-3.8-flash . Update your model string to gemini",
+        "originalTitle": "Google Gemini — Gemini 3.7 Flash deprecation : gemini-3.7-flash is deprecated and has been replaced by gemini-3.8-flash . All requests to gemini-3.7-flash are automatically routed to gemini-3.8-flash . Update your model string to gemini",
+        "displayName": "Google Gemini — Gemini 3.7 Flash deprecation : gemini-3.7-flash is deprecated and has been replaced by gemini-3.8-flash . All requests to gemini-3.7-flash are automatically routed to gemini-3.8-flash . Update your model string to gemini",
+        "sourceLanguage": "en",
+        "url": "https://ai.google.dev/gemini-api/docs/changelog?aif_revision=06a42dd6041882fb",
+        "description": "Gemini 3.7 Flash deprecation : gemini-3.7-flash is deprecated and has been replaced by gemini-3.8-flash . All requests to gemini-3.7-flash are automatically routed to gemini-3.8-flash . Update your model string to gemini-3.8-flash and review the Gemini 3.8 Flash guide .",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "October 8, 2026",
+        "sourceContext": "Gemini 3.7 Flash deprecation : gemini-3.7-flash is deprecated and has been replaced by gemini-3.8-flash . All requests to gemini-3.7-flash are automatically routed to gemini-3.8-flash . Update your model string to gemini-3.8-flash and review the Gemini 3.8 Flash guide .",
+        "primaryUrl": "https://ai.google.dev/gemini-api/docs/changelog",
+        "sourceDetails": {
+          "vendor": "Google Gemini",
+          "vendor_region": "US",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://ai.google.dev/gemini-api/docs/changelog",
+          "candidate_revision": "06a42dd6041882fb",
+          "vendor_record_kind": "structured_html",
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3f5479ff-dca9-81f8-b6dd-cc1bf55d922b",
+      "score": 83,
+      "reason": "Gemini本番運用のAPIルーティングと移行必須情報。",
+      "commercial_score": 86,
+      "shelf_life_score": 45,
+      "shelf_life": "TREND",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 84.05
+    },
+    {
+      "key": "https://arxiv.org/abs/2610.12445",
+      "deferred_at": "2026-10-10T05:50:53.441929+00:00",
+      "expires_at": "2026-12-09T05:50:53.441929+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "Caught in the Act: Probes Effectively Detect Sabotage and Catch Unverbalized Deception",
+        "originalTitle": "Caught in the Act: Probes Effectively Detect Sabotage and Catch Unverbalized Deception",
+        "displayName": "Caught in the Act: Probes Effectively Detect Sabotage and Catch Unverbalized Deception",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2610.12445v1",
+        "description": "Recent incidents have highlighted the challenge of monitoring LLM agents and the danger of models deceiving people. We show that white-box deception detection via probes can be scaled up to frontier monitoring settings by collecting the largest deception dataset to date for training probes and introducing a novel probe architecture which can aggregate information across many layers and tokens. Our probes achieve 98.8% AUC in SHADE-Arena, surpassing an Opus 5.5 text-monitoring baseline, and show",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-08T17:58:13Z",
+        "sourceContext": "Recent incidents have highlighted the challenge of monitoring LLM agents and the danger of models deceiving people. We show that white-box deception detection via probes can be scaled up to frontier monitoring settings by collecting the largest deception dataset to date for training probes and introducing a novel probe architecture which can aggregate information across many layers and tokens. Our probes achieve 98.8% AUC in SHADE-Arena, surpassing an Opus 5.5 text-monitoring baseline, and show improved efficacy as the underlying model is scaled up. To push our probes to their limit, we test them on several cases where deception cannot be determined from the context alone. In these cases, which we refer to as introspective deception, the ground truth can only be determined through careful elicitation or thorough knowledge of a model's training data. In one such evaluation, we show that probes can distinguish transcripts containing a model's true hidden goal from other goals with an AUC of up to 99.7%. Our probes also readily detect deception on prominent open-weight models which lie about politically sensitive topics, and about their beliefs when put under pressure. We release our training dataset, dubbed FIBS, to help drive frontier deployment of effective probes, and encourage the community to expand upon it with further examples of deception and sabotage.",
+        "primaryUrl": "https://arxiv.org/abs/2610.12445v1",
+        "sourceDetails": {
+          "authors": [
+            "Oskar J. Hollinsworth",
+            "Alex F. Spies",
+            "Tigist Diriba",
+            "Adam Gleave",
+            "Chris Cundy"
+          ],
+          "categories": [
+            "cs.LG",
+            "cs.AI"
+          ]
+        }
+      },
+      "notion_page_id": "3f5479ff-dca9-8166-b121-fb8e0dabe23d",
+      "score": 83,
+      "reason": "プローブを用いた隠蔽検知で安全性監査に直結。",
+      "commercial_score": 76,
+      "shelf_life_score": 85,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "SECURITY",
+      "deep_dive_priority_score": 80.55
+    },
     {
       "key": "https://cloud.google.com/blog/products/ai-machine-learning/welcome-to-gemini-at-work-2026",
       "deferred_at": "2026-10-09T09:42:51.689450+00:00",
@@ -38,6 +150,52 @@
       "shelf_life": "TREND",
       "portfolio_topic": "AGENT",
       "deep_dive_priority_score": 78.7
+    },
+    {
+      "key": "https://www.anthropic.com/research/investigating-unintended-model-actions",
+      "deferred_at": "2026-10-10T05:50:53.442033+00:00",
+      "expires_at": "2026-12-09T05:50:53.442033+00:00",
+      "repo": {
+        "source": "X",
+        "nameWithOwner": "investigating unintended model actions — anthropic.com",
+        "originalTitle": "investigating unintended model actions — anthropic.com",
+        "displayName": "investigating unintended model actions — anthropic.com",
+        "sourceLanguage": "en",
+        "url": "https://www.anthropic.com/research/investigating-unintended-model-actions",
+        "description": "X監視で発見した一次情報候補URL。X投稿自体は根拠に使わず、リンク先一次情報だけを検証対象とする。",
+        "stargazerCount": 1,
+        "licenseInfo": null,
+        "publishedAt": null,
+        "sourceContext": "",
+        "primaryUrl": "https://www.anthropic.com/research/investigating-unintended-model-actions",
+        "sourceDetails": {
+          "source_platform": "x",
+          "source_role": "discovery_signal",
+          "raw_source_not_evidence": true,
+          "evidence_status": "discovery_only",
+          "is_evidence": false,
+          "canonical_primary_url": "https://www.anthropic.com/research/investigating-unintended-model-actions",
+          "resolution_status": "candidate_needs_primary_verification",
+          "x_source_authors": [
+            "AnthropicAI"
+          ],
+          "x_source_post_urls": [
+            "https://twitter.com/AnthropicAI/status/2108680150556737819"
+          ],
+          "x_source_post_ids": [
+            "2108680150556737819"
+          ],
+          "mention_count": 1
+        }
+      },
+      "notion_page_id": "3f5479ff-dca9-816d-ac62-d3755d8a8844",
+      "score": 80,
+      "reason": "公式研究による自律動作逸脱分析で方針決定に直結。",
+      "commercial_score": 76,
+      "shelf_life_score": 82,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "SECURITY",
+      "deep_dive_priority_score": 78.6
     },
     {
       "key": "https://interrupt.langchain.com/london",
@@ -124,6 +282,78 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "PRODUCT",
       "deep_dive_priority_score": 76.75
+    },
+    {
+      "key": "https://ai.google.dev/gemini-api/docs/changelog?aif_revision=31821c5d36b3a76b",
+      "deferred_at": "2026-10-10T05:50:53.442122+00:00",
+      "expires_at": "2026-10-12T05:50:53.442122+00:00",
+      "repo": {
+        "source": "OfficialVendor",
+        "nameWithOwner": "Google Gemini — Gemini 3.5 Flash deprecation : gemini-3.5-flash is deprecated and has been replaced by gemini-3.6-flash . All requests to gemini-3.5-flash are automatically routed to gemini-3.6-flash . Update your model string to gemini",
+        "originalTitle": "Google Gemini — Gemini 3.5 Flash deprecation : gemini-3.5-flash is deprecated and has been replaced by gemini-3.6-flash . All requests to gemini-3.5-flash are automatically routed to gemini-3.6-flash . Update your model string to gemini",
+        "displayName": "Google Gemini — Gemini 3.5 Flash deprecation : gemini-3.5-flash is deprecated and has been replaced by gemini-3.6-flash . All requests to gemini-3.5-flash are automatically routed to gemini-3.6-flash . Update your model string to gemini",
+        "sourceLanguage": "en",
+        "url": "https://ai.google.dev/gemini-api/docs/changelog?aif_revision=31821c5d36b3a76b",
+        "description": "Gemini 3.5 Flash deprecation : gemini-3.5-flash is deprecated and has been replaced by gemini-3.6-flash . All requests to gemini-3.5-flash are automatically routed to gemini-3.6-flash . Update your model string to gemini-3.6-flash (or gemini-3.8-flash ) and review the Gemini 3.6 Flash guide .",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "October 8, 2026",
+        "sourceContext": "Gemini 3.5 Flash deprecation : gemini-3.5-flash is deprecated and has been replaced by gemini-3.6-flash . All requests to gemini-3.5-flash are automatically routed to gemini-3.6-flash . Update your model string to gemini-3.6-flash (or gemini-3.8-flash ) and review the Gemini 3.6 Flash guide .",
+        "primaryUrl": "https://ai.google.dev/gemini-api/docs/changelog",
+        "sourceDetails": {
+          "vendor": "Google Gemini",
+          "vendor_region": "US",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://ai.google.dev/gemini-api/docs/changelog",
+          "candidate_revision": "31821c5d36b3a76b",
+          "vendor_record_kind": "structured_html",
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3f5479ff-dca9-8100-a705-cabfe2372c63",
+      "score": 74,
+      "reason": "3.5 Flash廃止に伴う移行対応を促す速報。",
+      "commercial_score": 80,
+      "shelf_life_score": 25,
+      "shelf_life": "FLASH",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 76.1
+    },
+    {
+      "key": "https://openai.com/products/release-notes?aif_revision=63b6eae567a61eb3",
+      "deferred_at": "2026-10-10T05:50:53.442082+00:00",
+      "expires_at": "2026-12-09T05:50:53.442082+00:00",
+      "repo": {
+        "source": "OfficialVendor",
+        "nameWithOwner": "OpenAI — Workspace owners and admins in ChatGPT Enterprise and Edu workspaces with RBAC enabled can now manage plugin access by role. Set the workspace default to Available, Install, or Disabled. Custom roles can use those settin",
+        "originalTitle": "OpenAI — Workspace owners and admins in ChatGPT Enterprise and Edu workspaces with RBAC enabled can now manage plugin access by role. Set the workspace default to Available, Install, or Disabled. Custom roles can use those settin",
+        "displayName": "OpenAI — Workspace owners and admins in ChatGPT Enterprise and Edu workspaces with RBAC enabled can now manage plugin access by role. Set the workspace default to Available, Install, or Disabled. Custom roles can use those settin",
+        "sourceLanguage": "en",
+        "url": "https://openai.com/products/release-notes/?aif_revision=63b6eae567a61eb3",
+        "description": "Workspace owners and admins in ChatGPT Enterprise and Edu workspaces with RBAC enabled can now manage plugin access by role. Set the workspace default to Available, Install, or Disabled. Custom roles can use those settings or Default to inherit the workspace setting.",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "Oct 8, 2026",
+        "sourceContext": "Workspace owners and admins in ChatGPT Enterprise and Edu workspaces with RBAC enabled can now manage plugin access by role. Set the workspace default to Available, Install, or Disabled. Custom roles can use those settings or Default to inherit the workspace setting.",
+        "primaryUrl": "https://openai.com/products/release-notes/",
+        "sourceDetails": {
+          "vendor": "OpenAI",
+          "vendor_region": "US",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://openai.com/products/release-notes/",
+          "candidate_revision": "63b6eae567a61eb3",
+          "vendor_record_kind": "structured_html",
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3f5479ff-dca9-8151-bdb1-d917d2be37e7",
+      "score": 74,
+      "reason": "Enterprise環境の権限管理を標準化する実務的変更。",
+      "commercial_score": 80,
+      "shelf_life_score": 80,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "SECURITY",
+      "deep_dive_priority_score": 76.1
     },
     {
       "key": "https://blog.nilesh.io/post/llms-and-jobs",
@@ -535,155 +765,6 @@
       "shelf_life": "TREND",
       "portfolio_topic": "DEVTOOLS",
       "deep_dive_priority_score": 73.05
-    },
-    {
-      "key": "https://news.ycombinator.com/item?id=49936952",
-      "deferred_at": "2026-10-03T00:35:41.951934+00:00",
-      "expires_at": "2026-10-17T00:35:41.951934+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "The STT-LLM-TTS voice stack is dead",
-        "originalTitle": "The STT-LLM-TTS voice stack is dead",
-        "displayName": "The STT-LLM-TTS voice stack is dead",
-        "sourceLanguage": "en",
-        "url": "https://www.skeptrune.com/posts/stt-llm-tts-voice-stack-is-dead/",
-        "description": "The STT-LLM-TTS voice stack is dead",
-        "stargazerCount": 4,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-02T18:34:54Z",
-        "sourceContext": "HN points=4 comments=0 matched_query=LLM",
-        "primaryUrl": "https://www.skeptrune.com/posts/stt-llm-tts-voice-stack-is-dead/",
-        "sourceDetails": {
-          "hn_id": "49936952",
-          "hn_url": "https://news.ycombinator.com/item?id=49936952",
-          "external_url": "https://www.skeptrune.com/posts/stt-llm-tts-voice-stack-is-dead/",
-          "comments": 0,
-          "matched_query": "LLM",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3ee479ff-dca9-81ed-875c-fc996be67aa2",
-      "score": 68,
-      "reason": "音声対話の従来型スタックの終焉と新たな潮流の示唆。",
-      "commercial_score": 75,
-      "shelf_life_score": 50,
-      "shelf_life": "TREND",
-      "portfolio_topic": "PRODUCT",
-      "deep_dive_priority_score": 70.45
-    },
-    {
-      "key": "https://developers.openai.com/api/docs/deprecations",
-      "deferred_at": "2026-10-03T00:35:41.952081+00:00",
-      "expires_at": "2026-10-17T00:35:41.952081+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "OpenAI Deprecations",
-        "originalTitle": "OpenAI Deprecations",
-        "displayName": "OpenAI Deprecations",
-        "sourceLanguage": "en",
-        "url": "https://developers.openai.com/api/docs/deprecations",
-        "description": "OpenAI Deprecations",
-        "stargazerCount": 3,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-02T16:45:01Z",
-        "sourceContext": "HN points=3 comments=1 matched_query=OpenAI",
-        "primaryUrl": "https://developers.openai.com/api/docs/deprecations",
-        "sourceDetails": {
-          "hn_id": "49935647",
-          "hn_url": "https://news.ycombinator.com/item?id=49935647",
-          "external_url": "https://developers.openai.com/api/docs/deprecations",
-          "comments": 1,
-          "matched_query": "OpenAI",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3ee479ff-dca9-8187-b973-c7dc0a10cfed",
-      "score": 65,
-      "reason": "API廃止スケジュールは開発者のシステム移行に直結する。",
-      "commercial_score": 80,
-      "shelf_life_score": 40,
-      "shelf_life": "TREND",
-      "portfolio_topic": "PRODUCT",
-      "deep_dive_priority_score": 70.25
-    },
-    {
-      "key": "https://hmijail.substack.com/p/building-a-semantic-fuzzer-for-obsidian-sync-in-spite-of-claude-2",
-      "deferred_at": "2026-10-02T08:42:04.344613+00:00",
-      "expires_at": "2026-10-16T08:42:04.344613+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "The failure modes of Claude Code in a guided 60h project",
-        "originalTitle": "The failure modes of Claude Code in a guided 60h project",
-        "displayName": "The failure modes of Claude Code in a guided 60h project",
-        "sourceLanguage": "en",
-        "url": "https://hmijail.substack.com/p/building-a-semantic-fuzzer-for-obsidian-sync-in-spite-of-claude-2",
-        "description": "The failure modes of Claude Code in a guided 60h project",
-        "stargazerCount": 2,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-01T20:10:53Z",
-        "sourceContext": "HN points=2 comments=1 matched_query=Claude",
-        "primaryUrl": "https://hmijail.substack.com/p/building-a-semantic-fuzzer-for-obsidian-sync-in-spite-of-claude-2",
-        "sourceDetails": {
-          "hn_id": "49926497",
-          "hn_url": "https://news.ycombinator.com/item?id=49926497",
-          "external_url": "https://hmijail.substack.com/p/building-a-semantic-fuzzer-for-obsidian-sync-in-spite-of-claude-2",
-          "comments": 1,
-          "matched_query": "Claude",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3ed479ff-dca9-8191-ba18-ecf641a00dab",
-      "score": 65,
-      "reason": "長時間プロジェクトにおけるClaude Codeの失敗事例分析",
-      "commercial_score": 75,
-      "shelf_life_score": 45,
-      "shelf_life": "TREND",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 68.5
-    },
-    {
-      "key": "https://arxiv.org/abs/2610.10468",
-      "deferred_at": "2026-10-08T10:43:36.455408+00:00",
-      "expires_at": "2026-12-07T10:43:36.455408+00:00",
-      "repo": {
-        "source": "ArXiv",
-        "nameWithOwner": "A Society of Researchers: Designing Institutions for Populations of Autonomous Research Agents",
-        "originalTitle": "A Society of Researchers: Designing Institutions for Populations of Autonomous Research Agents",
-        "displayName": "A Society of Researchers: Designing Institutions for Populations of Autonomous Research Agents",
-        "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2610.10468v1",
-        "description": "Deployments of research agents are moving to populations of thousands that share one pool of compute, while most current systems organize one project at a time or leave the population unorganized. We argue that such a population will acquire an organization whether or not its designers provide one, so designers should provide it explicitly, and that the multi-agent systems community holds the tools to do so. We propose a society of agents, a population of persistent agents under explicit institu",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-07T17:30:45Z",
-        "sourceContext": "Deployments of research agents are moving to populations of thousands that share one pool of compute, while most current systems organize one project at a time or leave the population unorganized. We argue that such a population will acquire an organization whether or not its designers provide one, so designers should provide it explicitly, and that the multi-agent systems community holds the tools to do so. We propose a society of agents, a population of persistent agents under explicit institutions, and develop it for science as a society of researchers built on six principles. Principal investigators compete for compute through requests for proposals, independent review, and grants; a human governor, the mayor, allocates resources and assigns no tasks. In a running society of ten thousand researchers, asked only to improve the pretraining of language models, one lab reported a way to reach the same quality with about 30% less compute, a result the labs that tested it do not yet agree on. We close with six open problems for the agents community.",
-        "primaryUrl": "https://arxiv.org/abs/2610.10468v1",
-        "sourceDetails": {
-          "authors": [
-            "Ali Asaria",
-            "Deep Gandhi",
-            "Tony Salomone"
-          ],
-          "categories": [
-            "cs.MA",
-            "cs.AI"
-          ]
-        }
-      },
-      "notion_page_id": "3f3479ff-dca9-818e-bc65-f3e3397c1abd",
-      "score": 70,
-      "reason": "大規模エージェント群の管理に向けた重要提言",
-      "commercial_score": 65,
-      "shelf_life_score": 70,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 68.25
     }
   ]
 }
