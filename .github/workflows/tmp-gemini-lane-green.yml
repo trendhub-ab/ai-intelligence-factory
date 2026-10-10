@@ -8,7 +8,8 @@ on:
       - .github/workflows/tmp-gemini-lane-green.yml
 
 permissions:
-  contents: read
+  contents: write
+  actions: write
 
 jobs:
   patch:
@@ -18,7 +19,6 @@ jobs:
         with:
           ref: fix/gemini-lane-isolation
           fetch-depth: 0
-          persist-credentials: false
       - name: Apply bounded Daily workflow contract
         shell: bash
         run: |
@@ -45,17 +45,13 @@ jobs:
           PY
       - name: Focused lane contract test
         run: python -m unittest tests.test_gemini_lane_isolation -v
-      - name: Commit and push workflow through authorized PAT
-        env:
-          GH_PAT: ${{ secrets.GH_PAT }}
+      - name: Commit and push workflow with scoped GITHUB_TOKEN
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$GH_PAT"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .github/workflows/daily-one-shot.yml
           git diff --cached --check
           git commit -m "fix: keep Screening inside the Lite lane"
-          git remote set-url origin "https://x-access-token:${GH_PAT}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin HEAD:fix/gemini-lane-isolation
