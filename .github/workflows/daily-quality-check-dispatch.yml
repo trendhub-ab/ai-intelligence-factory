@@ -1,0 +1,35 @@
+name: Daily Quality Check Dispatch
+
+on:
+  push:
+    branches:
+      - ops/daily-quality-check-20261010
+    paths:
+      - .github/workflows/daily-quality-check-dispatch.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aiif-daily-quality-check-dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch reviewed Daily ONE-SHOT exactly once
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}"
+          payload='{"ref":"main","inputs":{"mode":"full","editorial_style":"human_narrative","excluded_models":"gemini-3.1-flash-lite","confirm":"RUN_ONCE"}}'
+          printf '%s' "$payload" | gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/daily-one-shot.yml/dispatches" \
+            --input -
+          echo 'Daily ONE-SHOT dispatched: full / human_narrative / Lite excluded.'
