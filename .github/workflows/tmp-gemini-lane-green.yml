@@ -18,6 +18,7 @@ jobs:
         with:
           ref: fix/gemini-lane-isolation
           fetch-depth: 0
+          persist-credentials: false
       - name: Apply bounded Daily workflow contract
         shell: bash
         run: |
