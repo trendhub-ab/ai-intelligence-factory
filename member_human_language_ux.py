@@ -11,7 +11,7 @@ Goals:
   ``external_reviews/*.json``;
 - explain common technical acronyms in ordinary Japanese;
 - fail safe against malformed Japanese such as ``必要ため``;
-- hide generic Deep Tech boilerplate when it adds no item-specific value;
+- prefer specific Deep Tech copy while preserving decision-critical safety fallbacks;
 - show ``これは何？`` before the decision on detail pages;
 - use customer-language labels while retaining ADOPT/TEST/WATCH/AVOID codes;
 - keep all migrations deterministic and ZERO Gemini/model requests.
@@ -216,22 +216,27 @@ def humanize_state(
     else:
         out["judgment_reason"] = _humanize_terms(current_reason)
 
+    classification = _clean(out.get("classification"))
     current_risk = _humanize_terms(out.get("main_risk"))
     reviewed_risk = _humanize_terms(review_copy.get("main_risk"))
     generic_risk = _humanize_terms(GENERIC_DEEP_RISK)
-    if _clean(out.get("classification")) == "Deep Tech" and current_risk == generic_risk:
+    if classification == "Deep Tech" and current_risk == generic_risk:
         specific = _specific_risk_from_rationale(review_copy.get("short_rationale") or "")
-        out["main_risk"] = specific
+        out["main_risk"] = specific or reviewed_risk or current_risk
     else:
         out["main_risk"] = current_risk or reviewed_risk
 
-    out["best_for"] = _humanize_terms(out.get("best_for"))
-    out["avoid_for"] = _humanize_terms(out.get("avoid_for"))
-    if _clean(out.get("classification")) == "Deep Tech":
-        if _clean(out.get("best_for")) == _humanize_terms(GENERIC_DEEP_BEST):
-            out["best_for"] = ""
-        if _clean(out.get("avoid_for")) == _humanize_terms(GENERIC_DEEP_AVOID):
-            out["avoid_for"] = ""
+    current_best = _humanize_terms(out.get("best_for"))
+    current_avoid = _humanize_terms(out.get("avoid_for"))
+    reviewed_best = _humanize_terms(review_copy.get("best_for"))
+    reviewed_avoid = _humanize_terms(review_copy.get("avoid_for"))
+    out["best_for"] = current_best
+    out["avoid_for"] = current_avoid
+    if classification == "Deep Tech":
+        if current_best == _humanize_terms(GENERIC_DEEP_BEST):
+            out["best_for"] = reviewed_best or current_best
+        if current_avoid == _humanize_terms(GENERIC_DEEP_AVOID):
+            out["avoid_for"] = reviewed_avoid or current_avoid
 
     # Repair malformed causal copy even when no external review match exists.
     if BAD_REASON_RE.search(_clean(out.get("judgment_reason"))):
