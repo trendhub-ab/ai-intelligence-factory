@@ -10,11 +10,13 @@ def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_daily_one_shot_routes_screening_to_lite_first_with_flash_fallbacks():
+def test_daily_one_shot_routes_screening_to_lite_only_without_flash_fallbacks():
     workflow = _text(WORKFLOW)
-    assert (
-        'GEMINI_SCREENING_MODEL_CANDIDATES: "gemini-3.1-flash-lite,gemini-3.6-flash,gemini-3.5-flash,gemini-3.7-flash,gemini-3.8-flash"'
-        in workflow
+    screening_line = next(
+        line for line in workflow.splitlines() if "GEMINI_SCREENING_MODEL_CANDIDATES:" in line
+    )
+    assert screening_line.strip() == (
+        'GEMINI_SCREENING_MODEL_CANDIDATES: "gemini-3.1-flash-lite"'
     )
 
 
