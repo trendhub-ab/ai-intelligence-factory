@@ -47,7 +47,7 @@ class TestRun170MemberHumanLanguageUX(unittest.TestCase):
         self.assertIn("小規模な試行（PoC）", ux._humanize_terms("PoC"))
         self.assertNotEqual(out["next_action"], state["next_action"])
 
-    def test_generic_deep_tech_boilerplate_is_not_exposed(self):
+    def test_generic_deep_tech_safety_copy_is_preserved_when_no_specific_copy_exists(self):
         state = self.base_state()
         state.update(
             {
@@ -66,10 +66,31 @@ class TestRun170MemberHumanLanguageUX(unittest.TestCase):
         }
         out = ux.humanize_state(state, reviewed)
         self.assertEqual(out["main_risk"], "実環境への移行では誤差が残る。")
-        self.assertEqual(out["best_for"], "")
-        self.assertEqual(out["avoid_for"], "")
+        self.assertEqual(out["best_for"], ux.GENERIC_DEEP_BEST)
+        self.assertEqual(out["avoid_for"], ux.GENERIC_DEEP_AVOID)
         self.assertIn("今すぐ導入はせず", out["next_action"])
         self.assertNotIn("監視し、成熟度", out["next_action"])
+
+    def test_specific_deep_tech_review_copy_overrides_generic_safety_fallbacks(self):
+        state = self.base_state()
+        state.update(
+            {
+                "classification": "Deep Tech",
+                "status": "WATCH",
+                "main_risk": ux.GENERIC_DEEP_RISK,
+                "best_for": ux.GENERIC_DEEP_BEST,
+                "avoid_for": ux.GENERIC_DEEP_AVOID,
+            }
+        )
+        reviewed = {
+            "main_risk": "実環境では誤検知率を個別に検証する必要がある。",
+            "best_for": "評価データを持ち、既存手法と再現比較できる研究開発チーム。",
+            "avoid_for": "検証データなしで本番判断を自動化したい用途。",
+        }
+        out = ux.humanize_state(state, reviewed)
+        self.assertEqual(out["main_risk"], reviewed["main_risk"])
+        self.assertEqual(out["best_for"], reviewed["best_for"])
+        self.assertEqual(out["avoid_for"], reviewed["avoid_for"])
 
     def test_detail_body_starts_with_what_then_decision(self):
         state = ux.humanize_state(self.base_state(), {})
