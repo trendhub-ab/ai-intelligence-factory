@@ -62,7 +62,11 @@ CATEGORY_JA = {
 }
 
 _MEMBER_PRESENTATION_TITLE_OVERRIDES = {
+    "github:langgenius/dify": "Dify",
     "github:mintplex-labs/anything-llm": "AnythingLLM",
+    "github:browser-use/browser-use": "browser-use",
+    "github:comfyanonymous/comfyui": "ComfyUI",
+    "github:cline/cline": "Cline",
 }
 
 
