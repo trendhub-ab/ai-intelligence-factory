@@ -53,6 +53,9 @@ FALLBACK_MODELS = (
 DEFAULT_DEEP_DIVE_POOL = (PRIMARY_MODEL, QUALITY_MODEL, *FALLBACK_MODELS)
 DEFAULT_QUALITY_POOL = DEFAULT_DEEP_DIVE_POOL
 ARTICLE_MODELS = frozenset(DEFAULT_DEEP_DIVE_POOL)
+DEFAULT_SCREENING_POOL = ("gemini-3.5-flash-lite", "gemini-3.1-flash-lite")
+SCREENING_MODELS = frozenset(DEFAULT_SCREENING_POOL)
+HEALTH_MODELS = ARTICLE_MODELS | SCREENING_MODELS
 LAST_RESORT_ARTICLE_MODELS = frozenset()
 DEFAULT_FLASH_SAFETY_BUDGET = 18
 QUALITY_RETRY_MAX_DISTINCT_MODELS = 2
@@ -153,7 +156,7 @@ def _normalize_health_record(row: Any) -> dict | None:
     model = str(row.get("model") or "").strip()
     outcome = str(row.get("outcome") or "").strip().lower()
     timestamp = _parse_timestamp(row.get("timestamp"))
-    if model not in ARTICLE_MODELS or outcome not in {"success", "error"} or timestamp is None:
+    if model not in HEALTH_MODELS or outcome not in {"success", "error"} or timestamp is None:
         return None
     return {
         "timestamp": timestamp.isoformat(),
@@ -270,6 +273,23 @@ def _health_ranked_pool(pool: Iterable[str], history: Iterable[dict], now: datet
     article.sort(key=rank_key)
     last_resort.sort(key=rank_key)
     return article + last_resort + non_article
+
+
+def _screening_health_ranked_pool(
+    pool: Iterable[str], history: Iterable[dict], now: datetime | None = None
+) -> list[str]:
+    """Health-rank only approved Lite models; never cross into the article lane."""
+    existing = allowed_pool([model for model in _dedupe(pool) if model in SCREENING_MODELS])
+    baseline = {model: index for index, model in enumerate(DEFAULT_SCREENING_POOL)}
+    stats = _model_health_stats(existing, history, now=now)
+    existing.sort(
+        key=lambda model: (
+            -float(stats.get(model, {}).get("score", 0.5)),
+            -int(stats.get(model, {}).get("attempts", 0)),
+            baseline.get(model, len(baseline)),
+        )
+    )
+    return existing
 
 
 def _session_usable_pool(pipeline_module: Any, pool: Iterable[str]) -> list[str]:
@@ -442,7 +462,7 @@ def _log_route(pipeline_module: Any, kind: str, pool: list[str]) -> None:
     stats = _model_health_stats(pool, history)
     summary = ", ".join(
         f"{model}:{stats.get(model, {}).get('success', 0)}/{stats.get(model, {}).get('attempts', 0)}"
-        for model in pool if model in ARTICLE_MODELS
+        for model in pool if model in HEALTH_MODELS
     )
     logger.info("[PROVIDER HEALTH ROUTING] kind=%s order=%s health=%s", kind, ">".join(pool), summary or "cold-start")
 
@@ -452,6 +472,7 @@ def install(pipeline_module: Any) -> Any:
     if bool(getattr(pipeline_module, _INSTALLED_ATTR, False)):
         return pipeline_module
     original = getattr(pipeline_module, "_call_model_pool", None)
+    original_screening = getattr(pipeline_module, "_call_screening_pool", None)
     original_deep_dive = getattr(pipeline_module, "_call_deep_dive_pool", None)
     if not callable(original):
         raise RuntimeError("pipeline._call_model_pool is required for Run260")
@@ -462,6 +483,9 @@ def install(pipeline_module: Any) -> Any:
     production_pool = allowed_pool(_dedupe(list(DEFAULT_DEEP_DIVE_POOL) + configured_pool))
     pipeline_module.DEEP_DIVE_MODEL_POOL = production_pool
     pipeline_module.DEEP_DIVE_MODEL_CANDIDATES = list(production_pool)
+    screening_pool = allowed_pool(list(DEFAULT_SCREENING_POOL))
+    pipeline_module.SCREENING_MODEL_POOL = list(screening_pool)
+    pipeline_module.SCREENING_MODEL_CANDIDATES = list(screening_pool)
 
     requested_budgets: dict[str, int] = {}
     for model_name, env_name in (
@@ -507,6 +531,39 @@ def install(pipeline_module: Any) -> Any:
             _append_health_rows(pipeline_module, _new_audit_rows(pipeline_module, audit_start))
 
     pipeline_module._call_model_pool = call_model_pool_run260
+
+    if callable(original_screening):
+        def call_screening_pool_run260(
+            prompt: str,
+            config: dict | None = None,
+            kind: str = "screening",
+            reserve: int = 0,
+            request_context: str = "",
+        ):
+            # Later provider-reliability layers may replace _call_model_pool. Keep the
+            # lane boundary at the durable Screening entrypoint and call the current
+            # provider pool dynamically, exactly as the Deep Dive wrapper does.
+            history_now = list(getattr(pipeline_module, "_provider_health_history", []) or [])
+            ranked_pool = _screening_health_ranked_pool(
+                getattr(pipeline_module, "SCREENING_MODEL_POOL", screening_pool), history_now
+            )
+            ranked_pool = _session_usable_pool(pipeline_module, ranked_pool)
+            _log_route(pipeline_module, kind, ranked_pool)
+            audit_start = _audit_length(pipeline_module)
+            try:
+                return pipeline_module._call_model_pool(
+                    prompt,
+                    config,
+                    kind,
+                    reserve,
+                    ranked_pool,
+                    deep_dive=False,
+                    request_context=request_context,
+                )
+            finally:
+                _append_health_rows(pipeline_module, _new_audit_rows(pipeline_module, audit_start))
+
+        pipeline_module._call_screening_pool = call_screening_pool_run260
 
     def call_deep_dive_pool_run261(
         prompt: str,
