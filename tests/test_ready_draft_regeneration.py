@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import os
 import types
 import unittest
@@ -185,10 +186,15 @@ class ReadyDraftRegenerationTests(unittest.TestCase):
             target.article_revalidation, "_read_current_statuses", return_value=("Ready", "Deep Dive")
         ), patch.object(
             target.article_revalidation, "_cap_validation_budget", return_value=8
-        ), patch.object(target.ready_sync, "sync_note_ready_db") as sync:
+        ), patch.object(target.ready_sync, "sync_note_ready_db", return_value={"source_ready": 0}) as sync:
             with self.assertRaisesRegex(target.ReadyDraftRegenerationError, "did not pass"):
                 target.run_ready_regeneration(pipeline, SYNC_ID)
-        sync.assert_not_called()
+        sync.assert_called_once_with(target_sync_id=SYNC_ID)
+
+    def test_existing_cover_replacement_requires_media_change_proof(self):
+        source = inspect.getsource(target.apply_current_article_to_existing_draft)
+        self.assertIn("media_changed=", source)
+        self.assertIn("_cover_changed", source)
 
     def test_workflow_is_exact_manual_existing_draft_only(self):
         from pathlib import Path
