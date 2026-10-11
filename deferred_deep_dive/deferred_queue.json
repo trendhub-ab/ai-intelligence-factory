@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-10-11T00:29:54.150709+00:00",
+  "updated_at": "2026-10-11T08:36:23.231687+00:00",
   "items": [
     {
       "key": "https://arxiv.org/abs/2610.12445",
@@ -733,6 +733,43 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "DATA",
       "deep_dive_priority_score": 65.4
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=50024166",
+      "deferred_at": "2026-10-11T08:36:23.231443+00:00",
+      "expires_at": "2026-10-13T08:36:23.231443+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "OpenAI will start watermarking ChatGPT's text in the EU",
+        "originalTitle": "OpenAI will start watermarking ChatGPT's text in the EU",
+        "displayName": "OpenAI will start watermarking ChatGPT's text in the EU",
+        "sourceLanguage": "en",
+        "url": "https://techcrunch.com/2026/10/05/openai-will-start-watermarking-chatgpts-text-in-the-eu/",
+        "description": "OpenAI will start watermarking ChatGPT's text in the EU",
+        "stargazerCount": 7,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-09T17:46:48Z",
+        "sourceContext": "HN points=7 comments=1 matched_query=OpenAI",
+        "primaryUrl": "https://techcrunch.com/2026/10/05/openai-will-start-watermarking-chatgpts-text-in-the-eu/",
+        "sourceDetails": {
+          "hn_id": "50024166",
+          "hn_url": "https://news.ycombinator.com/item?id=50024166",
+          "external_url": "https://techcrunch.com/2026/10/05/openai-will-start-watermarking-chatgpts-text-in-the-eu/",
+          "comments": 1,
+          "matched_query": "OpenAI",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3f6479ff-dca9-81ea-9a16-c9794f32bb31",
+      "score": 62,
+      "reason": "EU向けChatGPTテキスト透かし",
+      "commercial_score": 65,
+      "shelf_life_score": 30,
+      "shelf_life": "FLASH",
+      "portfolio_topic": "MODEL",
+      "deep_dive_priority_score": 63.05
     }
   ]
 }
