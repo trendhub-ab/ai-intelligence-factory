@@ -1,47 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-11T08:36:23.231687+00:00",
+  "updated_at": "2026-10-11T08:38:02.217717+00:00",
   "items": [
-    {
-      "key": "https://arxiv.org/abs/2610.12445",
-      "deferred_at": "2026-10-10T05:50:53.441929+00:00",
-      "expires_at": "2026-12-09T05:50:53.441929+00:00",
-      "repo": {
-        "source": "ArXiv",
-        "nameWithOwner": "Caught in the Act: Probes Effectively Detect Sabotage and Catch Unverbalized Deception",
-        "originalTitle": "Caught in the Act: Probes Effectively Detect Sabotage and Catch Unverbalized Deception",
-        "displayName": "Caught in the Act: Probes Effectively Detect Sabotage and Catch Unverbalized Deception",
-        "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2610.12445v1",
-        "description": "Recent incidents have highlighted the challenge of monitoring LLM agents and the danger of models deceiving people. We show that white-box deception detection via probes can be scaled up to frontier monitoring settings by collecting the largest deception dataset to date for training probes and introducing a novel probe architecture which can aggregate information across many layers and tokens. Our probes achieve 98.8% AUC in SHADE-Arena, surpassing an Opus 5.5 text-monitoring baseline, and show",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-08T17:58:13Z",
-        "sourceContext": "Recent incidents have highlighted the challenge of monitoring LLM agents and the danger of models deceiving people. We show that white-box deception detection via probes can be scaled up to frontier monitoring settings by collecting the largest deception dataset to date for training probes and introducing a novel probe architecture which can aggregate information across many layers and tokens. Our probes achieve 98.8% AUC in SHADE-Arena, surpassing an Opus 5.5 text-monitoring baseline, and show improved efficacy as the underlying model is scaled up. To push our probes to their limit, we test them on several cases where deception cannot be determined from the context alone. In these cases, which we refer to as introspective deception, the ground truth can only be determined through careful elicitation or thorough knowledge of a model's training data. In one such evaluation, we show that probes can distinguish transcripts containing a model's true hidden goal from other goals with an AUC of up to 99.7%. Our probes also readily detect deception on prominent open-weight models which lie about politically sensitive topics, and about their beliefs when put under pressure. We release our training dataset, dubbed FIBS, to help drive frontier deployment of effective probes, and encourage the community to expand upon it with further examples of deception and sabotage.",
-        "primaryUrl": "https://arxiv.org/abs/2610.12445v1",
-        "sourceDetails": {
-          "authors": [
-            "Oskar J. Hollinsworth",
-            "Alex F. Spies",
-            "Tigist Diriba",
-            "Adam Gleave",
-            "Chris Cundy"
-          ],
-          "categories": [
-            "cs.LG",
-            "cs.AI"
-          ]
-        }
-      },
-      "notion_page_id": "3f5479ff-dca9-8166-b121-fb8e0dabe23d",
-      "score": 83,
-      "reason": "プローブを用いた隠蔽検知で安全性監査に直結。",
-      "commercial_score": 76,
-      "shelf_life_score": 85,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "SECURITY",
-      "deep_dive_priority_score": 80.55
-    },
     {
       "key": "https://cloud.google.com/blog/products/ai-machine-learning/welcome-to-gemini-at-work-2026",
       "deferred_at": "2026-10-09T09:42:51.689450+00:00",
