@@ -168,6 +168,18 @@ def _select_exact_source_item(pipeline: Any, sync_id: str) -> dict[str, Any]:
     return matches[0]
 
 
+def _reconcile_failed_ready_target(sync_id: str, pipeline: Any) -> None:
+    """Reconcile queue quality after a persisted regeneration failure, never mutate note."""
+    try:
+        ready_sync.sync_note_ready_db(target_sync_id=sync_id)
+    except Exception as exc:
+        pipeline.logger.warning(
+            "[READY DRAFT REGENERATION RECONCILE FAILED] page=%s error=%s",
+            sync_id,
+            exc,
+        )
+
+
 def run_ready_regeneration(pipeline: Any, sync_id: str) -> dict[str, Any]:
     """Run current Production generation against one already-delivered Ready source row."""
     sync_id = _normalize_sync_id(sync_id)
@@ -220,10 +232,12 @@ def run_ready_regeneration(pipeline: Any, sync_id: str) -> dict[str, Any]:
         persist_results=True,
     )
     if not generated:
+        _reconcile_failed_ready_target(sync_id, pipeline)
         raise ReadyDraftRegenerationError("exact target produced no manuscript")
     status = article_revalidation.classify_nonpersistent_report(generated)
     manuscript = generated[0] if isinstance(generated, tuple) and generated else generated
     if status != "accepted":
+        _reconcile_failed_ready_target(sync_id, pipeline)
         raise ReadyDraftRegenerationError(
             f"regenerated target did not pass current Production gates: status={status}"
         )
@@ -384,6 +398,14 @@ def _cover_identity(page: Any) -> str:
     return hashlib.sha256(src.encode("utf-8")).hexdigest() if src else ""
 
 
+def _cover_changed(page: Any, old_identity: str) -> bool:
+    try:
+        current = _cover_identity(page)
+    except ReadyDraftRegenerationError:
+        return False
+    return bool(current and current != str(old_identity or ""))
+
+
 def apply_current_article_to_existing_draft(
     sync_id: str, *, expected_route: str
 ) -> dict[str, Any]:
@@ -437,8 +459,14 @@ def apply_current_article_to_existing_draft(
                 )
 
             official_image._upload_header_image(
-                page, Path(article["eyecatch_path"])
+                page,
+                Path(article["eyecatch_path"]),
+                media_changed=lambda: _cover_changed(page, old_cover_identity),
             )
+            if not _cover_changed(page, old_cover_identity):
+                raise ReadyDraftRegenerationError(
+                    "regenerated eyecatch did not replace the previous cover media"
+                )
             saved = note_base._save_draft_and_verify(
                 page, title, manuscript, image_required=True
             )
