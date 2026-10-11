@@ -243,6 +243,7 @@ NON_MEMBER_MODULES = frozenset((
     "reader_quality_precision.py",
     "reader_value_review_bridge.py",
     "ready_eyecatch_finalize.py",
+    "ready_draft_regeneration.py",
     "ready_note_body_resync.py",
     "ready_note_cover_apply.py",
     "ready_rescue_validation.py",
@@ -510,7 +511,7 @@ VIEW_CONTRACTS = {
         "show": ("AI・技術名", "これは何？", "次にやること", "最終確認日"),
     },
     "3d0479ff-dca9-8137-99c5-000c606813ca": {
-        "name": "もう少し様子を見たいもの",
+        "name": "もう少し様子を見る",
         "show": ("AI・技術名", "これは何？", "次にやること", "最終確認日"),
     },
     "3d0479ff-dca9-8193-8963-000ce71542be": {
