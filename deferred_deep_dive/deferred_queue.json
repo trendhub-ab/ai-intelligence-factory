@@ -1,43 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-11T00:29:17.325493+00:00",
+  "updated_at": "2026-10-11T00:29:54.150709+00:00",
   "items": [
-    {
-      "key": "https://ai.google.dev/gemini-api/docs/changelog?aif_revision=06a42dd6041882fb",
-      "deferred_at": "2026-10-10T05:50:53.441883+00:00",
-      "expires_at": "2026-10-24T05:50:53.441883+00:00",
-      "repo": {
-        "source": "OfficialVendor",
-        "nameWithOwner": "Google Gemini — Gemini 3.7 Flash deprecation : gemini-3.7-flash is deprecated and has been replaced by gemini-3.8-flash . All requests to gemini-3.7-flash are automatically routed to gemini-3.8-flash . Update your model string to gemini",
-        "originalTitle": "Google Gemini — Gemini 3.7 Flash deprecation : gemini-3.7-flash is deprecated and has been replaced by gemini-3.8-flash . All requests to gemini-3.7-flash are automatically routed to gemini-3.8-flash . Update your model string to gemini",
-        "displayName": "Google Gemini — Gemini 3.7 Flash deprecation : gemini-3.7-flash is deprecated and has been replaced by gemini-3.8-flash . All requests to gemini-3.7-flash are automatically routed to gemini-3.8-flash . Update your model string to gemini",
-        "sourceLanguage": "en",
-        "url": "https://ai.google.dev/gemini-api/docs/changelog?aif_revision=06a42dd6041882fb",
-        "description": "Gemini 3.7 Flash deprecation : gemini-3.7-flash is deprecated and has been replaced by gemini-3.8-flash . All requests to gemini-3.7-flash are automatically routed to gemini-3.8-flash . Update your model string to gemini-3.8-flash and review the Gemini 3.8 Flash guide .",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "October 8, 2026",
-        "sourceContext": "Gemini 3.7 Flash deprecation : gemini-3.7-flash is deprecated and has been replaced by gemini-3.8-flash . All requests to gemini-3.7-flash are automatically routed to gemini-3.8-flash . Update your model string to gemini-3.8-flash and review the Gemini 3.8 Flash guide .",
-        "primaryUrl": "https://ai.google.dev/gemini-api/docs/changelog",
-        "sourceDetails": {
-          "vendor": "Google Gemini",
-          "vendor_region": "US",
-          "source_role": "commercial_primary_source",
-          "official_release_url": "https://ai.google.dev/gemini-api/docs/changelog",
-          "candidate_revision": "06a42dd6041882fb",
-          "vendor_record_kind": "structured_html",
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3f5479ff-dca9-81f8-b6dd-cc1bf55d922b",
-      "score": 83,
-      "reason": "Gemini本番運用のAPIルーティングと移行必須情報。",
-      "commercial_score": 86,
-      "shelf_life_score": 45,
-      "shelf_life": "TREND",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 84.05
-    },
     {
       "key": "https://arxiv.org/abs/2610.12445",
       "deferred_at": "2026-10-10T05:50:53.441929+00:00",
