@@ -153,6 +153,13 @@ def classify_evidence(
     if host == "arxiv.org" or host.endswith(".arxiv.org"):
         return out("ARXIV","PRIMARY_FIRST_PARTY",role_u == "PRIMARY_SOURCE","arXiv paper/version evidence")
 
+    # Explicit secondary semantics must not be promoted solely by a PRIMARY_SOURCE role.
+    # Strong identity anchors above (regulatory/GitHub/arXiv) remain authoritative on their own merits.
+    if raw in {"secondary_news", "news"}:
+        return out("SECONDARY_NEWS","SECONDARY",False,"explicit secondary/news source type cannot be promoted by evidence role")
+    if raw in {"explainer", "analysis"}:
+        return out("SUPPLEMENTAL","SECONDARY",False,"explicit explainer/analysis source type cannot be promoted by evidence role")
+
     # Explicit semantic signals from source discovery are stronger than guessing from domain alone.
     if re.search(r"changelog|release\s*notes?|what'?s\s+new", label_l + " " + path):
         return out("OFFICIAL_CHANGELOG","PRIMARY_FIRST_PARTY",role_u == "PRIMARY_SOURCE","explicit changelog/release evidence")
