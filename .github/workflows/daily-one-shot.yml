@@ -87,7 +87,7 @@ jobs:
       AIIF_EDITORIAL_STYLE: ${{ inputs.editorial_style }}
       AIIF_GEMINI_TEMP_EXCLUDED_MODELS: ${{ inputs.excluded_models }}
       ARTICLE_REVALIDATION_EXACT_TARGET: ${{ inputs.exact_target }}
-      GEMINI_SCREENING_MODEL_CANDIDATES: "gemini-3.1-flash-lite,gemini-3.6-flash,gemini-3.5-flash,gemini-3.7-flash,gemini-3.8-flash"
+      GEMINI_SCREENING_MODEL_CANDIDATES: "gemini-3.5-flash-lite,gemini-3.1-flash-lite"
       GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.5-flash,gemini-3.7-flash,gemini-3.8-flash"
 
     steps:
@@ -103,7 +103,7 @@ jobs:
             *) echo "::error::Unknown editorial style"; exit 1 ;;
           esac
           case "${{ inputs.excluded_models }}" in
-            ""|gemini-3.1-flash-lite|gemini-3.5-flash|gemini-3.6-flash|gemini-3.7-flash|gemini-3.8-flash) ;;
+            ""|gemini-3.5-flash-lite|gemini-3.1-flash-lite|gemini-3.5-flash|gemini-3.6-flash|gemini-3.7-flash|gemini-3.8-flash) ;;
             *) echo "::error::Unknown run-scoped Gemini exclusion"; exit 1 ;;
           esac
           case "${{ inputs.canary_source }}" in
