@@ -203,11 +203,16 @@ def ai_style_composite_signals(text: str, article_display_variants: list[dict]) 
     }
 
 
+_STRONG_HYPE_TERMS = ("革命的", "圧倒的", "史上最高", "ゲームチェンジャー", "世界を変える")
+
+
 def naturalness_v2_signals(text: str) -> dict:
     """Located self-edit advice only; never contributes to Gate score/high.
 
-    Require two independent repeated habits. Section numbers refer to H2/H3
-    blocks in the supplied article, including excluded metadata blocks.
+    Repeated habits require two independent signals. A same-section cluster of
+    multiple strong hype terms may independently recommend advisory repair.
+    Section numbers refer to H2/H3 blocks in the supplied article, including
+    excluded metadata blocks.
     """
     lines = []
     fence = None
@@ -244,7 +249,7 @@ def naturalness_v2_signals(text: str) -> dict:
         if prose:
             sections.append((i + 1, prose))
 
-    self_closings, summaries, grand_closings, lengths = [], [], [], []
+    self_closings, summaries, grand_closings, strong_hype_sections, lengths = [], [], [], [], []
     for number, prose in sections:
         sentences = [s.strip() for s in re.split(r"(?<=[。！？!?])|\n", prose) if s.strip()]
         closing = sentences[-1] if sentences else ""
@@ -254,6 +259,8 @@ def naturalness_v2_signals(text: str) -> dict:
             summaries.append(number)
         if re.search(r"(?:未来を変える|大きな転換点|大きな岐路|新たな時代|可能性を切り開く)", closing):
             grand_closings.append(number)
+        if sum(term in prose for term in _STRONG_HYPE_TERMS) >= 2:
+            strong_hype_sections.append(number)
         length = len(re.sub(r"\s+", "", prose))
         if length >= 80:
             lengths.append(length)
@@ -266,8 +273,12 @@ def naturalness_v2_signals(text: str) -> dict:
         "repeated_meta_summaries": summaries if len(summaries) >= 2 else [],
         "repeated_grand_closings": grand_closings if len(grand_closings) >= 2 else [],
         "uniform_sections": uniform,
+        "strong_hype_sections": strong_hype_sections,
     }
-    signals["repair_recommended"] = sum(bool(v) for v in signals.values()) >= 2
+    repeated_habit_count = sum(bool(signals[key]) for key in (
+        "repeated_self_closings", "repeated_meta_summaries", "repeated_grand_closings", "uniform_sections"
+    ))
+    signals["repair_recommended"] = bool(strong_hype_sections) or repeated_habit_count >= 2
     return signals
 
 
@@ -286,6 +297,11 @@ def build_naturalness_retry_contract(article: str) -> str:
             advice.append(f"・節 {', '.join(map(str, signals[key]))}: {instruction}")
     if signals["uniform_sections"]:
         advice.append("・節長が均一。意味に応じて短い節や事実だけで終える節を混ぜる。長短のノルマは設けない。")
+    if signals["strong_hype_sections"]:
+        terms = [term for term in _STRONG_HYPE_TERMS if term in (article or "")]
+        advice.append(
+            f"・節 {', '.join(map(str, signals['strong_hype_sections']))}: 強い煽り表現（{' / '.join(terms)}）を根拠に即した中立的な強さへ戻す。Fact / Evidence / Decisionは変えない。"
+        )
     return "\n".join([
         "[naturalness-v2｜既存Quality Retryの補助指示]",
         "節番号は元記事のH2/H3の出現順。検出は編集上の目安であり、新しい不合格理由ではない。",

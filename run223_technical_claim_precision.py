@@ -23,6 +23,8 @@ _SPEED_RE = re.compile(r"(?:高速|速(?:い|く|さ)|速度|性能|performance|
 _EXPECTATION_RE = re.compile(r"(?:expect(?:ed|s|ation)?|estimate|estimated|benchmark|measurement|measured|trial|example|期待|見込|試算|ベンチマーク|測定|計測|例)", re.I)
 _ARTICLE_SCOPE_RE = re.compile(r"(?:チーム|公式|一次情報|期待|見込|試算|ベンチマーク|測定|条件|処理内容|実行環境|ワークロード|場合|によって|依存|team|official|source|expect|benchmark|condition|workload|depend)", re.I)
 _VARIABILITY_RE = re.compile(r"(?:実際[^。！？\n]{0,35}(?:変わ|異な)|(?:処理内容|実行環境|条件|ワークロード)[^。！？\n]{0,35}(?:変わ|異な|依存)|(?:var(?:y|ies)|depend)[^.?!\n]{0,40}(?:workload|condition|environment))", re.I)
+_AUC_VALUE_RE = re.compile(r"\b(?:roc\s+)?auc\b[^0-9\n]{0,32}([01](?:\.\d+)?)", re.I)
+_ACCURACY_PRECISION_VALUE_RE = re.compile(r"\b(accuracy|precision)\b[^0-9\n]{0,32}([01](?:\.\d+)?)", re.I)
 
 _BROAD_CONVERSION_RE = re.compile(
     r"(?:暗黙(?:的)?|曖昧)[^。！？\n]{0,40}型変換[^。！？\n]{0,28}(?:禁止|全面(?:的に)?廃止|すべて廃止|許さない)",
@@ -115,6 +117,30 @@ def operation_parameter_failures(article: str, source_context: str) -> list[str]
     return []
 
 
+def metric_semantics_failures(article: str, source_context: str) -> list[str]:
+    """Reject relabeling a source AUC value as accuracy/precision without source support."""
+    source = str(source_context or "")
+    source_auc_values = {match.group(1) for match in _AUC_VALUE_RE.finditer(source)}
+    if not source_auc_values:
+        return []
+    for match in _ACCURACY_PRECISION_VALUE_RE.finditer(str(article or "")):
+        metric = match.group(1).lower()
+        value = match.group(2)
+        if value not in source_auc_values:
+            continue
+        source_supports_metric = re.search(
+            rf"\b{re.escape(metric)}\b[^0-9\n]{{0,32}}{re.escape(value)}(?:\b|$)",
+            source,
+            re.I,
+        )
+        if source_supports_metric:
+            continue
+        return [
+            f"metric_semantics_changed: source ROC AUC value {value} is presented as {metric}"
+        ]
+    return []
+
+
 def malformed_japanese_failures(article: str) -> list[str]:
     for pattern in _MALFORMED_JA_PATTERNS:
         match = pattern.search(str(article or ""))
@@ -202,6 +228,7 @@ def technical_claim_failures(
     failures.extend(operation_parameter_failures(article, source_context))
     failures.extend(broad_conversion_failures(article))
     failures.extend(multiplier_scope_failures(article, source_context))
+    failures.extend(metric_semantics_failures(article, source_context))
     failures.extend(source_date_failures(article, evidence_metadata, source_info, freshness))
     failures.extend(malformed_japanese_failures(article))
     return list(dict.fromkeys(failures))[:10]
