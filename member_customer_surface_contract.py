@@ -243,6 +243,7 @@ NON_MEMBER_MODULES = frozenset((
     "reader_quality_precision.py",
     "reader_value_review_bridge.py",
     "ready_eyecatch_finalize.py",
+    "ready_draft_regeneration.py",
     "ready_note_body_resync.py",
     "ready_note_cover_apply.py",
     "ready_rescue_validation.py",
