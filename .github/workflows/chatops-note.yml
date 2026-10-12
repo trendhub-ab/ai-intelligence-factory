@@ -27,6 +27,7 @@ jobs:
       github.event.comment.user.login == 'trendhub-ab' &&
       github.actor == 'trendhub-ab' &&
       (github.event.comment.body == '/aiif note sync' ||
+       startsWith(github.event.comment.body, '/aiif note sync ') ||
        github.event.comment.body == '/aiif note draft' ||
        github.event.comment.body == '/aiif note vtcode draft' ||
        github.event.comment.body == '/aiif note audit openai2015' ||
@@ -59,6 +60,10 @@ jobs:
           set -euo pipefail
           case "$COMMAND" in
             '/aiif note sync') action='sync' ;;
+            '/aiif note sync '*)
+              action='sync_exact'
+              sync_id="${COMMAND#'/aiif note sync '}"
+              ;;
             '/aiif note draft') action='draft' ;;
             '/aiif note vtcode draft') action='vtcode_draft' ;;
             '/aiif note audit openai2015') action='openai2015_audit' ;;
@@ -87,7 +92,7 @@ jobs:
               ;;
             *) echo '::error::Refusing unknown Note ChatOps command'; exit 1 ;;
           esac
-          if [ "${action}" = 'eyecatch_finalize' ] || [ "${action}" = 'cover_apply' ]; then
+          if [ "${action}" = 'sync_exact' ] || [ "${action}" = 'eyecatch_finalize' ] || [ "${action}" = 'cover_apply' ]; then
             if ! printf '%s' "${sync_id:-}" | grep -Eq '^[0-9a-fA-F]{32}$'; then
               echo '::error::Exact 32-hex sync_id is required'
               exit 1
@@ -107,6 +112,10 @@ jobs:
             sync)
               workflow='note-ready-sync.yml'
               payload='{"ref":"main"}'
+              ;;
+            sync_exact)
+              workflow='note-ready-sync.yml'
+              payload="$(printf '{"ref":"main","inputs":{"create_private_draft":"true","target_sync_id":"%s"}}' "$SYNC_ID")"
               ;;
             draft)
               workflow='note-create-draft.yml'
@@ -213,6 +222,9 @@ jobs:
             echo '- Production started: `false`'
             echo '- public note release performed: `false`'
             case "$ACTION" in
+              sync_exact)
+                echo "- exact note sync retry authorized for sync_id: `$SYNC_ID`; durable-ledger reconciliation only; no public release"
+                ;;
               lp_update)
                 echo '- explicit maintenance mutation authorized: `fixed LP ned673e381ef8 only`'
                 ;;
