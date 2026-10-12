@@ -12,6 +12,11 @@ on:
         required: true
         default: ''
         type: string
+      operation:
+        description: regenerate or resume_persisted
+        required: false
+        default: regenerate
+        type: string
 
 permissions:
   contents: read
@@ -36,12 +41,16 @@ jobs:
       NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
       NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
     steps:
-      - name: Require exact target and literal confirmation
+      - name: Require exact target, operation, and literal confirmation
         shell: bash
         run: |
           set -euo pipefail
           test "${{ inputs.confirm }}" = 'RUN_ONCE'
           [[ "${{ inputs.sync_id }}" =~ ^[0-9a-fA-F]{32}$ ]]
+          case "${{ inputs.operation }}" in
+            regenerate|resume_persisted) ;;
+            *) echo "::error::Invalid operation"; exit 1 ;;
+          esac
 
       - uses: actions/checkout@v6
         with:
@@ -174,12 +183,19 @@ jobs:
       - name: Run focused exact-draft regression contract
         run: python -m unittest tests.test_ready_draft_regeneration -v
 
-      - name: Run exact current-main regeneration and same-draft replacement
+      - name: Run exact current-main regeneration or zero-provider resume and same-draft replacement
+        env:
+          OPERATION: ${{ inputs.operation }}
         run: |
-          set -o pipefail
+          set -euo pipefail
+          extra=()
+          if [ "$OPERATION" = 'resume_persisted' ]; then
+            extra+=(--resume-persisted)
+          fi
           xvfb-run -a python ready_draft_regeneration.py \
             --sync-id "$READY_DRAFT_REGENERATION_SYNC_ID" \
             --confirm "$READY_DRAFT_REGENERATION_CONFIRM" \
+            "${extra[@]}" \
             | tee "${RUNNER_TEMP}/ready-draft-regeneration.json"
 
       - name: Verify private-draft boundaries

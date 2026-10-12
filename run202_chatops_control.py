@@ -21,6 +21,7 @@ TARGET_COMMANDS = (
     (re.compile(r"^/aiif note body_resync ([0-9a-fA-F]{32})$"), "ready_note_body_resync"),
     (re.compile(r"^/aiif note cover_apply ([0-9a-fA-F]{32})$"), "ready_note_cover_apply"),
     (re.compile(r"^/aiif note regenerate ([0-9a-fA-F]{32})$"), "ready_draft_regenerate"),
+    (re.compile(r"^/aiif note regenerate_resume ([0-9a-fA-F]{32})$"), "ready_draft_regenerate_resume"),
 )
 
 COMMAND_TO_MODE = {
