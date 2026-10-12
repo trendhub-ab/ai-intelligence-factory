@@ -1,9 +1,9 @@
 # AI Intelligence Factory — 現行Production仕様
 
-最終更新: **2026-09-29**  
+最終更新: **2026-10-12**  
 Production Source of Truth: **`main`**  
 Canonical Specification: **本ファイル**  
-実装監査基準SHA: **`3bd95621fb4064dafe3b8f00dd5486f799e504b2`**  
+実装監査基準SHA: **`c91be9a42e4f5f7442b47594d00c47d05686f74a`**  
 （この仕様同期自体のmergeで `main` SHAは変わり得るが、Productionコード契約は上記SHAを基準に監査した。）
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。  
@@ -125,10 +125,18 @@ Production Dailyは **Manual ONE-SHOT** が正規経路。
 - `/aiif run production_e2e_preflight`
 - `/aiif run local_skills_canary_validation`
 - `/aiif run local_skills_production_validation`
+- `/aiif note regenerate <32-hex sync_id>`
+- `/aiif note regenerate_resume <32-hex sync_id>`
 
 Control Issue、owner、run_attempt等を二重認証し、GH_PATで既存manual workflowを1回だけdispatchする。Bridge自身がProduction処理を直接実行しない。
 
 `/aiif run full` は現行運用上 **`human_narrative`** を明示してDaily ONE-SHOTへ渡す。
+
+既存Ready下書きの再生成は `.github/workflows/ready-draft-regenerate-once.yml` を正規ONE-SHOTとし、ChatOpsからはexact 32-hex sync_idとliteral `RUN_ONCE` を渡す。
+
+- `regenerate`: 現行Productionでexact targetを再生成し、現行Gate通過後に同じprivate draftへ反映する。
+- `resume_persisted`: 既に現行Content IntelligenceへReadyとしてpersist済みのexact targetだけを、Provider生成なしで同じprivate draftへ反映する。
+- どちらも新規draft作成とpublic releaseを禁止する。
 
 ### 2.4 Editorial Style
 
@@ -605,6 +613,18 @@ image + sidecar manifestを対で扱い、古いPNG URLが残っているだけ�
 
 を必須とする。
 
+### 9.6 Subscription Attribution runtime-state write
+
+Subscription Attribution JSONをGitHubへ保存する場合、readとwriteのbranch authorityを分離しない。
+
+- target branchは `EYECATCH_GITHUB_BRANCH` を正とする。
+- 既存ファイル確認のGETも同じbranchを `ref` に指定する。
+- 既存ファイルがある場合はそのbranch上のcurrent blob SHAを取得し、PUT payloadへ `sha` を含める。
+- PUTの`branch`も同じ `EYECATCH_GITHUB_BRANCH` を指定する。
+- default branchをGETし、`runtime-state`等の別branchへSHAなしPUTする経路は禁止する。
+
+既存attribution更新時のGitHub 422を回避するためにSHA整合を弱めず、同一branch上の既存identityを更新する。
+
 ---
 
 ## 10. Content Intelligence → Note Delivery Contract
@@ -704,17 +724,46 @@ Public releaseは人間のみ。
 - Final Publication Surfaceで内部マーカーが1件でも残ればFail-Closed
 - 内部マーカー除去を理由にFact / Evidence / Decision本文を削除しない
 
-### 11.2 Existing draft repair
+### 11.2 Existing draft repair / exact regeneration
 
 汎用exact repair lanes:
 
 - Ready eyecatch finalize
 - Ready note body resync
 - Ready note cover apply
+- Ready existing-draft regenerate
+- persisted Ready existing-draft resume
 
 いずれもexact sync_idと既存stateをFail-Closed確認する。
 
 既存draft修復を理由に別記事・新規draftへ逃げない。
+
+Ready existing-draft regenerationは、少なくとも次を満たすexact targetだけに許可する。
+
+- Note Ready側が `Ready` / `投稿準備中`
+- 既存 `note下書きID` があり、そのIDをdraft identity authorityとする
+- `note公開URL` と `投稿日` が空で未公開
+- Provider/source mutation前に既存private draftのedit routeへ到達できることをread-only確認
+- 現行Production Gateが再生成結果を受理すること
+- Content Intelligenceは同じexact pageへpersistすること
+- noteへの反映は同じdraft routeのtitle / body / current eyecatchだけを置換すること
+- same edit route、title、body、eyecatchのpersistを再検証すること
+- new draft作成禁止
+- public release禁止
+
+`persist_results=True` のProduction生成結果はnon-persistent report契約で判定しない。明示的なtuple statusがある場合は `accepted` / `rejected` を尊重し、plain manuscriptが返った場合はfresh lifecycle readで **article status=`Ready` かつ content status=`Deep Dive`** を確認できた場合だけacceptedとする。それ以外はFail-Closed。
+
+`resume_persisted` は、Production生成とReady persistが既に成功した後にdelivery wrapperだけが停止した場合の限定resumeである。
+
+- source lifecycleがfresh readで `Ready / Deep Dive`
+- exact targetを `target_sync_id` でqueue reconciliation
+- destination page / note draft ID / posting stateのbinding不変
+- generated countは0
+- `production_pipeline.main()` を呼ばない
+- Provider generation / Gemini callは0
+- 既にpersist済みのcurrent Ready manuscript / eyecatchを同じprivate draftへ反映する
+- new draft作成禁止
+- public release禁止
 
 ### 11.3 Human publication reconciliation
 
@@ -966,7 +1015,9 @@ Factory全体を理解するときは、まず本書を読む。
 - A+ / Local Skills Production経路
 - Editorial Style
 - Eyecatch rendering / integrity
+- Subscription Attribution / runtime-state asset persistence
 - Note Ready / Draft / Publication reconciliation
+- exact existing-draft regeneration / persisted resume
 - Daily / ChatOps entrypoint
 - Current-run delivery causality
 - Paid Product / Member surface
@@ -989,7 +1040,7 @@ Factory全体を理解するときは、まず本書を読む。
 
 ---
 
-## 18. Current-state Summary — 2026-09-29
+## 18. Current-state Summary — 2026-10-12
 
 現在のFactoryは次を正式基準とする。
 
@@ -1010,7 +1061,10 @@ Factory全体を理解するときは、まず本書を読む。
 - **Reader format:** Narrative Lead + どんな内容？ / なぜ重要？ / 結論は？ / 元情報。
 - **Ready:** policy SHA + manuscript SHA + style provenance。
 - **Eyecatch:** 1280×670、PNG pixel proof、ellipsis禁止、語中改行禁止。
+- **Subscription Attribution:** GitHub GET/PUTは同じ `EYECATCH_GITHUB_BRANCH` を使用し、既存更新はbranch上のcurrent SHAをPUTへ渡す。
 - **Note:** current-run Ready全件をexact targetでprivate draftへ送る。公開は人間のみ。
+- **Existing draft regeneration:** exact sync_id、既存draft identity、未公開stateを固定し、現行Gate通過後も同じdraftだけを更新する。
+- **Persisted resume:** `Ready / Deep Dive` をfresh確認し、Provider generation / Gemini call 0でpersist済み本文とeyecatchを同じdraftへ反映する。
 - **Publication reconcile:** RSS read-only。note投稿日と一次Source公開日を分離。
 - **Content Intelligence:** Event / Articleの正本。
 - **Technology Intelligence:** durable Technology current state。
