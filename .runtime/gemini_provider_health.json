@@ -1,36 +1,8 @@
 {
   "schema_version": 1,
   "purpose": "Gemini lane provider availability routing; no prompt/article content",
-  "updated_at": "2026-10-12T22:38:38.952355+00:00",
+  "updated_at": "2026-10-12T22:40:29.146221+00:00",
   "attempts": [
-    {
-      "timestamp": "2026-10-02T09:26:29.916112+00:00",
-      "model": "gemini-3.5-flash",
-      "kind": "quality_retry",
-      "outcome": "success",
-      "error_type": ""
-    },
-    {
-      "timestamp": "2026-10-02T09:30:16.222813+00:00",
-      "model": "gemini-3.5-flash",
-      "kind": "deep_dive",
-      "outcome": "success",
-      "error_type": ""
-    },
-    {
-      "timestamp": "2026-10-02T09:30:48.845601+00:00",
-      "model": "gemini-3.5-flash",
-      "kind": "quality_retry",
-      "outcome": "success",
-      "error_type": ""
-    },
-    {
-      "timestamp": "2026-10-02T09:31:29.327496+00:00",
-      "model": "gemini-3.5-flash",
-      "kind": "quality_retry",
-      "outcome": "success",
-      "error_type": ""
-    },
     {
       "timestamp": "2026-10-02T09:32:17.518770+00:00",
       "model": "gemini-3.5-flash",
@@ -1400,6 +1372,34 @@
       "timestamp": "2026-10-12T22:38:34.918885+00:00",
       "model": "gemini-3.5-flash-lite",
       "kind": "global_calibration",
+      "outcome": "success",
+      "error_type": ""
+    },
+    {
+      "timestamp": "2026-10-12T22:39:10.356232+00:00",
+      "model": "gemini-3-flash-preview",
+      "kind": "deep_dive",
+      "outcome": "error",
+      "error_type": "ServerError"
+    },
+    {
+      "timestamp": "2026-10-12T22:39:26.046451+00:00",
+      "model": "gemini-3-flash-preview",
+      "kind": "deep_dive",
+      "outcome": "error",
+      "error_type": "ServerError"
+    },
+    {
+      "timestamp": "2026-10-12T22:39:48.996841+00:00",
+      "model": "gemini-3.8-flash",
+      "kind": "deep_dive",
+      "outcome": "error",
+      "error_type": "ServerError"
+    },
+    {
+      "timestamp": "2026-10-12T22:40:15.902710+00:00",
+      "model": "gemini-3.6-flash",
+      "kind": "deep_dive",
       "outcome": "success",
       "error_type": ""
     }
