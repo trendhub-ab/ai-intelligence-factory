@@ -1,0 +1,60 @@
+name: Notion Manuscript Read-Only Audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'audit_notion_manuscripts.py'
+      - '.github/workflows/notion-manuscript-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Prove audit source is read-only
+        run: |
+          set -euo pipefail
+          ! grep -Eq 'requests\.(patch|delete|put)|method=["'"'](PATCH|DELETE|PUT)["'"']' audit_notion_manuscripts.py
+          python -m py_compile audit_notion_manuscripts.py
+
+      - name: Audit every Content Intelligence page
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: '2026-03-11'
+        run: python audit_notion_manuscripts.py
+
+      - name: Publish counts to job summary
+        if: always()
+        run: |
+          if [ -f artifacts/notion_manuscript_audit.json ]; then
+            python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          p = json.load(open('artifacts/notion_manuscript_audit.json', encoding='utf-8'))
+          print('### Content Intelligence manuscript audit')
+          for key in ('rows_queried','pages_scanned','pages_with_manuscript','pages_with_multiple_manuscripts','multiple_with_unique_current_title_match','multiple_ambiguous'):
+              print(f'- {key}: `{p[key]}`')
+          PY
+          fi
+
+      - name: Upload audit metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notion-manuscript-audit
+          path: artifacts/notion_manuscript_audit.json
+          if-no-files-found: ignore
+          retention-days: 7
