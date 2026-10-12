@@ -10,9 +10,9 @@ import publication_contract as contract
 import run194_publication_contract as run194
 
 
-def ready_block(body: str, caption: str) -> dict:
+def ready_block(body: str, caption: str, block_id: str = "block") -> dict:
     return {
-        "id": "block",
+        "id": block_id,
         "type": "code",
         "code": {
             "rich_text": [{"plain_text": body, "text": {"content": body}}],
@@ -21,22 +21,61 @@ def ready_block(body: str, caption: str) -> dict:
     }
 
 
+class _Response:
+    def __init__(self, status_code=200, payload=None, text=""):
+        self.status_code = status_code
+        self._payload = payload or {}
+        self.text = text
+
+    def json(self):
+        return self._payload
+
+
 class Run194PublicationContractTests(unittest.TestCase):
     def _module(self, blocks=None):
         blocks = list(blocks or [])
-        state = {"last_skip": None}
+        state = {"last_skip": None, "pending": 0}
 
         def build_children(body, caption="AIIF_MANUSCRIPT:READY"):
             return [{"body": body, "caption": caption}]
 
         module = SimpleNamespace()
         module.build_notion_manuscript_children = build_children
-        module._notion_page_manuscript_blocks = lambda page_id, headers: blocks
+        module._notion_page_manuscript_blocks = lambda page_id, headers: list(blocks)
         module._notion_code_caption = lambda block: "".join(
             item.get("plain_text", "") for item in (block.get("code") or {}).get("caption", [])
         )
         module._notion_page_has_manuscript_child = lambda page_id, headers: False
         module.MANUSCRIPT_CAPTION_READY = "AIIF_MANUSCRIPT:READY"
+        module.MANUSCRIPT_CAPTION_REVIEW = "AIIF_MANUSCRIPT:NEEDS_EDITORIAL_REVIEW"
+        module.NOTION_API_KEY = "test-key"
+        module.NOTION_BLOCK_LIMIT = 1900
+        module._notion_headers = lambda: {}
+        module.logger = SimpleNamespace(
+            info=lambda *args, **kwargs: None,
+            error=lambda *args, **kwargs: None,
+            warning=lambda *args, **kwargs: None,
+        )
+        module._mark_pending_retry_or_escalate = lambda *args, **kwargs: state.__setitem__("pending", state["pending"] + 1)
+
+        class Requests:
+            @staticmethod
+            def patch(url, json=None, headers=None, timeout=None):
+                if url.endswith("/children"):
+                    child = ((json or {}).get("children") or [{}])[0]
+                    body = child.get("body", "")
+                    caption = child.get("caption", "")
+                    blocks.append(ready_block(body, caption, f"appended-{len(blocks)+1}"))
+                    return _Response(200, {"results": [{"id": blocks[-1]["id"]}]})
+                return _Response(200)
+
+            @staticmethod
+            def delete(url, headers=None, timeout=None):
+                block_id = url.rsplit("/", 1)[-1]
+                blocks[:] = [block for block in blocks if block.get("id") != block_id]
+                return _Response(200)
+
+        module.requests = Requests
 
         def upgrade_notion_page_with_report(
             page_id, repo_name, repo_url, score, score_breakdown_text,
@@ -47,7 +86,18 @@ class Run194PublicationContractTests(unittest.TestCase):
             return True
 
         module.upgrade_notion_page_with_report = upgrade_notion_page_with_report
+        module.persist_notion_needs_editorial_review = lambda *args, **kwargs: True
+        module.PROP_STATUS = "Status"
+        module.STATUS_DEEP_DIVE = "Deep Dive"
+        module.PROP_CONTENT_STATUS = "Content Status"
+        module.CONTENT_STATUS_DEEP_DIVE = "Deep Dive"
+        module.PROP_ARTICLE_STATUS = "Article Status"
+        module.ARTICLE_STATUS_NEEDS_EDITORIAL_REVIEW = "Needs Editorial Review"
+        module.PROP_SUBSCRIPTION_VISIBILITY = "Subscription Visibility"
+        module.VISIBILITY_SUBSCRIBER_ONLY = "Subscriber Only"
+        module.PROP_REVIEW_STATUS = "Review Status"
         module._test_state = state
+        module._test_blocks = blocks
         return module
 
     def test_policy_sha_changes_when_any_manifest_file_changes(self) -> None:
@@ -63,12 +113,8 @@ class Run194PublicationContractTests(unittest.TestCase):
             second = contract.policy_sha256(root)
             self.assertNotEqual(first, second)
 
-
     def test_canonical_article_contract_is_publication_fingerprinted(self) -> None:
-        self.assertIn(
-            "canonical_article_contract.py",
-            contract.PUBLICATION_POLICY_FILES,
-        )
+        self.assertIn("canonical_article_contract.py", contract.PUBLICATION_POLICY_FILES)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for name in contract.PUBLICATION_POLICY_FILES:
@@ -109,8 +155,6 @@ class Run194PublicationContractTests(unittest.TestCase):
         module.NOTION_BLOCK_LIMIT = 10
 
         def lossy_original_builder(body, caption="AIIF_MANUSCRIPT:READY"):
-            # Simulate the real Notion payload shape.  The overlay must replace these
-            # transport segments with byte-exact slices before persistence.
             return [{
                 "object": "block",
                 "type": "code",
@@ -146,28 +190,40 @@ class Run194PublicationContractTests(unittest.TestCase):
         body = "A" * 250
         valid_caption = contract.current_ready_caption(body)
         module = self._module([
-            ready_block(body, contract.LEGACY_READY_CAPTION),
-            ready_block(body + "tampered", valid_caption),
+            ready_block(body, contract.LEGACY_READY_CAPTION, "legacy"),
+            ready_block(body + "tampered", valid_caption, "tampered"),
         ])
         run194.install(module)
         self.assertFalse(module._notion_page_has_manuscript_child("page", {}))
 
-    def test_latest_valid_body_controls_same_policy_idempotency(self) -> None:
-        first = "A" * 250
-        latest = "B" * 250
-        blocks = [
-            ready_block(first, contract.current_ready_caption(first)),
-            ready_block(latest, contract.current_ready_caption(latest)),
-        ]
-        module = self._module(blocks)
+    def test_expected_body_becomes_only_canonical_before_upgrade(self) -> None:
+        old = "A" * 250
+        expected = "B" * 250
+        module = self._module([
+            ready_block(old, contract.current_ready_caption(old), "old"),
+            ready_block(expected, contract.current_ready_caption(expected), "expected"),
+        ])
         run194.install(module)
 
         common = ("page", "repo", "url", 80, "score", "what", "why", "why-not", "action", "MIT")
-        module.upgrade_notion_page_with_report(*common, first)
-        self.assertFalse(module._test_state["last_skip"], "an older matching block must not suppress a newer regeneration")
+        self.assertTrue(module.upgrade_notion_page_with_report(*common, expected))
+        self.assertTrue(module._test_state["last_skip"])
+        self.assertEqual([block["id"] for block in module._test_blocks], ["expected"])
 
-        module.upgrade_notion_page_with_report(*common, latest)
-        self.assertTrue(module._test_state["last_skip"], "latest byte-identical body should remain idempotent")
+    def test_missing_expected_body_is_appended_then_becomes_only_canonical(self) -> None:
+        old = "A" * 250
+        expected = "B" * 250
+        module = self._module([
+            ready_block(old, contract.current_ready_caption(old), "old"),
+        ])
+        run194.install(module)
+
+        common = ("page", "repo", "url", 80, "score", "what", "why", "why-not", "action", "MIT")
+        self.assertTrue(module.upgrade_notion_page_with_report(*common, expected))
+        self.assertEqual(len(module._test_blocks), 1)
+        final = module._test_blocks[0]
+        self.assertEqual(run194._block_body(final), expected)
+        self.assertTrue(contract.is_current_ready_block(expected, module._notion_code_caption(final)))
 
     def test_overlay_adds_no_model_or_public_release_surface(self) -> None:
         source = inspect.getsource(run194)
