@@ -1,23 +1,30 @@
 name: Notion Manuscript Read-Only Audit
 
 on:
-  pull_request:
-    branches: [main]
+  push:
+    branches:
+      - fix/notion-single-canonical-manuscript
     paths:
       - 'audit_notion_manuscripts.py'
       - '.github/workflows/notion-manuscript-audit.yml'
+
+concurrency:
+  group: notion-manuscript-readonly-audit
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
   audit:
-    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ github.actor == 'trendhub-ab' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Checkout PR head
+      - name: Checkout branch head
         uses: actions/checkout@v6
+        with:
+          ref: fix/notion-single-canonical-manuscript
 
       - name: Set up Python
         uses: actions/setup-python@v6
