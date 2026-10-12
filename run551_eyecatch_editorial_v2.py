@@ -33,18 +33,24 @@ BACKGROUND_MASTER_FORMAT = "WEBP"
 _BACKGROUND_PARTS_RELATIVE = Path("assets") / "eyecatch" / "v2" / ".background_master_parts"
 _BACKGROUND_PART_NAMES = tuple(f"part{index:02d}.b64" for index in range(1, 7))
 
-# Sample-aligned vertical rhythm. These are presentation-only coordinates.
+# 1280x670 coordinates measured from the user-approved 1536x804 sample.
 _LEFT = 48
 _BADGE_TOP = 140
-_BADGE_HEIGHT = 42
-_HOOK_TOP = 207
-_TITLE_TOP = 316
-_FOOTER_TOP = 606
-_LEAD_MAX_FONT = 50
-_IMPACT_MAX_FONT = 78
+_BADGE_HEIGHT = 44
+_HOOK_TOP = 204
+_TITLE_TOP = 310
+_FOOTER_TOP = 592
+_BRAND_FONT = 32
+_BADGE_FONT = 24
+_HOOK_FONT = 33
+_LEAD_TITLE_FONT = 74
+_IMPACT_TITLE_FONT = 85
+_FOOTER_FONT = 19
+_LEAD_TITLE_LEFT = 45
+_IMPACT_TITLE_LEFT = 42
 _THREE_LINE_MAX_FONT = 66
 _TITLE_MIN_FONT = 46
-_TITLE_LINE_GAP = 12
+_TITLE_LINE_GAP = 8
 
 _SAFE_NAVY_SUFFIXES = (
     "の衝撃",
@@ -99,7 +105,7 @@ def select_badge(title: str, summary: str, category: str) -> str:
 
 
 def editorial_layout_contract() -> dict[str, int]:
-    """Expose the approved sample-aligned vertical rhythm for regression tests."""
+    """Expose the sample-aligned geometry for regression tests."""
     return {
         "left": _LEFT,
         "badge_top": _BADGE_TOP,
@@ -107,6 +113,21 @@ def editorial_layout_contract() -> dict[str, int]:
         "hook_top": _HOOK_TOP,
         "title_top": _TITLE_TOP,
         "footer_top": _FOOTER_TOP,
+    }
+
+
+def typography_contract() -> dict[str, int]:
+    """Expose the measured sample typography scale for regression tests."""
+    return {
+        "brand_font": _BRAND_FONT,
+        "badge_font": _BADGE_FONT,
+        "hook_font": _HOOK_FONT,
+        "lead_title_font": _LEAD_TITLE_FONT,
+        "impact_title_font": _IMPACT_TITLE_FONT,
+        "footer_font": _FOOTER_FONT,
+        "lead_title_left": _LEAD_TITLE_LEFT,
+        "impact_title_left": _IMPACT_TITLE_LEFT,
+        "title_line_gap": _TITLE_LINE_GAP,
     }
 
 
@@ -220,27 +241,62 @@ def _fit_font_size(draw: Any, ee: Any, text: str, desired: int, max_width: int) 
     return _TITLE_MIN_FONT
 
 
+def _draw_brand(draw: Any, ee: Any, accent: tuple[int, int, int]) -> None:
+    """Draw the brand at the normalized position/scale of the approved sample."""
+    x0, baseline = 50, 97
+    heights = (18, 27, 38, 47)
+    fills = (
+        accent,
+        (32, 93, 155),
+        (17, 69, 126),
+        (10, 35, 73),
+    )
+    for index, height in enumerate(heights):
+        x = x0 + index * 14
+        draw.rectangle((x, baseline - height, x + 10, baseline), fill=fills[index])
+    draw.text((125, 58), ee.BRAND_NAME, font=ee._latin_font(_BRAND_FONT, bold=True), fill=(10, 35, 73))
+
+
+def _draw_tags(draw: Any, ee: Any, category: str, date_label: str, accent: tuple[int, int, int]) -> None:
+    """Keep the top-right metadata aligned with the approved sample."""
+    tag_font = ee._latin_font(24, bold=True)
+    date_font = ee._latin_font(23, bold=True)
+    category_w = ee._text_width(draw, category, tag_font) + 48
+    date_w = ee._text_width(draw, date_label, date_font) + 40
+    gap = 14
+    right = ee.WIDTH - 44
+    date_box = (right - date_w, 51, right, 98)
+    category_box = (date_box[0] - gap - category_w, 51, date_box[0] - gap, 98)
+    draw.rounded_rectangle(category_box, radius=9, fill=accent)
+    draw.rounded_rectangle(date_box, radius=9, fill=(252, 253, 255), outline=(198, 210, 228), width=2)
+    draw.text((category_box[0] + 24, 62), category, font=tag_font, fill=(255, 255, 255))
+    draw.text((date_box[0] + 20, 62), date_label, font=date_font, fill=(15, 35, 70))
+
+
 def _draw_badge(draw: Any, ee: Any, label: str, accent: tuple[int, int, int]) -> None:
     import eyecatch_badge_taxonomy as badge_taxonomy
 
-    font = ee._jp_font(22, bold=True)
+    font = ee._jp_font(_BADGE_FONT, bold=True)
     text_w = ee._text_width(draw, label, font)
     x0, y0 = _LEFT, _BADGE_TOP
     x1, y1 = x0 + text_w + 72, y0 + _BADGE_HEIGHT
     fill = _blend_to_white(accent, 0.11)
     draw.rounded_rectangle((x0, y0, x1, y1), radius=_BADGE_HEIGHT // 2, fill=fill)
-    badge_taxonomy.draw_badge_icon(draw, label, x0 + 12, y0 + 8, accent, size=26)
-    draw.text((x0 + 50, y0 + 8), label, font=font, fill=(7, 30, 66))
+    badge_taxonomy.draw_badge_icon(draw, label, x0 + 12, y0 + 9, accent, size=26)
+    bbox = draw.textbbox((0, 0), label, font=font)
+    visible_height = max(0, bbox[3] - bbox[1])
+    text_y = y0 + (_BADGE_HEIGHT - visible_height) // 2 - bbox[1]
+    draw.text((x0 + 50, text_y), label, font=font, fill=(7, 30, 66))
 
 
 def _draw_hook(draw: Any, ee: Any, hook: str, accent: tuple[int, int, int], text_right: int) -> None:
-    font = ee._jp_font(31, bold=True)
+    font = ee._jp_font(_HOOK_FONT, bold=True)
     bbox = draw.textbbox((0, 0), hook, font=font)
     text_w = max(0, bbox[2] - bbox[0])
     draw.text((_LEFT, _HOOK_TOP - bbox[1]), hook, font=font, fill=(7, 30, 66))
     underline_right = min(text_right, _LEFT + text_w + 18)
     draw.rounded_rectangle(
-        (_LEFT, _HOOK_TOP + 38, underline_right, _HOOK_TOP + 44),
+        (_LEFT, _HOOK_TOP + 39, underline_right, _HOOK_TOP + 45),
         radius=3,
         fill=_blend_to_white(accent, 0.17),
     )
@@ -274,18 +330,18 @@ def _draw_runs(
 
 
 def _draw_footer(draw: Any, ee: Any, category: str, date_label: str) -> None:
-    label_font = ee._jp_font(18, bold=True)
-    date_font = ee._latin_font(18, bold=True)
+    label_font = ee._jp_font(_FOOTER_FONT, bold=True)
+    date_font = ee._latin_font(_FOOTER_FONT, bold=True)
     label = f"{category} / 解説"
     draw.text((_LEFT, _FOOTER_TOP), label, font=label_font, fill=(18, 42, 79))
     label_w = ee._text_width(draw, label, label_font)
-    divider_x = _LEFT + label_w + 18
+    divider_x = _LEFT + label_w + 26
     draw.line(
-        (divider_x, _FOOTER_TOP - 1, divider_x, _FOOTER_TOP + 24),
+        (divider_x, _FOOTER_TOP - 1, divider_x, _FOOTER_TOP + 25),
         fill=(185, 201, 222),
         width=2,
     )
-    draw.text((divider_x + 18, _FOOTER_TOP), date_label, font=date_font, fill=(18, 42, 79))
+    draw.text((divider_x + 24, _FOOTER_TOP), date_label, font=date_font, fill=(18, 42, 79))
 
 
 def _render_editorial_v2(
@@ -314,10 +370,8 @@ def _render_editorial_v2(
     image = _load_background_master(ee)
     draw = ImageDraw.Draw(image)
 
-    # The approved raster is the complete visual field. Only deterministic typography
-    # and the existing vector badge iconography are layered on top.
-    ee._draw_brand(draw, accent)
-    ee._draw_tags(draw, category, date_label, accent)
+    _draw_brand(draw, ee, accent)
+    _draw_tags(draw, ee, category, date_label, accent)
 
     badge = select_badge(title, summary, category)
     _draw_badge(draw, ee, badge, accent)
@@ -331,7 +385,7 @@ def _render_editorial_v2(
     expected_headline = str(validated.get("eyecatch_title") or ee.editorial_hook_from_title(title))
     proof = headline_contract.headline_pnginfo(title, expected_headline, title_lines)
 
-    max_width = max(320, text_right - _LEFT - 12)
+    max_width = max(320, text_right - min(_LEAD_TITLE_LEFT, _IMPACT_TITLE_LEFT) - 12)
     lead_first = _looks_like_lead(title_lines[0], title_lines, highlight_text)
     y = _TITLE_TOP
     ink_runs: list[Any] = []
@@ -339,19 +393,20 @@ def _render_editorial_v2(
     for index, line in enumerate(title_lines):
         is_lead = bool(index == 0 and lead_first)
         if is_lead:
-            desired = int(round(_IMPACT_MAX_FONT * LEAD_TITLE_SCALE))
-            size = _fit_font_size(draw, ee, line, min(_LEAD_MAX_FONT, desired), max_width)
+            size = _fit_font_size(draw, ee, line, _LEAD_TITLE_FONT, max_width)
             runs = [(line, False)]
+            x = _LEAD_TITLE_LEFT
         else:
-            ceiling = _THREE_LINE_MAX_FONT if len(title_lines) >= 3 else _IMPACT_MAX_FONT
-            desired = min(ceiling, int(round(70 * IMPACT_TITLE_SCALE)))
+            ceiling = _THREE_LINE_MAX_FONT if len(title_lines) >= 3 else _IMPACT_TITLE_FONT
+            desired = min(ceiling, _IMPACT_TITLE_FONT)
             size = _fit_font_size(draw, ee, line, desired, max_width)
             runs = _safe_accent_runs(
                 line,
                 highlight_text if index == len(title_lines) - 1 else None,
             )
+            x = _IMPACT_TITLE_LEFT
 
-        height = _draw_runs(draw, ee, r181, runs, size, _LEFT, y, ink_runs)
+        height = _draw_runs(draw, ee, r181, runs, size, x, y, ink_runs)
         y += height + (_TITLE_LINE_GAP + (7 if is_lead else 0))
 
     _draw_footer(draw, ee, category, date_label)
