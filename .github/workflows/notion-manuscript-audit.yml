@@ -5,7 +5,7 @@ on:
     branches:
       - fix/notion-single-canonical-manuscript
     paths:
-      - 'audit_notion_manuscripts.py'
+      - 'audit_notion_contract_targets.py'
       - '.github/workflows/notion-manuscript-audit.yml'
 
 concurrency:
@@ -19,12 +19,13 @@ jobs:
   audit:
     if: ${{ github.actor == 'trendhub-ab' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - name: Checkout branch head
         uses: actions/checkout@v6
         with:
           ref: fix/notion-single-canonical-manuscript
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -34,37 +35,60 @@ jobs:
       - name: Prove audit source is read-only
         run: |
           set -euo pipefail
-          if grep -Eq '\b(PATCH|DELETE|PUT)\b|requests\.(patch|delete|put)' audit_notion_manuscripts.py; then
-            echo '::error::Write-capable Notion verb detected in read-only audit source'
+          if grep -Eq '\b(PATCH|DELETE|PUT|POST)\b|requests\.(patch|delete|put|post)' audit_notion_contract_targets.py; then
+            echo '::error::Write-capable Notion verb detected in targeted read-only audit source'
             exit 1
           fi
-          python -m py_compile audit_notion_manuscripts.py
+          python -m py_compile audit_notion_contract_targets.py
 
-      - name: Audit every Content Intelligence page
+      - name: Compute unchanged main publication policy SHA
+        id: policy
+        run: |
+          set -euo pipefail
+          git worktree add --detach /tmp/aiif-main origin/main
+          SHA=$(cd /tmp/aiif-main && python -c 'import publication_contract; print(publication_contract.current_policy_sha())')
+          test ${#SHA} -eq 64
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Audit only the 11 ambiguous pages
         env:
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_API_VERSION: '2026-03-11'
-        run: python audit_notion_manuscripts.py
+          AIIF_MAIN_POLICY_SHA: ${{ steps.policy.outputs.sha }}
+          AIIF_TARGET_PAGE_IDS: >-
+            3e9479ffdca9811385c7d1a8ffcb3d4a,
+            3e8479ffdca9812e9661f337a84b1df4,
+            3e8479ffdca9811db058ccf7d711dd88,
+            3d9479ffdca9819a814ce4a0aeb3263f,
+            3d5479ffdca9816aa8dac107d8f191b2,
+            3d4479ffdca981a2880bf46d5c02403d,
+            3d2479ffdca98195bdf6c54fe11e4a7a,
+            3d2479ffdca98145aa8ffe490a435be5,
+            3d1479ffdca981cda9decdfe4c882cc9,
+            3d0479ffdca9811aad6fc525655c21ff,
+            3cc479ffdca9816bb8e1dbc5ce7b66f7
+        run: python audit_notion_contract_targets.py
 
-      - name: Publish counts to job summary
+      - name: Publish targeted counts to job summary
         if: always()
         run: |
-          if [ -f artifacts/notion_manuscript_audit.json ]; then
+          if [ -f artifacts/notion_contract_targets.json ]; then
             python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           import json
-          p = json.load(open('artifacts/notion_manuscript_audit.json', encoding='utf-8'))
-          print('### Content Intelligence manuscript audit')
-          for key in ('rows_queried','pages_scanned','pages_with_manuscript','pages_with_multiple_manuscripts','multiple_with_unique_current_title_match','multiple_ambiguous'):
+          p = json.load(open('artifacts/notion_contract_targets.json', encoding='utf-8'))
+          print('### Ambiguous manuscript contract audit')
+          for key in ('target_count','resolved_count','unresolved_count','main_policy_sha16'):
               print(f'- {key}: `{p[key]}`')
+          for row in p['pages']:
+              print(f"- {row['page_id']}: `{row['classification']}` candidates={row['main_contract_title_candidate_count']}")
           PY
           fi
 
-      - name: Upload audit metadata
+      - name: Upload targeted audit metadata
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: notion-manuscript-audit
-          path: artifacts/notion_manuscript_audit.json
+          name: notion-manuscript-contract-targets
+          path: artifacts/notion_contract_targets.json
           if-no-files-found: ignore
           retention-days: 7
