@@ -44,7 +44,8 @@ jobs:
        startsWith(github.event.comment.body, '/aiif eyecatch finalize ') ||
        startsWith(github.event.comment.body, '/aiif note body_resync ') ||
        startsWith(github.event.comment.body, '/aiif note cover_apply ') ||
-       startsWith(github.event.comment.body, '/aiif note regenerate '))
+       startsWith(github.event.comment.body, '/aiif note regenerate ') ||
+       startsWith(github.event.comment.body, '/aiif note regenerate_resume '))
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -74,7 +75,7 @@ jobs:
           test "$AUTHORIZED" = "true"
           case "$MODE" in
             article_validation|pending_retry_validation|ready_rescue_validation|production_e2e_validation|production_e2e_preflight|full|local_skills_canary_validation|local_skills_canary_github|local_skills_canary_hackernews|local_skills_canary_arxiv|local_skills_canary_officialvendor|local_skills_production_validation|x_discovery_stage2|stale_ready_portfolio_audit) ;;
-            article_validation_exact|ready_eyecatch_finalize|ready_note_body_resync|ready_note_cover_apply|ready_draft_regenerate)
+            article_validation_exact|ready_eyecatch_finalize|ready_note_body_resync|ready_note_cover_apply|ready_draft_regenerate|ready_draft_regenerate_resume)
               [[ "$TARGET_SYNC_ID" =~ ^[0-9a-f]{32}$ ]] || { echo "::error::Invalid exact sync_id"; exit 1; }
               ;;
             *) echo "::error::Unexpected ChatOps mode"; exit 1 ;;
@@ -162,6 +163,10 @@ jobs:
               target='ready-draft-regenerate-once.yml'
               payload="$(printf '{"ref":"main","inputs":{"sync_id":"%s","confirm":"RUN_ONCE"}}' "${TARGET_SYNC_ID}")"
               ;;
+            ready_draft_regenerate_resume)
+              target='ready-draft-regenerate-once.yml'
+              payload="$(printf '{"ref":"main","inputs":{"sync_id":"%s","confirm":"RUN_ONCE","operation":"resume_persisted"}}' "${TARGET_SYNC_ID}")"
+              ;;
             *)
               echo "::error::Refusing unknown mode"
               exit 1
@@ -185,9 +190,8 @@ jobs:
             echo "- requested mode: \`$MODE\`"
             echo "- target: \`${DISPATCH_TARGET}\` on \`main\`"
             if [ -n "$TARGET_SYNC_ID" ]; then echo "- exact sync_id: \`$TARGET_SYNC_ID\`"; fi
-            if [ "$MODE" = 'x_discovery_stage2' ] || [ "$MODE" = 'stale_ready_portfolio_audit' ]; then
-              echo '- Gemini/Google model credentials passed: `false`'
-              echo '- Factory/Notion writes authorized: `false`'
+            if [ "$MODE" = 'x_discovery_stage2' ] || [ "$MODE" = 'stale_ready_portfolio_audit' ] || [ "$MODE" = 'ready_draft_regenerate_resume' ]; then
+              echo '- Gemini/Google model credentials used by requested operation: `false`'
             else
               echo '- confirmation injected: `RUN_ONCE`'
             fi
