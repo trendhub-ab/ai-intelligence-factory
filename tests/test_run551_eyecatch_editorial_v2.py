@@ -23,6 +23,17 @@ def test_editorial_v2_contract_reserves_one_third_for_visual_and_strengthens_imp
     assert r551.BACKGROUND_DEPTH_ALPHA <= 0.10
 
 
+def test_visual_motif_is_premium_ai_core_to_industrial_robotics_not_cartoon_face():
+    contract = r551.visual_motif_contract()
+    assert contract == {
+        "style": "isometric-glass-ai-core",
+        "flow": "ai-core-to-motion-control",
+        "action_symbol": "industrial-robot-arm",
+        "humanoid_face": False,
+        "warm_accent": "restrained-orange",
+    }
+
+
 def test_install_is_zero_api_and_does_not_patch_run180(monkeypatch):
     original_run180_renderer = object()
     original_balanced_renderer = lambda *args, **kwargs: "old"  # noqa: E731
