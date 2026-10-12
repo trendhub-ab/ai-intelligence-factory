@@ -32,19 +32,34 @@ def test_dynamic_badge_changes_with_article_intent():
     ) == "安全性を確認"
 
 
-def test_sample_layout_restores_badge_hook_title_vertical_rhythm():
+def test_sample_layout_matches_approved_reference_geometry():
+    # Coordinates are the 1280x670 normalization of the user-approved 1536x804 sample.
     layout = r551.editorial_layout_contract()
     assert layout == {
         "left": 48,
         "badge_top": 140,
-        "badge_height": 42,
-        "hook_top": 207,
-        "title_top": 316,
-        "footer_top": 606,
+        "badge_height": 44,
+        "hook_top": 204,
+        "title_top": 310,
+        "footer_top": 592,
     }
     assert layout["badge_top"] + layout["badge_height"] < layout["hook_top"]
-    assert layout["hook_top"] + 44 < layout["title_top"]
+    assert layout["hook_top"] + 45 < layout["title_top"]
     assert layout["title_top"] < layout["footer_top"]
+
+
+def test_sample_typography_matches_approved_reference_scale():
+    assert r551.typography_contract() == {
+        "brand_font": 32,
+        "badge_font": 24,
+        "hook_font": 33,
+        "lead_title_font": 74,
+        "impact_title_font": 85,
+        "footer_font": 19,
+        "lead_title_left": 45,
+        "impact_title_left": 42,
+        "title_line_gap": 8,
+    }
 
 
 def test_editorial_v2_contract_reserves_one_third_for_visual_and_strengthens_impact_line():
