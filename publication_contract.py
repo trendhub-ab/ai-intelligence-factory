@@ -95,6 +95,7 @@ PUBLICATION_POLICY_FILES = (
     "run181_eyecatch_visual_balance.py",
     "run182_eyecatch_conclusion_emphasis.py",
     "run183_eyecatch_emphasis_scale.py",
+    "run551_eyecatch_editorial_v2.py",
     "run222_note_presentation_integrity.py",
     "run296_editorial_format_v2.py",
     "run248_first_real_publish_quality_calibration.py",
