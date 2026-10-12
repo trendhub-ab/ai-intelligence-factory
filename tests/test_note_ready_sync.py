@@ -173,7 +173,7 @@ class NoteReadySyncTests(unittest.TestCase):
         with patch.object(sync, "_block_children", return_value=[code_block(body, contract.LEGACY_READY_CAPTION)]):
             self.assertFalse(sync._source_has_current_ready_manuscript("page"))
 
-    def test_latest_valid_current_block_wins(self):
+    def test_multiple_valid_current_blocks_fail_closed(self):
         old = "old" * 100
         new = "new" * 100
         blocks = [
@@ -181,7 +181,8 @@ class NoteReadySyncTests(unittest.TestCase):
             code_block(new, contract.current_ready_caption(new)),
         ]
         with patch.object(sync, "_block_children", return_value=blocks):
-            self.assertEqual(new, sync._source_current_ready_manuscript("page"))
+            self.assertEqual("", sync._source_current_ready_manuscript("page"))
+            self.assertFalse(sync._source_has_current_ready_manuscript("page"))
 
     def test_files_url_rejects_non_http_asset(self):
         self.assertEqual("", sync._files_url({"files": [{"type": "external", "external": {"url": "file:///tmp/a.png"}}]}))
