@@ -25,8 +25,8 @@ class ChatOpsNoteExactSyncTests(unittest.TestCase):
     def test_exact_note_sync_dispatches_ready_sync_with_exact_target(self):
         self.assertIn("sync_exact)", self.text)
         self.assertIn("workflow='note-ready-sync.yml'", self.text)
-        self.assertIn("create_private_draft\\\":\\\"true", self.text)
-        self.assertIn("target_sync_id\\\":\\\"%s", self.text)
+        self.assertIn('"create_private_draft":"true"', self.text)
+        self.assertIn('"target_sync_id":"%s"', self.text)
         self.assertIn("\"$SYNC_ID\"", self.text)
 
 
