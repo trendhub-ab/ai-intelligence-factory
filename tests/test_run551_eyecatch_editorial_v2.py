@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import types
-from pathlib import Path
+
+from PIL import Image
 
 import run551_eyecatch_editorial_v2 as r551
 
@@ -24,22 +26,32 @@ def test_editorial_v2_contract_reserves_one_third_for_visual_and_strengthens_imp
     assert r551.IMPACT_TITLE_SCALE >= 1.10
 
 
-def test_background_master_contract_uses_exact_user_approved_raster_not_synthetic_visual():
+def test_background_master_contract_uses_user_approved_raster_not_synthetic_visual():
     contract = r551.background_master_contract()
     assert contract == {
-        "path": "assets/eyecatch/v2/background_master.jpg",
+        "path": "assets/eyecatch/v2/.background_master_parts",
         "source_size": (1536, 804),
         "target_size": (1280, 670),
-        "sha256": "adffa620c2323c8a94aadec22149c713e4fee32893df37c444abcd81b1269c34",
+        "sha256": "5f1ab5f8ddc807825ad8fa29fdb96b5a165742af73b779223b7fccf8547a77fd",
+        "format": "WEBP",
+        "part_count": 6,
         "synthetic_visual": False,
         "crop_required": False,
     }
 
 
-def test_background_master_bytes_are_pinned_to_approved_image():
-    path = Path(r551.__file__).resolve().parent / "assets" / "eyecatch" / "v2" / "background_master.jpg"
-    payload = path.read_bytes()
+def test_background_master_bytes_are_pinned_and_decode_to_exact_canvas():
+    payload = r551._background_master_bytes()
     assert hashlib.sha256(payload).hexdigest() == r551.BACKGROUND_MASTER_SHA256
+    with Image.open(io.BytesIO(payload)) as image:
+        assert image.format == "WEBP"
+        assert image.size == (1280, 670)
+
+
+def test_synthetic_visual_helpers_are_removed():
+    assert not hasattr(r551, "_draw_background_depth")
+    assert not hasattr(r551, "_draw_symbolic_ai_flow")
+    assert not hasattr(r551, "_draw_industrial_robot_arm")
 
 
 def test_install_is_zero_api_and_does_not_patch_run180(monkeypatch):
