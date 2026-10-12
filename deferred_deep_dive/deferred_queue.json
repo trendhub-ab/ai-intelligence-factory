@@ -1,43 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-12T22:42:58.829213+00:00",
+  "updated_at": "2026-10-12T22:43:55.641845+00:00",
   "items": [
-    {
-      "key": "https://ai.google.dev/gemini-api/docs/changelog?aif_revision=d9846d86e4481d4b",
-      "deferred_at": "2026-10-12T22:42:58.828855+00:00",
-      "expires_at": "2026-10-26T22:42:58.828855+00:00",
-      "repo": {
-        "source": "OfficialVendor",
-        "nameWithOwner": "Google Gemini — Gemini 3.5 Flash deprecation : gemini-3.5-flash is deprecated and has been replaced by gemini-3.6-flash . It is no longer available to select in Google AI Studio, and API requests to gemini-3.5-flash are automatically ro",
-        "originalTitle": "Google Gemini — Gemini 3.5 Flash deprecation : gemini-3.5-flash is deprecated and has been replaced by gemini-3.6-flash . It is no longer available to select in Google AI Studio, and API requests to gemini-3.5-flash are automatically ro",
-        "displayName": "Google Gemini — Gemini 3.5 Flash deprecation : gemini-3.5-flash is deprecated and has been replaced by gemini-3.6-flash . It is no longer available to select in Google AI Studio, and API requests to gemini-3.5-flash are automatically ro",
-        "sourceLanguage": "en",
-        "url": "https://ai.google.dev/gemini-api/docs/changelog?aif_revision=d9846d86e4481d4b",
-        "description": "Gemini 3.5 Flash deprecation : gemini-3.5-flash is deprecated and has been replaced by gemini-3.6-flash . It is no longer available to select in Google AI Studio, and API requests to gemini-3.5-flash are automatically routed to gemini-3.6-flash . Update your model string to gemini-3.6-flash (or gemini-3.8-flash ) and review the Gemini 3.6 Flash guide .",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "October 8, 2026",
-        "sourceContext": "Gemini 3.5 Flash deprecation : gemini-3.5-flash is deprecated and has been replaced by gemini-3.6-flash . It is no longer available to select in Google AI Studio, and API requests to gemini-3.5-flash are automatically routed to gemini-3.6-flash . Update your model string to gemini-3.6-flash (or gemini-3.8-flash ) and review the Gemini 3.6 Flash guide .",
-        "primaryUrl": "https://ai.google.dev/gemini-api/docs/changelog",
-        "sourceDetails": {
-          "vendor": "Google Gemini",
-          "vendor_region": "US",
-          "source_role": "commercial_primary_source",
-          "official_release_url": "https://ai.google.dev/gemini-api/docs/changelog",
-          "candidate_revision": "d9846d86e4481d4b",
-          "vendor_record_kind": "structured_html",
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3f7479ff-dca9-8100-a44a-f8368a829fc2",
-      "score": 80,
-      "reason": "Gemini 3.5 Flashの非推奨化と移行",
-      "commercial_score": 82,
-      "shelf_life_score": 45,
-      "shelf_life": "TREND",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 80.7
-    },
     {
       "key": "https://ai.google.dev/gemini-api/docs/changelog?aif_revision=1d9c8b6a59a7b07a",
       "deferred_at": "2026-10-12T22:42:58.829052+00:00",
