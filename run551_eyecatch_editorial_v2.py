@@ -2,14 +2,14 @@
 
 This layer is intentionally presentation-only. It preserves the validated headline
 copy and publication metadata, adds no provider/model request, and never changes
-Run180 semantic validation.  The renderer turns the approved AI Intelligence Factory
+Run180 semantic validation. The renderer turns the approved AI Intelligence Factory
 system into a stronger note thumbnail:
 
 * roughly two-thirds copy / one-third symbolic visual;
 * one compact ``INSIGHT｜...`` reader hook instead of badge + hook duplication;
 * a smaller grammatical lead line and a stronger impact line when the copy supports it;
 * orange reserved for the semantic keyword while a generic impact suffix can stay navy;
-* subtle background depth plus a larger AI -> decision -> action/robotics motif.
+* subtle background depth plus a premium glass AI-core -> action motif.
 
 Pillow and renderer modules are imported lazily so pure policy/guard imports remain
 zero-Pillow compatible.
@@ -87,6 +87,17 @@ def compose_insight(hook: str) -> str:
     return f"INSIGHT｜{value}" if value else "INSIGHT｜いま、何が重要なのか？"
 
 
+def visual_motif_contract() -> dict[str, object]:
+    """Stable art-direction contract for the robotics reference composition."""
+    return {
+        "style": "isometric-glass-ai-core",
+        "flow": "ai-core-to-motion-control",
+        "action_symbol": "industrial-robot-arm",
+        "humanoid_face": False,
+        "warm_accent": "restrained-orange",
+    }
+
+
 def _blend_to_white(color: tuple[int, int, int], alpha: float) -> tuple[int, int, int]:
     amount = max(0.0, min(1.0, float(alpha)))
     return tuple(int(round(255 * (1.0 - amount) + channel * amount)) for channel in color)
@@ -134,71 +145,154 @@ def _fit_font_size(draw: Any, ee: Any, text: str, desired: int, max_width: int) 
 
 def _draw_background_depth(draw: Any, ee: Any, accent: tuple[int, int, int]) -> None:
     visual_left = int(round(ee.WIDTH * TEXT_ZONE_RATIO))
-    # A white editorial field with just enough depth to stop the right third feeling empty.
+    # Keep the left editorial field pristine; the visual third gets only a low-contrast wash.
     for band in range(8):
         x0 = visual_left + int((ee.WIDTH - visual_left) * band / 8)
         x1 = visual_left + int((ee.WIDTH - visual_left) * (band + 1) / 8)
-        alpha = BACKGROUND_DEPTH_ALPHA * (0.45 + 0.55 * (band + 1) / 8)
+        alpha = BACKGROUND_DEPTH_ALPHA * (0.40 + 0.60 * (band + 1) / 8)
         draw.rectangle((x0, 94, x1 + 1, ee.HEIGHT), fill=_blend_to_white(accent, alpha))
 
-    grid = _blend_to_white(accent, 0.13)
-    for x in range(visual_left + 26, ee.WIDTH, 54):
-        draw.line((x, 116, x, 604), fill=grid, width=1)
-    for y in range(130, 605, 54):
-        draw.line((visual_left + 10, y, ee.WIDTH, y), fill=grid, width=1)
+    # Sparse circuit traces instead of a diagram-like full grid.
+    trace = _blend_to_white(accent, 0.16)
+    for y, x0, x1 in ((168, visual_left + 34, 1218), (302, visual_left + 78, 1250), (516, visual_left + 24, 1194)):
+        draw.line((x0, y, x1, y), fill=trace, width=1)
+    for x, y0, y1 in ((866, 136, 238), (1218, 168, 280), (1194, 454, 548)):
+        draw.line((x, y0, x, y1), fill=trace, width=1)
 
 
 def _draw_arrow(draw: Any, start: tuple[int, int], end: tuple[int, int], color: tuple[int, int, int]) -> None:
     x0, y0 = start
     x1, y1 = end
-    draw.line((x0, y0, x1, y1), fill=color, width=4)
-    # The production motif is near-vertical/diagonal; this small symmetric arrowhead is enough.
-    draw.polygon([(x1, y1), (x1 - 10, y1 - 5), (x1 - 5, y1 - 14)], fill=color)
+    draw.line((x0, y0, x1, y1), fill=color, width=3)
+    draw.polygon([(x1, y1), (x1 - 9, y1 - 4), (x1 - 5, y1 - 12)], fill=color)
 
 
-def _draw_symbolic_ai_flow(draw: Any, ee: Any, accent: tuple[int, int, int]) -> None:
-    """Large abstract AI -> judgement -> action motif for the visual third."""
+def _draw_glass_plate(
+    draw: Any,
+    points: list[tuple[int, int]],
+    *,
+    fill: tuple[int, int, int],
+    outline: tuple[int, int, int],
+    offset: int = 8,
+) -> None:
+    """Draw a pseudo-isometric glass slab with a visible lower edge."""
+    lower = [(x, y + offset) for x, y in points]
+    draw.polygon(lower, fill=_blend_to_white(outline, 0.16), outline=_blend_to_white(outline, 0.30))
+    draw.polygon(points, fill=fill, outline=outline)
+    draw.line((points[2][0], points[2][1], lower[2][0], lower[2][1]), fill=outline, width=2)
+    draw.line((points[3][0], points[3][1], lower[3][0], lower[3][1]), fill=outline, width=2)
+
+
+def _draw_industrial_robot_arm(
+    draw: Any,
+    accent: tuple[int, int, int],
+    navy: tuple[int, int, int],
+    warm: tuple[int, int, int],
+) -> None:
+    """Draw a compact industrial arm: base, two links, elbow, wrist and gripper."""
+    pale = _blend_to_white(accent, 0.24)
+    structure = _blend_to_white(accent, 0.52)
+
+    # Base / pedestal.
+    draw.rounded_rectangle((1078, 526, 1170, 548), radius=9, fill=_blend_to_white(accent, 0.18), outline=structure, width=2)
+    draw.rounded_rectangle((1100, 493, 1148, 532), radius=10, fill=(255, 255, 255), outline=accent, width=3)
+
+    # Link geometry is intentionally machine-like rather than humanoid.
+    base_joint = (1124, 493)
+    elbow = (1065, 440)
+    wrist = (1122, 382)
+    tool = (1176, 405)
+    draw.line((*base_joint, *elbow), fill=pale, width=18)
+    draw.line((*base_joint, *elbow), fill=accent, width=5)
+    draw.line((*elbow, *wrist), fill=pale, width=16)
+    draw.line((*elbow, *wrist), fill=accent, width=5)
+    draw.line((*wrist, *tool), fill=pale, width=14)
+    draw.line((*wrist, *tool), fill=navy, width=4)
+
+    for x, y, outer, inner in (
+        (*base_joint, 14, 6),
+        (*elbow, 15, 6),
+        (*wrist, 12, 5),
+    ):
+        draw.ellipse((x - outer, y - outer, x + outer, y + outer), fill=(255, 255, 255), outline=structure, width=3)
+        draw.ellipse((x - inner, y - inner, x + inner, y + inner), fill=accent)
+
+    # Restrained orange is a single control/action cue at the tool point.
+    draw.ellipse((tool[0] - 7, tool[1] - 7, tool[0] + 7, tool[1] + 7), fill=warm, outline=(255, 255, 255), width=2)
+    draw.line((1181, 400, 1203, 390), fill=navy, width=4)
+    draw.line((1181, 410, 1204, 420), fill=navy, width=4)
+
+    # Motion arcs make the symbol read as controlled movement, not a static appliance.
+    arc = _blend_to_white(accent, 0.42)
+    draw.arc((1022, 397, 1100, 475), 205, 310, fill=arc, width=2)
+    draw.arc((1082, 350, 1160, 426), 210, 322, fill=arc, width=2)
+
+
+def _draw_abstract_output(draw: Any, accent: tuple[int, int, int], navy: tuple[int, int, int]) -> None:
+    """Neutral action symbol for non-robotics categories."""
+    pale = _blend_to_white(accent, 0.18)
+    line = _blend_to_white(accent, 0.48)
+    for index, (x, y) in enumerate(((1035, 420), (1092, 454), (1149, 488))):
+        draw.rounded_rectangle((x, y, x + 78, y + 54), radius=13, fill=(255, 255, 255), outline=line, width=2)
+        draw.rounded_rectangle((x + 14, y + 13, x + 64, y + 25), radius=5, fill=pale)
+        draw.line((x + 16, y + 37, x + 48 + index * 4, y + 37), fill=navy, width=3)
+
+
+def _draw_symbolic_ai_flow(
+    draw: Any,
+    ee: Any,
+    accent: tuple[int, int, int],
+    category: str = "AI & TECH",
+) -> None:
+    """Premium glass AI core feeding an action symbol in the visual third."""
     navy = (7, 30, 66)
-    pale = _blend_to_white(accent, 0.12)
-    pale2 = _blend_to_white(accent, 0.20)
-    line = _blend_to_white(accent, 0.42)
+    warm = (240, 111, 45)
+    glass_edge = _blend_to_white(accent, 0.52)
+    glass_mid = _blend_to_white(accent, 0.16)
+    glass_light = _blend_to_white(accent, 0.09)
+    signal = _blend_to_white(accent, 0.60)
 
-    # AI core / chip card.
-    draw.rounded_rectangle((894, 160, 1098, 286), radius=28, fill=(255, 255, 255), outline=pale2, width=3)
-    draw.rounded_rectangle((944, 190, 1048, 256), radius=18, fill=pale, outline=accent, width=3)
-    ai_font = ee._latin_font(24, bold=True)
+    # Three offset pseudo-isometric glass plates create depth without raster assets.
+    plates = (
+        [(887, 274), (1003, 218), (1152, 283), (1034, 343)],
+        [(904, 244), (1016, 190), (1141, 246), (1028, 302)],
+        [(929, 214), (1024, 168), (1117, 210), (1021, 257)],
+    )
+    _draw_glass_plate(draw, plates[0], fill=glass_light, outline=_blend_to_white(accent, 0.28), offset=11)
+    _draw_glass_plate(draw, plates[1], fill=glass_mid, outline=_blend_to_white(accent, 0.38), offset=9)
+    _draw_glass_plate(draw, plates[2], fill=_blend_to_white(accent, 0.22), outline=glass_edge, offset=7)
+
+    # Central compute core and a faint halo.
+    core_x, core_y = 1023, 218
+    for radius, alpha in ((45, 0.08), (34, 0.13), (25, 0.20)):
+        halo = _blend_to_white(accent, alpha)
+        draw.ellipse((core_x - radius, core_y - radius, core_x + radius, core_y + radius), fill=halo)
+    draw.rounded_rectangle((987, 190, 1059, 246), radius=14, fill=(255, 255, 255), outline=accent, width=3)
+    draw.rounded_rectangle((1001, 201, 1045, 235), radius=9, fill=_blend_to_white(accent, 0.28), outline=glass_edge, width=2)
+    ai_font = ee._latin_font(17, bold=True)
     ai_w = ee._text_width(draw, "AI", ai_font)
-    draw.text((996 - ai_w // 2, 209), "AI", font=ai_font, fill=navy)
-    for y in (181, 211, 241, 271):
-        draw.line((914, y, 936, y), fill=line, width=3)
-        draw.line((1056, y, 1078, y), fill=line, width=3)
+    draw.text((core_x - ai_w // 2, 207), "AI", font=ai_font, fill=navy)
 
-    # Decision diamond.
-    decision_center = (1125, 346)
-    draw.polygon([(1125, 292), (1190, 346), (1125, 400), (1060, 346)], fill=(255, 255, 255), outline=pale2)
-    draw.ellipse((1102, 323, 1148, 369), fill=pale, outline=accent, width=3)
-    draw.line((1114, 346, 1123, 356), fill=navy, width=4)
-    draw.line((1123, 356, 1138, 337), fill=navy, width=4)
+    # Circuit pins/nodes arranged around the glass stack.
+    for x0, y0, x1, y1 in (
+        (952, 206, 904, 183),
+        (1088, 226, 1177, 265),
+        (965, 286, 889, 324),
+        (1082, 302, 1176, 338),
+    ):
+        draw.line((x0, y0, x1, y1), fill=signal, width=2)
+        draw.ellipse((x1 - 5, y1 - 5, x1 + 5, y1 + 5), fill=(255, 255, 255), outline=glass_edge, width=2)
 
-    # Action / robot terminal. Deliberately iconic, not a humanoid stock illustration.
-    draw.rounded_rectangle((938, 438, 1120, 560), radius=26, fill=(255, 255, 255), outline=pale2, width=3)
-    draw.rounded_rectangle((972, 459, 1086, 515), radius=18, fill=pale, outline=accent, width=3)
-    draw.ellipse((996, 478, 1008, 490), fill=navy)
-    draw.ellipse((1050, 478, 1062, 490), fill=navy)
-    draw.line((1029, 515, 1029, 540), fill=line, width=4)
-    draw.line((985, 540, 1073, 540), fill=line, width=4)
-    draw.line((938, 484, 910, 503), fill=line, width=5)
-    draw.line((1120, 484, 1148, 503), fill=line, width=5)
+    # A motion-control signal leaves the compute stack; one warm node is enough.
+    control_node = (1014, 350)
+    draw.line((1024, 306, *control_node), fill=signal, width=3)
+    draw.ellipse((1007, 343, 1021, 357), fill=warm, outline=(255, 255, 255), width=2)
+    draw.line((*control_node, 1078, 389), fill=signal, width=3)
 
-    _draw_arrow(draw, (1034, 276), (1098, 313), accent)
-    _draw_arrow(draw, (1100, 393), (1060, 438), accent)
-
-    # A few restrained nodes make the system feel connected without becoming a flowchart wall.
-    for x, y, radius in ((876, 220, 7), (1212, 252, 6), (1198, 468, 8), (878, 510, 6)):
-        draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=(255, 255, 255), outline=line, width=2)
-    draw.line((883, 220, 925, 220), fill=line, width=2)
-    draw.line((1184, 346, 1212, 258), fill=line, width=2)
-    draw.line((1120, 506, 1190, 470), fill=line, width=2)
+    if str(category or "").strip().upper() == "ROBOTICS":
+        _draw_industrial_robot_arm(draw, accent, navy, warm)
+    else:
+        _draw_abstract_output(draw, accent, navy)
 
 
 def _draw_insight(draw: Any, ee: Any, hook: str, accent: tuple[int, int, int], text_right: int) -> None:
@@ -268,7 +362,7 @@ def _render_editorial_v2(
     draw = ImageDraw.Draw(image)
 
     _draw_background_depth(draw, ee, accent)
-    _draw_symbolic_ai_flow(draw, ee, accent)
+    _draw_symbolic_ai_flow(draw, ee, accent, category)
     ee._draw_brand(draw, accent)
     ee._draw_tags(draw, category, date_label, accent)
 
