@@ -104,7 +104,7 @@ jobs:
           import run199_note_vm_preflight as preflight
           result = preflight.preflight(os.environ.get("TARGET_SYNC_ID", ""))
           print("[RUN624 NOTE DRAFT PREFLIGHT] " + json.dumps(result, ensure_ascii=False, sort_keys=True))
-          eligible = result.get("status") == "eligible_ready" and result.get("should_start_vm") is True
+          eligible = result.get("should_start_vm") is True
           selected = str(result.get("selected_sync_id") or "").strip()
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"eligible={'true' if eligible else 'false'}\n")
