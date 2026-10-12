@@ -109,6 +109,9 @@ def _children(page_id: str) -> list[dict]:
         if cursor:
             query["start_cursor"] = cursor
         url = f"{API_BASE}/blocks/{page_id}/children?{urllib.parse.urlencode(query)}"
+        # Notion documents an average request-rate limit; keep this exhaustive
+        # audit deliberately below it instead of bursting until 429.
+        time.sleep(0.38)
         data = _read_json("GET", url)
         rows.extend(data.get("results") or [])
         if not data.get("has_more"):
