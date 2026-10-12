@@ -88,8 +88,10 @@ class Run2911NoteAuditChatOpsTests(unittest.TestCase):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, self.source)
 
-    def test_bridge_does_not_accept_prefix_or_extra_text_variants(self) -> None:
-        self.assertNotIn("startsWith(github.event.comment.body", self.source)
+    def test_bridge_allows_only_guarded_exact_sync_prefix_variant(self) -> None:
+        self.assertIn("startsWith(github.event.comment.body, '/aiif note sync ')", self.source)
+        self.assertEqual(self.source.count("startsWith(github.event.comment.body"), 1)
+        self.assertIn("grep -Eq '^[0-9a-fA-F]{32}$'", self.source)
         self.assertNotIn("contains(github.event.comment.body", self.source)
 
 
