@@ -1,0 +1,55 @@
+name: PR 756 apply exact attribution 422 fix
+
+on:
+  pull_request:
+    types: [synchronize, opened, reopened, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  apply-exact-fix:
+    if: >-
+      github.repository == 'trendhub-ab/ai-intelligence-factory' &&
+      github.event.pull_request.number == 756 &&
+      github.event.pull_request.head.ref == 'fix/subscription-attribution-runtime-state-sha'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Replace only the mismatched attribution lookup
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('pipeline.py')
+          text = path.read_text(encoding='utf-8')
+          old = '        existing = requests.get(api_url, headers=headers, timeout=30)'
+          new = '        existing = requests.get(api_url, headers=headers, params={"ref": EYECATCH_GITHUB_BRANCH}, timeout=30)'
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected exactly one attribution lookup to patch, found {count}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+          git diff --check
+          changed="$(git diff --name-only)"
+          test "$changed" = "pipeline.py"
+
+      - name: Commit exact fix to PR branch
+        shell: bash
+        run: |
+          if git diff --quiet -- pipeline.py; then
+            echo 'No patch required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add pipeline.py
+          git commit -m 'Fix attribution lookup branch for existing files'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
