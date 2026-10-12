@@ -180,6 +180,24 @@ def _reconcile_failed_ready_target(sync_id: str, pipeline: Any) -> None:
         )
 
 
+def _persistent_generation_status(pipeline: Any, sync_id: str, generated: Any) -> str:
+    """Classify persist_results=True without borrowing the non-persistent tuple contract."""
+    if not generated:
+        return "rejected"
+    if isinstance(generated, tuple):
+        if len(generated) < 2:
+            return "unverified"
+        explicit = str(generated[1] or "").strip().lower()
+        return explicit if explicit in {"accepted", "rejected"} else "unverified"
+    current = article_revalidation._read_current_statuses(pipeline, sync_id)
+    if current == (
+        pipeline.ARTICLE_STATUS_READY,
+        pipeline.CONTENT_STATUS_DEEP_DIVE,
+    ):
+        return "accepted"
+    return "rejected"
+
+
 def run_ready_regeneration(pipeline: Any, sync_id: str) -> dict[str, Any]:
     """Run current Production generation against one already-delivered Ready source row."""
     sync_id = _normalize_sync_id(sync_id)
@@ -234,7 +252,7 @@ def run_ready_regeneration(pipeline: Any, sync_id: str) -> dict[str, Any]:
     if not generated:
         _reconcile_failed_ready_target(sync_id, pipeline)
         raise ReadyDraftRegenerationError("exact target produced no manuscript")
-    status = article_revalidation.classify_nonpersistent_report(generated)
+    status = _persistent_generation_status(pipeline, sync_id, generated)
     manuscript = generated[0] if isinstance(generated, tuple) and generated else generated
     if status != "accepted":
         _reconcile_failed_ready_target(sync_id, pipeline)
@@ -264,6 +282,43 @@ def run_ready_regeneration(pipeline: Any, sync_id: str) -> dict[str, Any]:
         "prior_title": destination_before["title"],
         "current_title": destination_after["title"],
         "chars": len(str(manuscript or "")),
+        "new_draft_created": False,
+        "public_release": False,
+    }
+
+
+def resume_persisted_ready_draft(pipeline: Any, sync_id: str) -> dict[str, Any]:
+    """Resume delivery from an already-persisted Ready row without provider generation."""
+    sync_id = _normalize_sync_id(sync_id)
+    destination_before = destination_preflight(sync_id)
+    current = article_revalidation._read_current_statuses(pipeline, sync_id)
+    if current != (
+        pipeline.ARTICLE_STATUS_READY,
+        pipeline.CONTENT_STATUS_DEEP_DIVE,
+    ):
+        raise ReadyDraftRegenerationError(
+            "persisted resume source is not current Ready / Deep Dive"
+        )
+    sync_result = ready_sync.sync_note_ready_db(target_sync_id=sync_id)
+    if int(sync_result.get("source_ready") or 0) != 1:
+        raise ReadyDraftRegenerationError(
+            "persisted resume did not reconcile exactly one current Ready source"
+        )
+    destination_after = destination_preflight(sync_id)
+    for key in ("destination_page_id", "note_draft_id", "posting_state"):
+        if destination_after.get(key) != destination_before.get(key):
+            raise ReadyDraftRegenerationError(
+                f"existing draft binding changed during persisted resume: {key}"
+            )
+    return {
+        "selected": 1,
+        "generated": 0,
+        "accepted": 1,
+        "sync_id": sync_id,
+        "note_draft_id": destination_after["note_draft_id"],
+        "destination_page_id": destination_after["destination_page_id"],
+        "prior_title": destination_before["title"],
+        "current_title": destination_after["title"],
         "new_draft_created": False,
         "public_release": False,
     }
@@ -501,8 +556,8 @@ def apply_current_article_to_existing_draft(
             context.close()
 
 
-def run_full(sync_id: str) -> dict[str, Any]:
-    """Preflight route, regenerate through Production, then overwrite the same private draft."""
+def run_full(sync_id: str, *, resume_persisted: bool = False) -> dict[str, Any]:
+    """Regenerate or resume persisted Ready, then overwrite the same private draft."""
     sync_id = _normalize_sync_id(sync_id)
     if not _approval_is_valid(sync_id):
         raise ReadyDraftRegenerationError("explicit exact regeneration approval is missing")
@@ -510,13 +565,19 @@ def run_full(sync_id: str) -> dict[str, Any]:
     destination = destination_preflight(sync_id)
     expected_route = draft_route_preflight(destination)
 
-    article_revalidation.run_article_revalidation = (
-        lambda pipeline, limit=None: run_ready_regeneration(pipeline, sync_id)
-    )
-    os.environ["AIIF_ONE_SHOT_MODE"] = "article_validation"
-    import production_pipeline
+    if resume_persisted:
+        import pipeline
 
-    production_pipeline.main()
+        resume_persisted_ready_draft(pipeline, sync_id)
+    else:
+        article_revalidation.run_article_revalidation = (
+            lambda pipeline, limit=None: run_ready_regeneration(pipeline, sync_id)
+        )
+        os.environ["AIIF_ONE_SHOT_MODE"] = "article_validation"
+        import production_pipeline
+
+        production_pipeline.main()
+
     result = apply_current_article_to_existing_draft(
         sync_id, expected_route=expected_route
     )
@@ -543,6 +604,7 @@ def main() -> None:
     parser.add_argument("--sync-id", required=True)
     parser.add_argument("--confirm", required=True)
     parser.add_argument("--prepare-only", action="store_true")
+    parser.add_argument("--resume-persisted", action="store_true")
     args = parser.parse_args()
     sync_id = _normalize_sync_id(args.sync_id)
     if args.confirm != CONFIRM_TOKEN:
@@ -561,7 +623,7 @@ def main() -> None:
         }, ensure_ascii=False))
         return
 
-    result = run_full(sync_id)
+    result = run_full(sync_id, resume_persisted=args.resume_persisted)
     print(json.dumps(_safe_stdout(result), ensure_ascii=False))
 
 
