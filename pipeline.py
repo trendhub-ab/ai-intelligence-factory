@@ -2132,7 +2132,7 @@ def _upload_subscription_attribution_to_github(local_path: str, article_id: str)
     headers = {"Authorization": f"Bearer {GH_PAT}", "Accept": "application/vnd.github+json"}
     try:
         sha = None
-        existing = requests.get(api_url, headers=headers, timeout=30)
+        existing = requests.get(api_url, headers=headers, params={"ref": EYECATCH_GITHUB_BRANCH}, timeout=30)
         if existing.status_code == 200:
             sha = existing.json().get("sha")
         elif existing.status_code != 404:
