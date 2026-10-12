@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import pipeline
+import publication_contract as contract
 
 
 def response(status_code=200, json_data=None, text=""):
@@ -61,7 +62,7 @@ class ReadySingleCanonicalPersistenceTests(unittest.TestCase):
 
     def test_stale_review_cleanup_failure_blocks_ready_commit(self):
         body = "canonical manuscript"
-        canonical = manuscript_block("canonical", body, pipeline.MANUSCRIPT_CAPTION_READY)
+        canonical = manuscript_block("canonical", body, contract.current_ready_caption(body))
         review = manuscript_block("old-review", "old review manuscript", pipeline.MANUSCRIPT_CAPTION_REVIEW)
         ready_commits = []
 
@@ -80,7 +81,7 @@ class ReadySingleCanonicalPersistenceTests(unittest.TestCase):
 
     def test_stale_manuscripts_are_archived_before_ready_property_commit(self):
         body = "canonical manuscript"
-        canonical = manuscript_block("canonical", body, pipeline.MANUSCRIPT_CAPTION_READY)
+        canonical = manuscript_block("canonical", body, contract.current_ready_caption(body))
         old_ready = manuscript_block("old-ready", "old ready manuscript", pipeline.MANUSCRIPT_CAPTION_READY)
         review = manuscript_block("old-review", "old review manuscript", pipeline.MANUSCRIPT_CAPTION_REVIEW)
         state = {"cleaned": False}
