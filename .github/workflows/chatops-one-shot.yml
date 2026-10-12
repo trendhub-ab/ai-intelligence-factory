@@ -190,8 +190,12 @@ jobs:
             echo "- requested mode: \`$MODE\`"
             echo "- target: \`${DISPATCH_TARGET}\` on \`main\`"
             if [ -n "$TARGET_SYNC_ID" ]; then echo "- exact sync_id: \`$TARGET_SYNC_ID\`"; fi
-            if [ "$MODE" = 'x_discovery_stage2' ] || [ "$MODE" = 'stale_ready_portfolio_audit' ] || [ "$MODE" = 'ready_draft_regenerate_resume' ]; then
-              echo '- Gemini/Google model credentials used by requested operation: `false`'
+            if [ "$MODE" = 'x_discovery_stage2' ] || [ "$MODE" = 'stale_ready_portfolio_audit' ]; then
+              echo '- Gemini/Google model credentials passed: `false`'
+              echo '- Factory/Notion writes authorized: `false`'
+            elif [ "$MODE" = 'ready_draft_regenerate_resume' ]; then
+              echo '- provider generation requested: `false`'
+              echo '- confirmation injected: `RUN_ONCE`'
             else
               echo '- confirmation injected: `RUN_ONCE`'
             fi
