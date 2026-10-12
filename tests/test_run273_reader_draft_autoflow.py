@@ -144,7 +144,7 @@ class Run273ProductionFindingRegressionTests(unittest.TestCase):
         block = source[start:end]
         self.assertIn('GEMINI_38_FLASH_DAILY_BUDGET: "18"', block)
         self.assertIn(
-            'GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.5-flash,gemini-3.7-flash,gemini-3.8-flash"',
+            'GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "gemini-3.6-flash,gemini-3.5-flash,gemini-3.7-flash,gemini-3.8-flash,gemini-3-flash-preview"',
             source,
         )
         self.assertIn('DAILY_PORTFOLIO_REQUEST_BUDGET: "4"', block)

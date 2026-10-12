@@ -2,6 +2,8 @@ from pathlib import Path
 import re
 import unittest
 
+import run260_gemini_model_routing as routing
+
 
 ROOT = Path(__file__).resolve().parents[1]
 ONE_SHOT = ROOT / ".github" / "workflows" / "daily-one-shot.yml"
@@ -13,7 +15,7 @@ CROSS_DB = ROOT / ".github" / "workflows" / "cross-db-contract-guard.yml"
 class Run261LiveRoutingFanoutTests(unittest.TestCase):
     def test_one_shot_uses_canonical_run260_article_pool(self):
         text = ONE_SHOT.read_text(encoding="utf-8")
-        article_models = "gemini-3.6-flash,gemini-3.5-flash,gemini-3.7-flash,gemini-3.8-flash"
+        article_models = ",".join(routing.DEFAULT_DEEP_DIVE_POOL)
         deep_dive = f'GEMINI_DEEP_DIVE_MODEL_CANDIDATES: "{article_models}"'
         self.assertIn(deep_dive, text)
         self.assertEqual(text.count(deep_dive), 1)

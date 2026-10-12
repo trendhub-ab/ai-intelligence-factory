@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ONE_SHOT = ROOT / ".github" / "workflows" / "daily-one-shot.yml"
-EXPECTED_ARTICLE_MODELS = "gemini-3.6-flash,gemini-3.5-flash,gemini-3.7-flash,gemini-3.8-flash"
+EXPECTED_ARTICLE_MODELS = "gemini-3.6-flash,gemini-3.5-flash,gemini-3.7-flash,gemini-3.8-flash,gemini-3-flash-preview"
 EXPECTED_SCREENING_MODELS = "gemini-3.5-flash-lite,gemini-3.1-flash-lite"
 
 
