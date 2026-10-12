@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-10-11T08:38:02.217717+00:00",
+  "updated_at": "2026-10-12T08:45:24.661718+00:00",
   "items": [
     {
       "key": "https://cloud.google.com/blog/products/ai-machine-learning/welcome-to-gemini-at-work-2026",
@@ -84,6 +84,80 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "SECURITY",
       "deep_dive_priority_score": 78.6
+    },
+    {
+      "key": "https://fion.ac/jellyfish.pdf",
+      "deferred_at": "2026-10-12T08:45:24.661325+00:00",
+      "expires_at": "2026-10-26T08:45:24.661325+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Artificial Intelligence in the Firm: Bottlenecks in Software Production [pdf]",
+        "originalTitle": "Artificial Intelligence in the Firm: Bottlenecks in Software Production [pdf]",
+        "displayName": "Artificial Intelligence in the Firm: Bottlenecks in Software Production [pdf]",
+        "sourceLanguage": "en",
+        "url": "https://fion.ac/jellyfish.pdf",
+        "description": "Artificial Intelligence in the Firm: Bottlenecks in Software Production [pdf]",
+        "stargazerCount": 5,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-09T12:58:12Z",
+        "sourceContext": "HN points=5 comments=0 matched_query=\"artificial intelligence\"",
+        "primaryUrl": "https://fion.ac/jellyfish.pdf",
+        "sourceDetails": {
+          "hn_id": "50019829",
+          "hn_url": "https://news.ycombinator.com/item?id=50019829",
+          "external_url": "https://fion.ac/jellyfish.pdf",
+          "comments": 0,
+          "matched_query": "\"artificial intelligence\"",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3f7479ff-dca9-8139-aa51-d0add94c2df0",
+      "score": 75,
+      "reason": "ソフトウェア開発におけるAI導入のボトルネック分析",
+      "commercial_score": 80,
+      "shelf_life_score": 50,
+      "shelf_life": "TREND",
+      "portfolio_topic": "PRODUCT",
+      "deep_dive_priority_score": 76.75
+    },
+    {
+      "key": "https://github.com/plimsollmark/plimsoll",
+      "deferred_at": "2026-10-12T08:45:24.661179+00:00",
+      "expires_at": "2026-12-11T08:45:24.661179+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Show HN: Plimsoll, a self-hosted sandbox for code your AI agent writes",
+        "originalTitle": "Show HN: Plimsoll, a self-hosted sandbox for code your AI agent writes",
+        "displayName": "Show HN: Plimsoll, a self-hosted sandbox for code your AI agent writes",
+        "sourceLanguage": "en",
+        "url": "https://github.com/plimsollmark/plimsoll",
+        "description": "Show HN: Plimsoll, a self-hosted sandbox for code your AI agent writes",
+        "stargazerCount": 15,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-11T23:47:59Z",
+        "sourceContext": "HN points=15 comments=3 matched_query=\"AI agent\"",
+        "primaryUrl": "https://github.com/plimsollmark/plimsoll",
+        "sourceDetails": {
+          "hn_id": "50049388",
+          "hn_url": "https://news.ycombinator.com/item?id=50049388",
+          "external_url": "https://github.com/plimsollmark/plimsoll",
+          "comments": 3,
+          "matched_query": "\"AI agent\"",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3f7479ff-dca9-81ac-9c94-c0a5b2bc6ed1",
+      "score": 75,
+      "reason": "エージェント生成コード用のセルフホストサンドボックス",
+      "commercial_score": 80,
+      "shelf_life_score": 75,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "DEVTOOLS",
+      "deep_dive_priority_score": 76.75
     },
     {
       "key": "https://interrupt.langchain.com/london",
@@ -172,42 +246,6 @@
       "deep_dive_priority_score": 76.75
     },
     {
-      "key": "https://ai.google.dev/gemini-api/docs/changelog?aif_revision=31821c5d36b3a76b",
-      "deferred_at": "2026-10-10T05:50:53.442122+00:00",
-      "expires_at": "2026-10-12T05:50:53.442122+00:00",
-      "repo": {
-        "source": "OfficialVendor",
-        "nameWithOwner": "Google Gemini — Gemini 3.5 Flash deprecation : gemini-3.5-flash is deprecated and has been replaced by gemini-3.6-flash . All requests to gemini-3.5-flash are automatically routed to gemini-3.6-flash . Update your model string to gemini",
-        "originalTitle": "Google Gemini — Gemini 3.5 Flash deprecation : gemini-3.5-flash is deprecated and has been replaced by gemini-3.6-flash . All requests to gemini-3.5-flash are automatically routed to gemini-3.6-flash . Update your model string to gemini",
-        "displayName": "Google Gemini — Gemini 3.5 Flash deprecation : gemini-3.5-flash is deprecated and has been replaced by gemini-3.6-flash . All requests to gemini-3.5-flash are automatically routed to gemini-3.6-flash . Update your model string to gemini",
-        "sourceLanguage": "en",
-        "url": "https://ai.google.dev/gemini-api/docs/changelog?aif_revision=31821c5d36b3a76b",
-        "description": "Gemini 3.5 Flash deprecation : gemini-3.5-flash is deprecated and has been replaced by gemini-3.6-flash . All requests to gemini-3.5-flash are automatically routed to gemini-3.6-flash . Update your model string to gemini-3.6-flash (or gemini-3.8-flash ) and review the Gemini 3.6 Flash guide .",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "October 8, 2026",
-        "sourceContext": "Gemini 3.5 Flash deprecation : gemini-3.5-flash is deprecated and has been replaced by gemini-3.6-flash . All requests to gemini-3.5-flash are automatically routed to gemini-3.6-flash . Update your model string to gemini-3.6-flash (or gemini-3.8-flash ) and review the Gemini 3.6 Flash guide .",
-        "primaryUrl": "https://ai.google.dev/gemini-api/docs/changelog",
-        "sourceDetails": {
-          "vendor": "Google Gemini",
-          "vendor_region": "US",
-          "source_role": "commercial_primary_source",
-          "official_release_url": "https://ai.google.dev/gemini-api/docs/changelog",
-          "candidate_revision": "31821c5d36b3a76b",
-          "vendor_record_kind": "structured_html",
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3f5479ff-dca9-8100-a705-cabfe2372c63",
-      "score": 74,
-      "reason": "3.5 Flash廃止に伴う移行対応を促す速報。",
-      "commercial_score": 80,
-      "shelf_life_score": 25,
-      "shelf_life": "FLASH",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 76.1
-    },
-    {
       "key": "https://openai.com/products/release-notes?aif_revision=63b6eae567a61eb3",
       "deferred_at": "2026-10-10T05:50:53.442082+00:00",
       "expires_at": "2026-12-09T05:50:53.442082+00:00",
@@ -242,43 +280,6 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "SECURITY",
       "deep_dive_priority_score": 76.1
-    },
-    {
-      "key": "https://blog.nilesh.io/post/llms-and-jobs",
-      "deferred_at": "2026-09-27T11:17:27.249397+00:00",
-      "expires_at": "2026-10-11T11:17:27.249397+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "The LLM Job Paradox",
-        "originalTitle": "The LLM Job Paradox",
-        "displayName": "The LLM Job Paradox",
-        "sourceLanguage": "en",
-        "url": "https://blog.nilesh.io/post/llms-and-jobs",
-        "description": "The LLM Job Paradox",
-        "stargazerCount": 5,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-27T07:42:19Z",
-        "sourceContext": "HN points=5 comments=2 matched_query=LLM",
-        "primaryUrl": "https://blog.nilesh.io/post/llms-and-jobs",
-        "sourceDetails": {
-          "hn_id": "49864319",
-          "hn_url": "https://news.ycombinator.com/item?id=49864319",
-          "external_url": "https://blog.nilesh.io/post/llms-and-jobs",
-          "comments": 2,
-          "matched_query": "LLM",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3e8479ff-dca9-81a1-9d07-ebb3034d556c",
-      "score": 75,
-      "reason": "エンジニアのキャリアや雇用に関する時流を捉えた議論",
-      "commercial_score": 78,
-      "shelf_life_score": 35,
-      "shelf_life": "TREND",
-      "portfolio_topic": "PRODUCT",
-      "deep_dive_priority_score": 76.05
     },
     {
       "key": "https://arxiv.org/abs/2609.40324",
@@ -546,6 +547,43 @@
       "deep_dive_priority_score": 74.1
     },
     {
+      "key": "https://arxiv.org/abs/2610.13841",
+      "deferred_at": "2026-10-12T08:45:24.661415+00:00",
+      "expires_at": "2026-12-11T08:45:24.661415+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "Returning to Development States: When Full Sandbox Snapshots Help Coding Agents",
+        "originalTitle": "Returning to Development States: When Full Sandbox Snapshots Help Coding Agents",
+        "displayName": "Returning to Development States: When Full Sandbox Snapshots Help Coding Agents",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2610.13841v1",
+        "description": "Coding agents often make useful progress before they fail, but retry-from-scratch discards the machine state created along the way. This makes failure recovery an interesting search problem: if intermediate environment states preserve meaningful progress, restoring and branching from them could outperform repeatedly restarting from the initial state. We implement Go-Explore-style search over full Daytona snapshots and find that higher and more efficient solve rates depend mainly on progress that",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-09T16:50:19Z",
+        "sourceContext": "Coding agents often make useful progress before they fail, but retry-from-scratch discards the machine state created along the way. This makes failure recovery an interesting search problem: if intermediate environment states preserve meaningful progress, restoring and branching from them could outperform repeatedly restarting from the initial state. We implement Go-Explore-style search over full Daytona snapshots and find that higher and more efficient solve rates depend mainly on progress that sits outside the repository, such as databases, services, and other runtime state. Our results suggest that full-snapshot search is most effective when long-horizon coding work spans multiple services whose state cannot be reconstructed from a single diff.",
+        "primaryUrl": "https://arxiv.org/abs/2610.13841v1",
+        "sourceDetails": {
+          "authors": [
+            "Daniel Thi Graviet",
+            "Tanmay Shah"
+          ],
+          "categories": [
+            "cs.LG",
+            "cs.SE"
+          ]
+        }
+      },
+      "notion_page_id": "3f7479ff-dca9-81c1-ba45-f257b4f349cf",
+      "score": 75,
+      "reason": "コーディングエージェントの状態管理と失敗回復",
+      "commercial_score": 70,
+      "shelf_life_score": 75,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 73.25
+    },
+    {
       "key": "https://arxiv.org/abs/2609.21894",
       "deferred_at": "2026-09-21T08:45:22.717462+00:00",
       "expires_at": "2026-11-20T08:45:22.717462+00:00",
@@ -655,81 +693,81 @@
       "deep_dive_priority_score": 73.05
     },
     {
-      "key": "https://arxiv.org/abs/2610.12390",
-      "deferred_at": "2026-10-11T00:29:17.325063+00:00",
-      "expires_at": "2026-12-10T00:29:17.325063+00:00",
+      "key": "https://arxiv.org/abs/2610.13767",
+      "deferred_at": "2026-10-12T08:45:24.661518+00:00",
+      "expires_at": "2026-12-11T08:45:24.661518+00:00",
       "repo": {
         "source": "ArXiv",
-        "nameWithOwner": "Long Text to Predictive Features: LLM-Guided Blockwise Feature Engineering via Executable Program Search",
-        "originalTitle": "Long Text to Predictive Features: LLM-Guided Blockwise Feature Engineering via Executable Program Search",
-        "displayName": "Long Text to Predictive Features: LLM-Guided Blockwise Feature Engineering via Executable Program Search",
+        "nameWithOwner": "DualQuant: Dual-scale Calibration-free Weight-and-Activation Quantization for LLMs",
+        "originalTitle": "DualQuant: Dual-scale Calibration-free Weight-and-Activation Quantization for LLMs",
+        "displayName": "DualQuant: Dual-scale Calibration-free Weight-and-Activation Quantization for LLMs",
         "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2610.12390v1",
-        "description": "Industrial risk-control systems typically rely on structured-data models for efficient prediction, yet substantial valuable information remains embedded in unstructured long text. Extracting this information through manual feature engineering is labor-intensive, while requiring a large language model (LLM) to process every real-time input may not meet practical deployment requirements. To address this challenge, we propose LLM-BlockFE, an LLM-guided offline feature construction framework that co",
+        "url": "https://arxiv.org/abs/2610.13767v1",
+        "description": "Low-bit inference on accelerators with native 4-bit support requires quantizing both weights and activations to realize the full throughput gains these formats provide. While post-training weight quantization has been extensively studied, activation quantization remains considerably more challenging and typically requires calibration data. In this work, we introduce DUALQUANT, a dual-scale, calibration-free post-training quantization framework that directly minimizes the weight-reconstruction Me",
         "stargazerCount": 0,
         "licenseInfo": null,
-        "publishedAt": "2026-10-08T17:39:11Z",
-        "sourceContext": "Industrial risk-control systems typically rely on structured-data models for efficient prediction, yet substantial valuable information remains embedded in unstructured long text. Extracting this information through manual feature engineering is labor-intensive, while requiring a large language model (LLM) to process every real-time input may not meet practical deployment requirements. To address this challenge, we propose LLM-BlockFE, an LLM-guided offline feature construction framework that converts long text into executable feature programs, thereby avoiding LLM calls during online inference. LLM-BlockFE constructs feature programs by incrementally appending immutable code blocks and evaluates candidate features using a downstream model. To address the tendency of conventional greedy search to become trapped in suboptimal solutions, our method introduces a block-level rollback mechanism based on depth-calibrated credit allocation and advances multiple independent search trajectories in an interleaved manner, reducing redundant exploration by sharing fixed descriptions of each trajectory's exploration direction. After the search, the resulting programs are frozen and deployed to extract structured features for downstream prediction models. Across two public and two private datasets, LLM-BlockFE achieves absolute AUC improvements of 0.0069 to 0.0358 over the strongest baseline on each dataset in the full-dataset comparison. Post-launch monitoring across five deployed financial risk-control applications shows absolute KS improvements of 0.02 to 1.56 percentage points over the existing manually designed strategy.",
-        "primaryUrl": "https://arxiv.org/abs/2610.12390v1",
+        "publishedAt": "2026-10-09T15:51:38Z",
+        "sourceContext": "Low-bit inference on accelerators with native 4-bit support requires quantizing both weights and activations to realize the full throughput gains these formats provide. While post-training weight quantization has been extensively studied, activation quantization remains considerably more challenging and typically requires calibration data. In this work, we introduce DUALQUANT, a dual-scale, calibration-free post-training quantization framework that directly minimizes the weight-reconstruction Mean Squared Error (MSE) and, as an immediate by-product, yields per-channel activation rescalings prior to activation quantization. Our key observation is that the scaling factors obtained by minimizing weight-reconstruction error provide effective activation rescalings, enabling competitive activation quantization without calibration data. We formulate DUALQUANT as a non-differentiable weight-reconstruction problem and develop an efficient solver based on variable splitting and block coordinate descent, where each subproblem admits a closed-form update. DUALQUANT provides a unified algorithm supporting a wide range of formats, including the full MX family and NVFP4. To our knowledge, DUALQUANT is the first dual-scaling method to formally support MX and NV block formats. Across Llama and Qwen models evaluated on WikiText-2, C4, and zero-shot downstream tasks, DUALQUANT matches or exceeds the accuracy of calibration-based SmoothQuant across most models and formats, and substantially outperforms calibration-free baselines, with large gains for MX and NV block formats. We validate these gains with a real packed W4A4 inference path for Llama-3.1-8B on an RTX 4090. The resulting implementation closely matches the accuracy of fake quantization while delivering up to 2.61x memory reduction and up to 2.46x throughput speedup over BF16.",
+        "primaryUrl": "https://arxiv.org/abs/2610.13767v1",
         "sourceDetails": {
           "authors": [
-            "Ziming Dai",
-            "Dabiao Ma",
-            "Ziheng Guo",
-            "Jack Dong",
-            "Zimu Zhou"
+            "Mahsa Salmani",
+            "Sayeh Sharify",
+            "Hesham Mostafa"
           ],
           "categories": [
             "cs.LG",
-            "cs.CL"
+            "cs.AI"
           ]
         }
       },
-      "notion_page_id": "3f6479ff-dca9-810e-b688-c546f6fa403e",
-      "score": 64,
-      "reason": "実務のデータ前処理効率化に直結するアプローチ。",
-      "commercial_score": 68,
-      "shelf_life_score": 75,
+      "notion_page_id": "3f7479ff-dca9-8189-bfcc-f5248e83aa7c",
+      "score": 70,
+      "reason": "LLMのデュアルスケール量子化フレームワーク",
+      "commercial_score": 75,
+      "shelf_life_score": 80,
       "shelf_life": "EVERGREEN",
-      "portfolio_topic": "DATA",
-      "deep_dive_priority_score": 65.4
+      "portfolio_topic": "INFRA",
+      "deep_dive_priority_score": 71.75
     },
     {
-      "key": "https://news.ycombinator.com/item?id=50024166",
-      "deferred_at": "2026-10-11T08:36:23.231443+00:00",
-      "expires_at": "2026-10-13T08:36:23.231443+00:00",
+      "key": "https://arxiv.org/abs/2610.13928",
+      "deferred_at": "2026-10-12T08:45:24.661574+00:00",
+      "expires_at": "2026-12-11T08:45:24.661574+00:00",
       "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "OpenAI will start watermarking ChatGPT's text in the EU",
-        "originalTitle": "OpenAI will start watermarking ChatGPT's text in the EU",
-        "displayName": "OpenAI will start watermarking ChatGPT's text in the EU",
+        "source": "ArXiv",
+        "nameWithOwner": "AI Models Can Provably Hide Arbitrary Capabilities",
+        "originalTitle": "AI Models Can Provably Hide Arbitrary Capabilities",
+        "displayName": "AI Models Can Provably Hide Arbitrary Capabilities",
         "sourceLanguage": "en",
-        "url": "https://techcrunch.com/2026/10/05/openai-will-start-watermarking-chatgpts-text-in-the-eu/",
-        "description": "OpenAI will start watermarking ChatGPT's text in the EU",
-        "stargazerCount": 7,
+        "url": "https://arxiv.org/abs/2610.13928v1",
+        "description": "Capability evaluations aim to surface dangerous model behaviors before deployment, but their reliability depends on the assumption that hidden capabilities can be elicited. We show this assumption does not hold under adversarial conditions by constructing backdoor attacks that embed encrypted neural networks within host model weights, decrypting and executing them only upon receiving a secret trigger. Using digital lockers, these hidden circuits remain provably hard to elicit and interpret under",
+        "stargazerCount": 0,
         "licenseInfo": null,
-        "publishedAt": "2026-10-09T17:46:48Z",
-        "sourceContext": "HN points=7 comments=1 matched_query=OpenAI",
-        "primaryUrl": "https://techcrunch.com/2026/10/05/openai-will-start-watermarking-chatgpts-text-in-the-eu/",
+        "publishedAt": "2026-10-09T17:55:06Z",
+        "sourceContext": "Capability evaluations aim to surface dangerous model behaviors before deployment, but their reliability depends on the assumption that hidden capabilities can be elicited. We show this assumption does not hold under adversarial conditions by constructing backdoor attacks that embed encrypted neural networks within host model weights, decrypting and executing them only upon receiving a secret trigger. Using digital lockers, these hidden circuits remain provably hard to elicit and interpret under cryptographic assumptions, even given full access to model weights, extending prior work from hiding fixed strings to arbitrary computations. We implement our proof of concept constructions in PyTorch and evaluate elicitation through fine-tuning, weight noising, gradient-based trigger search, and latent adversarial training on a small chemical reaction prediction task - a proxy for CBRN-relevant capabilities. Our results demonstrate resistance to these methods and, together with our cryptographic guarantees, reveal a limit of elicitation-based capability audits. We release our models to support the improvement of defenses.",
+        "primaryUrl": "https://arxiv.org/abs/2610.13928v1",
         "sourceDetails": {
-          "hn_id": "50024166",
-          "hn_url": "https://news.ycombinator.com/item?id=50024166",
-          "external_url": "https://techcrunch.com/2026/10/05/openai-will-start-watermarking-chatgpts-text-in-the-eu/",
-          "comments": 1,
-          "matched_query": "OpenAI",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
+          "authors": [
+            "Andis Draguns",
+            "Sumeet Ramesh Motwani",
+            "Raymond Douglas",
+            "Christian Schroeder de Witt"
+          ],
+          "categories": [
+            "cs.LG",
+            "cs.CR"
+          ]
         }
       },
-      "notion_page_id": "3f6479ff-dca9-81ea-9a16-c9794f32bb31",
-      "score": 62,
-      "reason": "EU向けChatGPTテキスト透かし",
-      "commercial_score": 65,
-      "shelf_life_score": 30,
-      "shelf_life": "FLASH",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 63.05
+      "notion_page_id": "3f7479ff-dca9-8184-9362-c8a8d63830ab",
+      "score": 68,
+      "reason": "モデル評価における隠れた脆弱性の指摘",
+      "commercial_score": 75,
+      "shelf_life_score": 70,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "SECURITY",
+      "deep_dive_priority_score": 70.45
     }
   ]
 }
