@@ -22,6 +22,23 @@ jobs:
           python-version: '3.12'
       - name: Install preview dependency
         run: python -m pip install --disable-pip-version-check pillow
+      - name: Diagnose Japanese font resolution
+        run: |
+          printf '%s\n' '--- expected Noto paths ---'
+          for f in \
+            /usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc \
+            /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc \
+            /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf; do
+            if [ -f "$f" ]; then echo "FOUND $f"; else echo "MISSING $f"; fi
+          done
+          printf '%s\n' '--- Pillow selected font ---'
+          python - <<'PY'
+          import editorial_eyecatch as ee
+          font = ee._jp_font(40, bold=True)
+          print('font_type=', type(font).__name__)
+          print('font_path=', getattr(font, 'path', None))
+          print('font_name=', getattr(font, 'getname', lambda: None)())
+          PY
       - name: Render production Run551 preview
         run: |
           python - <<'PY'
