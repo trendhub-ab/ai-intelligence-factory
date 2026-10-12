@@ -38,19 +38,26 @@ jobs:
                   self.assertLess(BODY.index(call), BODY.index("# Phase 2:"))
                   self.assertIn("Notion Review manuscript cleanup failed before Ready commit", BODY)
 
-              def test_ready_commit_is_not_allowed_to_precede_review_cleanup(self):
+              def test_post_commit_best_effort_cleanup_is_removed(self):
                   self.assertNotIn("Ready commit後の旧Review原稿整理はbest-effort", BODY)
-                  self.assertNotIn("[NOTION REVIEW CLEANUP PARTIAL]", BODY)
+                  self.assertNotIn("[NOTION REVIEW CLEANUP SKIPPED]", BODY)
 
-              def test_properties_failure_keeps_formal_manuscript_for_idempotent_retry(self):
-                  marker = "[NOTION UPGRADE PROPERTIES ERROR]"
-                  pos = BODY.index(marker)
-                  failure_window = BODY[pos:pos + 700]
-                  self.assertNotIn("_rollback_notion_manuscript_children", failure_window)
-                  self.assertIn("_mark_pending_retry_or_escalate", failure_window)
+              def test_properties_http_failure_keeps_formal_manuscript_for_retry(self):
+                  start = BODY.index("[NOTION UPGRADE PROPERTIES ERROR]")
+                  end = BODY.index("[NOTION READY COMMITTED]", start)
+                  failure_block = BODY[start:end]
+                  self.assertNotIn("_rollback_notion_manuscript_children", failure_block)
+                  self.assertIn("_mark_pending_retry_or_escalate", failure_block)
+
+              def test_properties_exception_keeps_formal_manuscript_for_retry(self):
+                  start = BODY.index("[NOTION READY COMMITTED]")
+                  exc = BODY.index("except Exception as e:", start)
+                  exception_block = BODY[exc:]
+                  self.assertNotIn("_rollback_notion_manuscript_children", exception_block)
+                  self.assertIn("_mark_pending_retry_or_escalate", exception_block)
 
               def test_existing_formal_manuscript_guard_still_prevents_reappend(self):
-                  guard = "has_existing_manuscript = _notion_page_has_manuscript(page_id, headers)"
+                  guard = "has_existing_manuscript = _notion_page_has_manuscript_child(page_id, headers)"
                   skip = "[NOTION UPGRADE CHILDREN SKIPPED]"
                   append = "build_notion_manuscript_children(clean_manuscript)"
                   self.assertIn(guard, BODY)
@@ -86,11 +93,10 @@ jobs:
               raise SystemExit("helper anchor not found")
           helper = r'''
           def _delete_notion_review_manuscripts_before_ready(page_id: str, repo_name: str, headers: dict) -> bool:
-              """Delete every Review manuscript before the page may be committed Ready.
+              """Delete all Review manuscripts before committing the page Ready.
 
-              Review cleanup is part of the Ready transaction, not post-commit housekeeping.
-              A read/delete failure therefore fails closed: the page must remain non-Ready and
-              can be retried without appending another formal manuscript.
+              Cleanup is part of the Ready transaction. Any read/delete failure fails closed,
+              leaving the page non-Ready so a later retry can finish cleanup safely.
               """
               try:
                   review_block_ids = _notion_review_manuscript_block_ids(page_id, headers)
@@ -132,11 +138,17 @@ jobs:
           strict_cleanup = '''    # Review稿の削除はReady transactionの必須条件。\n    # cleanup失敗時はReadyへ進めず、次回retryで同じ正式稿を再利用する。\n    if not _delete_notion_review_manuscripts_before_ready(page_id, repo_name, headers):\n        _mark_pending_retry_or_escalate(\n            page_id, repo_name, "Notion Review manuscript cleanup failed before Ready commit"\n        )\n        return False\n\n'''
           source = source.replace(phase2, strict_cleanup + phase2, 1)
 
-          old_failure = '''            logger.error(f"[NOTION UPGRADE PROPERTIES ERROR] {repo_name} -> {res_props.text}")\n            if appended_block_ids:\n                _rollback_notion_manuscript_children(appended_block_ids, repo_name, headers)\n            _mark_pending_retry_or_escalate(page_id, repo_name, "Notion properties commit failed after children saved")\n            return False\n'''
-          new_failure = '''            logger.error(f"[NOTION UPGRADE PROPERTIES ERROR] {repo_name} -> {res_props.text}")\n            # 正式manuscriptは保持する。次回retryの既存稿guardでre-appendを防ぎ、\n            # properties commitだけを安全に再試行できるようにする。\n            _mark_pending_retry_or_escalate(page_id, repo_name, "Notion properties commit failed after children saved")\n            return False\n'''
-          if old_failure not in source:
-              raise SystemExit("properties failure block not found")
-          source = source.replace(old_failure, new_failure, 1)
+          old_http_failure = '''            logger.error(f"[NOTION UPGRADE PROPERTIES ERROR] {repo_name} -> {res_props.text}")\n            if appended_block_ids:\n                _rollback_notion_manuscript_children(appended_block_ids, repo_name, headers)\n            _mark_pending_retry_or_escalate(page_id, repo_name, "Notion properties commit failed after children saved")\n            return False\n'''
+          new_http_failure = '''            logger.error(f"[NOTION UPGRADE PROPERTIES ERROR] {repo_name} -> {res_props.text}")\n            # 正式manuscriptは保持する。次回retryの既存稿guardでre-appendを防ぐ。\n            _mark_pending_retry_or_escalate(page_id, repo_name, "Notion properties commit failed after children saved")\n            return False\n'''
+          if old_http_failure not in source:
+              raise SystemExit("HTTP properties failure block not found")
+          source = source.replace(old_http_failure, new_http_failure, 1)
+
+          old_exception = '''    except Exception as e:\n        logger.error(f"[NOTION UPGRADE PROPERTIES EXCEPTION] {repo_name}: {e}")\n        if appended_block_ids:\n            _rollback_notion_manuscript_children(appended_block_ids, repo_name, headers)\n        _mark_pending_retry_or_escalate(page_id, repo_name, "Notion properties commit exception after children saved")\n        return False\n'''
+          new_exception = '''    except Exception as e:\n        logger.error(f"[NOTION UPGRADE PROPERTIES EXCEPTION] {repo_name}: {e}")\n        # 正式manuscriptは保持し、次回retryでproperties commitだけを再試行する。\n        _mark_pending_retry_or_escalate(page_id, repo_name, "Notion properties commit exception after children saved")\n        return False\n'''
+          if old_exception not in source:
+              raise SystemExit("properties exception block not found")
+          source = source.replace(old_exception, new_exception, 1)
 
           old_cleanup_marker = "        # Ready commit後の旧Review原稿整理はbest-effort。ここでread不能でも、\n"
           cleanup_start = source.find(old_cleanup_marker)
