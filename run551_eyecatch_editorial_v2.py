@@ -3,7 +3,7 @@
 Presentation-only, zero-provider rendering layer for AI Intelligence Factory.
 Run180 continues to own semantic/layout validation. Run551 uses the user-approved
 AI background as the immutable visual source and deterministically overlays only the
-brand, metadata, insight hook, validated title and footer.
+brand, metadata, dynamic reader-purpose badge, editorial hook, validated title and footer.
 
 The approved 1536x804 source has the same aspect ratio as the 1280x670 note canvas.
 The committed production master is therefore a straight 1280x670 downscale with no
@@ -33,9 +33,13 @@ BACKGROUND_MASTER_FORMAT = "WEBP"
 _BACKGROUND_PARTS_RELATIVE = Path("assets") / "eyecatch" / "v2" / ".background_master_parts"
 _BACKGROUND_PART_NAMES = tuple(f"part{index:02d}.b64" for index in range(1, 7))
 
+# Sample-aligned vertical rhythm. These are presentation-only coordinates.
 _LEFT = 48
-_INSIGHT_TOP = 142
-_TITLE_TOP = 220
+_BADGE_TOP = 140
+_BADGE_HEIGHT = 42
+_HOOK_TOP = 207
+_TITLE_TOP = 316
+_FOOTER_TOP = 606
 _LEAD_MAX_FONT = 50
 _IMPACT_MAX_FONT = 78
 _THREE_LINE_MAX_FONT = 66
@@ -81,9 +85,29 @@ def split_impact_phrase(text: str) -> tuple[str, str]:
 
 
 def compose_insight(hook: str) -> str:
+    """Compatibility helper retained for callers from the pre-badge V2 prototype."""
     value = str(hook or "").strip()
     value = re.sub(r"^INSIGHT\s*[｜|:]\s*", "", value, flags=re.I).strip()
     return f"INSIGHT｜{value}" if value else "INSIGHT｜いま、何が重要なのか？"
+
+
+def select_badge(title: str, summary: str, category: str) -> str:
+    """Choose the reader-purpose badge from existing deterministic article cues."""
+    import eyecatch_badge_taxonomy as badge_taxonomy
+
+    return badge_taxonomy.classify_badge(title, summary, category)
+
+
+def editorial_layout_contract() -> dict[str, int]:
+    """Expose the approved sample-aligned vertical rhythm for regression tests."""
+    return {
+        "left": _LEFT,
+        "badge_top": _BADGE_TOP,
+        "badge_height": _BADGE_HEIGHT,
+        "hook_top": _HOOK_TOP,
+        "title_top": _TITLE_TOP,
+        "footer_top": _FOOTER_TOP,
+    }
 
 
 def background_master_contract() -> dict[str, object]:
@@ -116,7 +140,7 @@ def _background_master_bytes() -> bytes:
 
     try:
         payload = base64.b64decode("".join(encoded_parts), validate=True)
-    except Exception as exc:  # binascii.Error is deliberately normalized to one fail-closed contract.
+    except Exception as exc:
         raise RuntimeError("background master base64 is invalid") from exc
 
     actual = hashlib.sha256(payload).hexdigest()
@@ -196,29 +220,29 @@ def _fit_font_size(draw: Any, ee: Any, text: str, desired: int, max_width: int) 
     return _TITLE_MIN_FONT
 
 
-def _draw_insight(draw: Any, ee: Any, hook: str, accent: tuple[int, int, int], text_right: int) -> None:
-    prefix = "INSIGHT"
-    prefix_font = ee._latin_font(18, bold=True)
-    hook_font = ee._jp_font(27, bold=True)
-    prefix_w = ee._text_width(draw, prefix, prefix_font)
-    draw.text((_LEFT, _INSIGHT_TOP + 6), prefix, font=prefix_font, fill=accent)
-    sep_x = _LEFT + prefix_w + 13
-    draw.line(
-        (sep_x, _INSIGHT_TOP + 5, sep_x, _INSIGHT_TOP + 31),
-        fill=_blend_to_white(accent, 0.40),
-        width=2,
-    )
-    text = compose_insight(hook).split("｜", 1)[1]
-    draw.text((sep_x + 15, _INSIGHT_TOP), text, font=hook_font, fill=(7, 30, 66))
+def _draw_badge(draw: Any, ee: Any, label: str, accent: tuple[int, int, int]) -> None:
+    import eyecatch_badge_taxonomy as badge_taxonomy
+
+    font = ee._jp_font(22, bold=True)
+    text_w = ee._text_width(draw, label, font)
+    x0, y0 = _LEFT, _BADGE_TOP
+    x1, y1 = x0 + text_w + 72, y0 + _BADGE_HEIGHT
+    fill = _blend_to_white(accent, 0.11)
+    draw.rounded_rectangle((x0, y0, x1, y1), radius=_BADGE_HEIGHT // 2, fill=fill)
+    badge_taxonomy.draw_badge_icon(draw, label, x0 + 12, y0 + 8, accent, size=26)
+    draw.text((x0 + 50, y0 + 8), label, font=font, fill=(7, 30, 66))
+
+
+def _draw_hook(draw: Any, ee: Any, hook: str, accent: tuple[int, int, int], text_right: int) -> None:
+    font = ee._jp_font(31, bold=True)
+    bbox = draw.textbbox((0, 0), hook, font=font)
+    text_w = max(0, bbox[2] - bbox[0])
+    draw.text((_LEFT, _HOOK_TOP - bbox[1]), hook, font=font, fill=(7, 30, 66))
+    underline_right = min(text_right, _LEFT + text_w + 18)
     draw.rounded_rectangle(
-        (
-            _LEFT,
-            _INSIGHT_TOP + 42,
-            min(text_right, sep_x + 15 + ee._text_width(draw, text, hook_font)),
-            _INSIGHT_TOP + 46,
-        ),
-        radius=2,
-        fill=_blend_to_white(accent, 0.20),
+        (_LEFT, _HOOK_TOP + 38, underline_right, _HOOK_TOP + 44),
+        radius=3,
+        fill=_blend_to_white(accent, 0.17),
     )
 
 
@@ -249,6 +273,21 @@ def _draw_runs(
     return line_height
 
 
+def _draw_footer(draw: Any, ee: Any, category: str, date_label: str) -> None:
+    label_font = ee._jp_font(18, bold=True)
+    date_font = ee._latin_font(18, bold=True)
+    label = f"{category} / 解説"
+    draw.text((_LEFT, _FOOTER_TOP), label, font=label_font, fill=(18, 42, 79))
+    label_w = ee._text_width(draw, label, label_font)
+    divider_x = _LEFT + label_w + 18
+    draw.line(
+        (divider_x, _FOOTER_TOP - 1, divider_x, _FOOTER_TOP + 24),
+        fill=(185, 201, 222),
+        width=2,
+    )
+    draw.text((divider_x + 18, _FOOTER_TOP), date_label, font=date_font, fill=(18, 42, 79))
+
+
 def _render_editorial_v2(
     title: str,
     summary: str,
@@ -276,13 +315,15 @@ def _render_editorial_v2(
     draw = ImageDraw.Draw(image)
 
     # The approved raster is the complete visual field. Only deterministic typography
-    # is layered on top; no synthetic visual element is redrawn here.
+    # and the existing vector badge iconography are layered on top.
     ee._draw_brand(draw, accent)
     ee._draw_tags(draw, category, date_label, accent)
 
+    badge = select_badge(title, summary, category)
+    _draw_badge(draw, ee, badge, accent)
     hook = r181._editorial_hook(title, summary, category)
     text_right = int(round(ee.WIDTH * TEXT_ZONE_RATIO))
-    _draw_insight(draw, ee, hook, accent, text_right)
+    _draw_hook(draw, ee, hook, accent, text_right)
 
     title_lines = [str(line).strip() for line in validated.get("title_lines", []) if str(line).strip()]
     if not title_lines:
@@ -313,7 +354,7 @@ def _render_editorial_v2(
         height = _draw_runs(draw, ee, r181, runs, size, _LEFT, y, ink_runs)
         y += height + (_TITLE_LINE_GAP + (7 if is_lead else 0))
 
-    r181._draw_footer(draw, category, date_label)
+    _draw_footer(draw, ee, category, date_label)
     headline_contract.bind_headline_pixels(image, proof, ink_runs)
     image.save(output_path, "PNG", optimize=True, pnginfo=proof)
     return output_path
@@ -355,7 +396,8 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module.RUN551_EXTRA_PROVIDER_CALLS = 0
     pipeline_module.RUN551_TEXT_ZONE_RATIO = TEXT_ZONE_RATIO
     pipeline_module.RUN551_VISUAL_ZONE_RATIO = VISUAL_ZONE_RATIO
-    pipeline_module.RUN551_BADGE_REMOVED = True
-    pipeline_module.RUN551_SINGLE_INSIGHT_LINE = True
+    pipeline_module.RUN551_BADGE_REMOVED = False
+    pipeline_module.RUN551_DYNAMIC_BADGE = True
+    pipeline_module.RUN551_SINGLE_INSIGHT_LINE = False
     pipeline_module.RUN551_BACKGROUND_MASTER_SHA256 = BACKGROUND_MASTER_SHA256
     return pipeline_module
