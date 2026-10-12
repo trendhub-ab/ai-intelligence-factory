@@ -27,7 +27,10 @@ jobs:
       - name: Prove audit source is read-only
         run: |
           set -euo pipefail
-          ! grep -Eq 'requests\.(patch|delete|put)|method=["'"'](PATCH|DELETE|PUT)["'"']' audit_notion_manuscripts.py
+          if grep -Eq '\b(PATCH|DELETE|PUT)\b|requests\.(patch|delete|put)' audit_notion_manuscripts.py; then
+            echo '::error::Write-capable Notion verb detected in read-only audit source'
+            exit 1
+          fi
           python -m py_compile audit_notion_manuscripts.py
 
       - name: Audit every Content Intelligence page
