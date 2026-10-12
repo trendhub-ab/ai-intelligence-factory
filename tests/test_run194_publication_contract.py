@@ -10,9 +10,9 @@ import publication_contract as contract
 import run194_publication_contract as run194
 
 
-def ready_block(body: str, caption: str) -> dict:
+def ready_block(body: str, caption: str, block_id: str = "block") -> dict:
     return {
-        "id": "block",
+        "id": block_id,
         "type": "code",
         "code": {
             "rich_text": [{"plain_text": body, "text": {"content": body}}],
@@ -24,19 +24,26 @@ def ready_block(body: str, caption: str) -> dict:
 class Run194PublicationContractTests(unittest.TestCase):
     def _module(self, blocks=None):
         blocks = list(blocks or [])
-        state = {"last_skip": None}
+        state = {"last_skip": None, "pending_reasons": []}
 
         def build_children(body, caption="AIIF_MANUSCRIPT:READY"):
             return [{"body": body, "caption": caption}]
 
         module = SimpleNamespace()
         module.build_notion_manuscript_children = build_children
-        module._notion_page_manuscript_blocks = lambda page_id, headers: blocks
+        module._notion_page_manuscript_blocks = lambda page_id, headers: list(blocks)
         module._notion_code_caption = lambda block: "".join(
             item.get("plain_text", "") for item in (block.get("code") or {}).get("caption", [])
         )
         module._notion_page_has_manuscript_child = lambda page_id, headers: False
         module.MANUSCRIPT_CAPTION_READY = "AIIF_MANUSCRIPT:READY"
+
+        def rollback_notion_manuscript_children(block_ids, repo_name, headers):
+            ids = set(block_ids)
+            blocks[:] = [block for block in blocks if block.get("id") not in ids]
+
+        module._rollback_notion_manuscript_children = rollback_notion_manuscript_children
+        module._mark_pending_retry_or_escalate = lambda page_id, repo_name, reason: state["pending_reasons"].append(reason)
 
         def upgrade_notion_page_with_report(
             page_id, repo_name, repo_url, score, score_breakdown_text,
@@ -44,10 +51,17 @@ class Run194PublicationContractTests(unittest.TestCase):
             spdx_id, clean_manuscript, **kwargs
         ):
             state["last_skip"] = module._notion_page_has_manuscript_child(page_id, {})
+            if not state["last_skip"]:
+                blocks.append(ready_block(
+                    clean_manuscript,
+                    contract.current_ready_caption(clean_manuscript),
+                    f"generated-{len(blocks)}",
+                ))
             return True
 
         module.upgrade_notion_page_with_report = upgrade_notion_page_with_report
         module._test_state = state
+        module._test_blocks = blocks
         return module
 
     def test_policy_sha_changes_when_any_manifest_file_changes(self) -> None:
@@ -62,7 +76,6 @@ class Run194PublicationContractTests(unittest.TestCase):
             changed.write_text("changed", encoding="utf-8")
             second = contract.policy_sha256(root)
             self.assertNotEqual(first, second)
-
 
     def test_canonical_article_contract_is_publication_fingerprinted(self) -> None:
         self.assertIn(
@@ -109,7 +122,7 @@ class Run194PublicationContractTests(unittest.TestCase):
         module.NOTION_BLOCK_LIMIT = 10
 
         def lossy_original_builder(body, caption="AIIF_MANUSCRIPT:READY"):
-            # Simulate the real Notion payload shape.  The overlay must replace these
+            # Simulate the real Notion payload shape. The overlay must replace these
             # transport segments with byte-exact slices before persistence.
             return [{
                 "object": "block",
@@ -146,28 +159,42 @@ class Run194PublicationContractTests(unittest.TestCase):
         body = "A" * 250
         valid_caption = contract.current_ready_caption(body)
         module = self._module([
-            ready_block(body, contract.LEGACY_READY_CAPTION),
-            ready_block(body + "tampered", valid_caption),
+            ready_block(body, contract.LEGACY_READY_CAPTION, "legacy"),
+            ready_block(body + "tampered", valid_caption, "corrupted"),
         ])
         run194.install(module)
         self.assertFalse(module._notion_page_has_manuscript_child("page", {}))
 
-    def test_latest_valid_body_controls_same_policy_idempotency(self) -> None:
+    def test_latest_valid_body_controls_regeneration_then_converges_to_one_canonical_body(self) -> None:
         first = "A" * 250
         latest = "B" * 250
         blocks = [
-            ready_block(first, contract.current_ready_caption(first)),
-            ready_block(latest, contract.current_ready_caption(latest)),
+            ready_block(first, contract.current_ready_caption(first), "old-a"),
+            ready_block(latest, contract.current_ready_caption(latest), "old-b"),
         ]
         module = self._module(blocks)
         run194.install(module)
 
         common = ("page", "repo", "url", 80, "score", "what", "why", "why-not", "action", "MIT")
         module.upgrade_notion_page_with_report(*common, first)
-        self.assertFalse(module._test_state["last_skip"], "an older matching block must not suppress a newer regeneration")
+        self.assertFalse(
+            module._test_state["last_skip"],
+            "an older matching block must not suppress a regeneration when the latest body differs",
+        )
+        self.assertEqual(1, len(module._test_blocks))
+        self.assertEqual(first, run194._block_body(module._test_blocks[0]))
+
+        module.upgrade_notion_page_with_report(*common, first)
+        self.assertTrue(
+            module._test_state["last_skip"],
+            "the single byte-identical canonical body should remain idempotent",
+        )
+        self.assertEqual(1, len(module._test_blocks))
 
         module.upgrade_notion_page_with_report(*common, latest)
-        self.assertTrue(module._test_state["last_skip"], "latest byte-identical body should remain idempotent")
+        self.assertFalse(module._test_state["last_skip"])
+        self.assertEqual(1, len(module._test_blocks))
+        self.assertEqual(latest, run194._block_body(module._test_blocks[0]))
 
     def test_overlay_adds_no_model_or_public_release_surface(self) -> None:
         source = inspect.getsource(run194)
