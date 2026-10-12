@@ -276,7 +276,9 @@ def _source_current_ready_manuscript(page_id: str) -> str:
         caption = _code_caption(block)
         if body and publication_contract.is_current_ready_block(body, caption):
             current.append(body)
-    return current[-1] if current else ""
+    if len(current) != 1:
+        return ""
+    return current[0]
 
 
 def _source_has_current_ready_manuscript(page_id: str) -> bool:
