@@ -43,6 +43,14 @@ class Run624DeliveryCausalityTests(unittest.TestCase):
         self.assertIn("TARGET_SOURCE_URL", source)
         self.assertIn("steps.sync.outputs.resolved_sync_id", source)
 
+    def test_note_ready_fanout_uses_vm_start_authority_for_reconciliation(self) -> None:
+        source = NOTE_READY.read_text(encoding="utf-8")
+        self.assertIn('eligible = result.get("should_start_vm") is True', source)
+        self.assertNotIn(
+            'result.get("status") == "eligible_ready" and result.get("should_start_vm") is True',
+            source,
+        )
+
     def test_zero_ready_disables_private_draft_but_keeps_reconciliation(self) -> None:
         mod = importlib.import_module("run624_delivery_causality")
         with tempfile.TemporaryDirectory() as td:
