@@ -1,22 +1,23 @@
-"""Run551: zero-provider editorial eyecatch V2 art direction.
+"""Run551: approved-raster editorial eyecatch V2.
 
-This layer is intentionally presentation-only. It preserves the validated headline
-copy and publication metadata, adds no provider/model request, and never changes
-Run180 semantic validation. The renderer turns the approved AI Intelligence Factory
-system into a stronger note thumbnail:
+Presentation-only, zero-provider rendering layer for AI Intelligence Factory.
+Run180 continues to own semantic/layout validation. Run551 uses the user-approved
+AI background as the immutable visual source and deterministically overlays only the
+brand, metadata, insight hook, validated title and footer.
 
-* roughly two-thirds copy / one-third symbolic visual;
-* one compact ``INSIGHT｜...`` reader hook instead of badge + hook duplication;
-* a smaller grammatical lead line and a stronger impact line when the copy supports it;
-* orange reserved for the semantic keyword while a generic impact suffix can stay navy;
-* subtle background depth plus a premium glass AI-core -> action motif.
-
-Pillow and renderer modules are imported lazily so pure policy/guard imports remain
-zero-Pillow compatible.
+The approved 1536x804 source has the same aspect ratio as the 1280x670 note canvas.
+The committed production master is therefore a straight 1280x670 downscale with no
+crop and no synthetic redraw. It is stored as six base64 text parts because the
+repository connector cannot write binary assets directly; the decoded bytes are
+SHA-256 pinned and fail closed.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
+import io
 import re
+from pathlib import Path
 from typing import Any
 
 
@@ -24,7 +25,13 @@ TEXT_ZONE_RATIO = 0.64
 VISUAL_ZONE_RATIO = 0.36
 LEAD_TITLE_SCALE = 0.68
 IMPACT_TITLE_SCALE = 1.12
-BACKGROUND_DEPTH_ALPHA = 0.06
+
+BACKGROUND_MASTER_SOURCE_SIZE = (1536, 804)
+BACKGROUND_MASTER_TARGET_SIZE = (1280, 670)
+BACKGROUND_MASTER_SHA256 = "5f1ab5f8ddc807825ad8fa29fdb96b5a165742af73b779223b7fccf8547a77fd"
+BACKGROUND_MASTER_FORMAT = "WEBP"
+_BACKGROUND_PARTS_RELATIVE = Path("assets") / "eyecatch" / "v2" / ".background_master_parts"
+_BACKGROUND_PART_NAMES = tuple(f"part{index:02d}.b64" for index in range(1, 7))
 
 _LEFT = 48
 _INSIGHT_TOP = 142
@@ -35,8 +42,6 @@ _THREE_LINE_MAX_FONT = 66
 _TITLE_MIN_FONT = 46
 _TITLE_LINE_GAP = 12
 
-# Only noun-like generic endings are split for orange-keyword/navy-suffix rendering.
-# Verb/object grammar such as ``舵を切った理由`` remains one semantic highlight.
 _SAFE_NAVY_SUFFIXES = (
     "の衝撃",
     "の転換",
@@ -62,12 +67,7 @@ _LEAD_ENDINGS = (
 
 
 def split_impact_phrase(text: str) -> tuple[str, str]:
-    """Split a Japanese impact phrase at its last useful grammatical connector.
-
-    This helper expresses the art-direction contract; the renderer applies a narrower
-    safe-suffix policy before changing color so approved semantic highlights are not
-    accidentally fragmented.
-    """
+    """Split a Japanese impact phrase at its last useful grammatical connector."""
     value = str(text or "").strip()
     if len(value) < 4:
         return value, ""
@@ -86,15 +86,69 @@ def compose_insight(hook: str) -> str:
     return f"INSIGHT｜{value}" if value else "INSIGHT｜いま、何が重要なのか？"
 
 
-def visual_motif_contract() -> dict[str, object]:
-    """Stable art-direction contract for the robotics reference composition."""
+def background_master_contract() -> dict[str, object]:
+    """Return the pinned source-of-truth contract for the approved raster background."""
     return {
-        "style": "isometric-glass-ai-core",
-        "flow": "ai-core-to-motion-control",
-        "action_symbol": "industrial-robot-arm",
-        "humanoid_face": False,
-        "warm_accent": "restrained-orange",
+        "path": "assets/eyecatch/v2/.background_master_parts",
+        "source_size": BACKGROUND_MASTER_SOURCE_SIZE,
+        "target_size": BACKGROUND_MASTER_TARGET_SIZE,
+        "sha256": BACKGROUND_MASTER_SHA256,
+        "format": BACKGROUND_MASTER_FORMAT,
+        "part_count": len(_BACKGROUND_PART_NAMES),
+        "synthetic_visual": False,
+        "crop_required": False,
     }
+
+
+def _background_master_bytes() -> bytes:
+    """Decode and checksum the approved production background, failing closed."""
+    root = Path(__file__).resolve().parent
+    parts_dir = root / _BACKGROUND_PARTS_RELATIVE
+    encoded_parts: list[str] = []
+    for name in _BACKGROUND_PART_NAMES:
+        path = parts_dir / name
+        if not path.is_file():
+            raise RuntimeError(f"background master part is missing: {path.relative_to(root)}")
+        try:
+            encoded_parts.append(path.read_text(encoding="ascii").strip())
+        except (OSError, UnicodeError) as exc:
+            raise RuntimeError(f"background master part is unreadable: {path.relative_to(root)}") from exc
+
+    try:
+        payload = base64.b64decode("".join(encoded_parts), validate=True)
+    except Exception as exc:  # binascii.Error is deliberately normalized to one fail-closed contract.
+        raise RuntimeError("background master base64 is invalid") from exc
+
+    actual = hashlib.sha256(payload).hexdigest()
+    if actual != BACKGROUND_MASTER_SHA256:
+        raise RuntimeError(
+            "background master checksum mismatch: "
+            f"expected={BACKGROUND_MASTER_SHA256} actual={actual}"
+        )
+    return payload
+
+
+def _load_background_master(ee: Any):
+    from PIL import Image
+
+    try:
+        with Image.open(io.BytesIO(_background_master_bytes())) as source:
+            if source.format != BACKGROUND_MASTER_FORMAT:
+                raise RuntimeError(
+                    f"background master format mismatch: expected={BACKGROUND_MASTER_FORMAT} actual={source.format}"
+                )
+            image = source.convert("RGB")
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError("background master image is invalid") from exc
+
+    expected_size = (ee.WIDTH, ee.HEIGHT)
+    if image.size != expected_size or image.size != BACKGROUND_MASTER_TARGET_SIZE:
+        raise RuntimeError(
+            f"background master size mismatch: expected={expected_size} actual={image.size}"
+        )
+    return image
 
 
 def _blend_to_white(color: tuple[int, int, int], alpha: float) -> tuple[int, int, int]:
@@ -142,158 +196,6 @@ def _fit_font_size(draw: Any, ee: Any, text: str, desired: int, max_width: int) 
     return _TITLE_MIN_FONT
 
 
-def _draw_background_depth(draw: Any, ee: Any, accent: tuple[int, int, int]) -> None:
-    visual_left = int(round(ee.WIDTH * TEXT_ZONE_RATIO))
-    # Keep the left editorial field pristine; the visual third gets only a low-contrast wash.
-    for band in range(8):
-        x0 = visual_left + int((ee.WIDTH - visual_left) * band / 8)
-        x1 = visual_left + int((ee.WIDTH - visual_left) * (band + 1) / 8)
-        alpha = BACKGROUND_DEPTH_ALPHA * (0.40 + 0.60 * (band + 1) / 8)
-        draw.rectangle((x0, 94, x1 + 1, ee.HEIGHT), fill=_blend_to_white(accent, alpha))
-
-    # Sparse circuit traces instead of a diagram-like full grid.
-    trace = _blend_to_white(accent, 0.16)
-    for y, x0, x1 in ((168, visual_left + 34, 1218), (302, visual_left + 78, 1250), (516, visual_left + 24, 1194)):
-        draw.line((x0, y, x1, y), fill=trace, width=1)
-    for x, y0, y1 in ((866, 136, 238), (1218, 168, 280), (1194, 454, 548)):
-        draw.line((x, y0, x, y1), fill=trace, width=1)
-
-
-def _draw_arrow(draw: Any, start: tuple[int, int], end: tuple[int, int], color: tuple[int, int, int]) -> None:
-    x0, y0 = start
-    x1, y1 = end
-    draw.line((x0, y0, x1, y1), fill=color, width=3)
-    draw.polygon([(x1, y1), (x1 - 9, y1 - 4), (x1 - 5, y1 - 12)], fill=color)
-
-
-def _draw_glass_plate(
-    draw: Any,
-    points: list[tuple[int, int]],
-    *,
-    fill: tuple[int, int, int],
-    outline: tuple[int, int, int],
-    offset: int = 8,
-) -> None:
-    """Draw a pseudo-isometric glass slab with a visible lower edge."""
-    lower = [(x, y + offset) for x, y in points]
-    draw.polygon(lower, fill=_blend_to_white(outline, 0.16), outline=_blend_to_white(outline, 0.30))
-    draw.polygon(points, fill=fill, outline=outline)
-    draw.line((points[2][0], points[2][1], lower[2][0], lower[2][1]), fill=outline, width=2)
-    draw.line((points[3][0], points[3][1], lower[3][0], lower[3][1]), fill=outline, width=2)
-
-
-def _draw_industrial_robot_arm(
-    draw: Any,
-    accent: tuple[int, int, int],
-    navy: tuple[int, int, int],
-    warm: tuple[int, int, int],
-) -> None:
-    """Draw a compact industrial arm: base, two links, elbow, wrist and gripper."""
-    pale = _blend_to_white(accent, 0.24)
-    structure = _blend_to_white(accent, 0.52)
-
-    # Base / pedestal.
-    draw.rounded_rectangle((1078, 526, 1170, 548), radius=9, fill=_blend_to_white(accent, 0.18), outline=structure, width=2)
-    draw.rounded_rectangle((1100, 493, 1148, 532), radius=10, fill=(255, 255, 255), outline=accent, width=3)
-
-    # Link geometry is intentionally machine-like rather than humanoid.
-    base_joint = (1124, 493)
-    elbow = (1065, 440)
-    wrist = (1122, 382)
-    tool = (1176, 405)
-    draw.line((*base_joint, *elbow), fill=pale, width=18)
-    draw.line((*base_joint, *elbow), fill=accent, width=5)
-    draw.line((*elbow, *wrist), fill=pale, width=16)
-    draw.line((*elbow, *wrist), fill=accent, width=5)
-    draw.line((*wrist, *tool), fill=pale, width=14)
-    draw.line((*wrist, *tool), fill=navy, width=4)
-
-    for x, y, outer, inner in (
-        (*base_joint, 14, 6),
-        (*elbow, 15, 6),
-        (*wrist, 12, 5),
-    ):
-        draw.ellipse((x - outer, y - outer, x + outer, y + outer), fill=(255, 255, 255), outline=structure, width=3)
-        draw.ellipse((x - inner, y - inner, x + inner, y + inner), fill=accent)
-
-    # Restrained orange is a single control/action cue at the tool point.
-    draw.ellipse((tool[0] - 7, tool[1] - 7, tool[0] + 7, tool[1] + 7), fill=warm, outline=(255, 255, 255), width=2)
-    draw.line((1181, 400, 1203, 390), fill=navy, width=4)
-    draw.line((1181, 410, 1204, 420), fill=navy, width=4)
-
-    # Motion arcs make the symbol read as controlled movement, not a static appliance.
-    arc = _blend_to_white(accent, 0.42)
-    draw.arc((1022, 397, 1100, 475), 205, 310, fill=arc, width=2)
-    draw.arc((1082, 350, 1160, 426), 210, 322, fill=arc, width=2)
-
-
-def _draw_abstract_output(draw: Any, accent: tuple[int, int, int], navy: tuple[int, int, int]) -> None:
-    """Neutral action symbol for non-robotics categories."""
-    pale = _blend_to_white(accent, 0.18)
-    line = _blend_to_white(accent, 0.48)
-    for index, (x, y) in enumerate(((1035, 420), (1092, 454), (1149, 488))):
-        draw.rounded_rectangle((x, y, x + 78, y + 54), radius=13, fill=(255, 255, 255), outline=line, width=2)
-        draw.rounded_rectangle((x + 14, y + 13, x + 64, y + 25), radius=5, fill=pale)
-        draw.line((x + 16, y + 37, x + 48 + index * 4, y + 37), fill=navy, width=3)
-
-
-def _draw_symbolic_ai_flow(
-    draw: Any,
-    ee: Any,
-    accent: tuple[int, int, int],
-    category: str = "AI & TECH",
-) -> None:
-    """Premium glass AI core feeding an action symbol in the visual third."""
-    navy = (7, 30, 66)
-    warm = (240, 111, 45)
-    glass_edge = _blend_to_white(accent, 0.52)
-    glass_mid = _blend_to_white(accent, 0.16)
-    glass_light = _blend_to_white(accent, 0.09)
-    signal = _blend_to_white(accent, 0.60)
-
-    # Three offset pseudo-isometric glass plates create depth without raster assets.
-    plates = (
-        [(887, 274), (1003, 218), (1152, 283), (1034, 343)],
-        [(904, 244), (1016, 190), (1141, 246), (1028, 302)],
-        [(929, 214), (1024, 168), (1117, 210), (1021, 257)],
-    )
-    _draw_glass_plate(draw, plates[0], fill=glass_light, outline=_blend_to_white(accent, 0.28), offset=11)
-    _draw_glass_plate(draw, plates[1], fill=glass_mid, outline=_blend_to_white(accent, 0.38), offset=9)
-    _draw_glass_plate(draw, plates[2], fill=_blend_to_white(accent, 0.22), outline=glass_edge, offset=7)
-
-    # Central compute core and a faint halo.
-    core_x, core_y = 1023, 218
-    for radius, alpha in ((45, 0.08), (34, 0.13), (25, 0.20)):
-        halo = _blend_to_white(accent, alpha)
-        draw.ellipse((core_x - radius, core_y - radius, core_x + radius, core_y + radius), fill=halo)
-    draw.rounded_rectangle((987, 190, 1059, 246), radius=14, fill=(255, 255, 255), outline=accent, width=3)
-    draw.rounded_rectangle((1001, 201, 1045, 235), radius=9, fill=_blend_to_white(accent, 0.28), outline=glass_edge, width=2)
-    ai_font = ee._latin_font(17, bold=True)
-    ai_w = ee._text_width(draw, "AI", ai_font)
-    draw.text((core_x - ai_w // 2, 207), "AI", font=ai_font, fill=navy)
-
-    # Circuit pins/nodes arranged around the glass stack.
-    for x0, y0, x1, y1 in (
-        (952, 206, 904, 183),
-        (1088, 226, 1177, 265),
-        (965, 286, 889, 324),
-        (1082, 302, 1176, 338),
-    ):
-        draw.line((x0, y0, x1, y1), fill=signal, width=2)
-        draw.ellipse((x1 - 5, y1 - 5, x1 + 5, y1 + 5), fill=(255, 255, 255), outline=glass_edge, width=2)
-
-    # A motion-control signal leaves the compute stack; one warm node is enough.
-    control_node = (1014, 350)
-    draw.line((1024, 306, *control_node), fill=signal, width=3)
-    draw.ellipse((1007, 343, 1021, 357), fill=warm, outline=(255, 255, 255), width=2)
-    draw.line((*control_node, 1078, 389), fill=signal, width=3)
-
-    if str(category or "").strip().upper() == "ROBOTICS":
-        _draw_industrial_robot_arm(draw, accent, navy, warm)
-    else:
-        _draw_abstract_output(draw, accent, navy)
-
-
 def _draw_insight(draw: Any, ee: Any, hook: str, accent: tuple[int, int, int], text_right: int) -> None:
     prefix = "INSIGHT"
     prefix_font = ee._latin_font(18, bold=True)
@@ -301,10 +203,23 @@ def _draw_insight(draw: Any, ee: Any, hook: str, accent: tuple[int, int, int], t
     prefix_w = ee._text_width(draw, prefix, prefix_font)
     draw.text((_LEFT, _INSIGHT_TOP + 6), prefix, font=prefix_font, fill=accent)
     sep_x = _LEFT + prefix_w + 13
-    draw.line((sep_x, _INSIGHT_TOP + 5, sep_x, _INSIGHT_TOP + 31), fill=_blend_to_white(accent, 0.40), width=2)
+    draw.line(
+        (sep_x, _INSIGHT_TOP + 5, sep_x, _INSIGHT_TOP + 31),
+        fill=_blend_to_white(accent, 0.40),
+        width=2,
+    )
     text = compose_insight(hook).split("｜", 1)[1]
     draw.text((sep_x + 15, _INSIGHT_TOP), text, font=hook_font, fill=(7, 30, 66))
-    draw.rounded_rectangle((_LEFT, _INSIGHT_TOP + 42, min(text_right, sep_x + 15 + ee._text_width(draw, text, hook_font)), _INSIGHT_TOP + 46), radius=2, fill=_blend_to_white(accent, 0.20))
+    draw.rounded_rectangle(
+        (
+            _LEFT,
+            _INSIGHT_TOP + 42,
+            min(text_right, sep_x + 15 + ee._text_width(draw, text, hook_font)),
+            _INSIGHT_TOP + 46,
+        ),
+        radius=2,
+        fill=_blend_to_white(accent, 0.20),
+    )
 
 
 def _draw_runs(
@@ -346,7 +261,7 @@ def _render_editorial_v2(
 ) -> str:
     import os
 
-    from PIL import Image, ImageDraw
+    from PIL import ImageDraw
 
     import editorial_eyecatch as ee
     import eyecatch_publication_contract as headline_contract
@@ -357,11 +272,11 @@ def _render_editorial_v2(
     date_label = date_label or ee.datetime.now(ee.ZoneInfo("Asia/Tokyo")).strftime("%Y.%m")
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-    image = Image.new("RGB", (ee.WIDTH, ee.HEIGHT), (253, 254, 255))
+    image = _load_background_master(ee)
     draw = ImageDraw.Draw(image)
 
-    _draw_background_depth(draw, ee, accent)
-    _draw_symbolic_ai_flow(draw, ee, accent, category)
+    # The approved raster is the complete visual field. Only deterministic typography
+    # is layered on top; no synthetic visual element is redrawn here.
     ee._draw_brand(draw, accent)
     ee._draw_tags(draw, category, date_label, accent)
 
@@ -390,12 +305,14 @@ def _render_editorial_v2(
             ceiling = _THREE_LINE_MAX_FONT if len(title_lines) >= 3 else _IMPACT_MAX_FONT
             desired = min(ceiling, int(round(70 * IMPACT_TITLE_SCALE)))
             size = _fit_font_size(draw, ee, line, desired, max_width)
-            runs = _safe_accent_runs(line, highlight_text if index == len(title_lines) - 1 else None)
+            runs = _safe_accent_runs(
+                line,
+                highlight_text if index == len(title_lines) - 1 else None,
+            )
 
         height = _draw_runs(draw, ee, r181, runs, size, _LEFT, y, ink_runs)
         y += height + (_TITLE_LINE_GAP + (7 if is_lead else 0))
 
-    # Preserve the established compact footer contract while keeping all middle space clean.
     r181._draw_footer(draw, category, date_label)
     headline_contract.bind_headline_pixels(image, proof, ink_runs)
     image.save(output_path, "PNG", optimize=True, pnginfo=proof)
@@ -403,7 +320,7 @@ def _render_editorial_v2(
 
 
 def install(pipeline_module: Any) -> Any:
-    """Install the final deterministic art-direction renderer without touching Run180."""
+    """Install the deterministic approved-background renderer without touching Run180."""
     if getattr(pipeline_module, "_RUN551_EYECATCH_EDITORIAL_V2_INSTALLED", False):
         return pipeline_module
 
@@ -440,4 +357,5 @@ def install(pipeline_module: Any) -> Any:
     pipeline_module.RUN551_VISUAL_ZONE_RATIO = VISUAL_ZONE_RATIO
     pipeline_module.RUN551_BADGE_REMOVED = True
     pipeline_module.RUN551_SINGLE_INSIGHT_LINE = True
+    pipeline_module.RUN551_BACKGROUND_MASTER_SHA256 = BACKGROUND_MASTER_SHA256
     return pipeline_module
