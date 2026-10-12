@@ -46,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           git worktree add --detach /tmp/aiif-main origin/main
-          SHA=$(cd /tmp/aiif-main && python -c 'import publication_contract; print(publication_contract.current_policy_sha())')
+          SHA=$(cd /tmp/aiif-main && python -c 'import publication_contract; print(publication_contract.policy_sha256())')
           test ${#SHA} -eq 64
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
