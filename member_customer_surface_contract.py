@@ -262,6 +262,7 @@ NON_MEMBER_MODULES = frozenset((
     "run181_eyecatch_visual_balance.py",
     "run182_eyecatch_conclusion_emphasis.py",
     "run183_eyecatch_emphasis_scale.py",
+    "run551_eyecatch_editorial_v2.py",
     "run185_note_ready_legacy_skip.py",
     "run186_note_header_image_resilience.py",
     "run187_note_editor_readiness.py",
