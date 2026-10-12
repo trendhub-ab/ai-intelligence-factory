@@ -5,42 +5,7 @@
         "gemini-3-flash-preview": {
           "budget": 18,
           "by_kind": {
-            "deep_dive": 9,
-            "quality_retry": 6
-          },
-          "exhausted": false,
-          "used": 15
-        },
-        "gemini-3.5-flash": {
-          "budget": 18,
-          "by_kind": {
-            "eyecatch_layout": 1
-          },
-          "exhausted": false,
-          "used": 1
-        },
-        "gemini-3.5-flash-lite": {
-          "budget": 450,
-          "by_kind": {
-            "global_calibration": 1,
-            "screening_batch": 3
-          },
-          "exhausted": false,
-          "used": 4
-        },
-        "gemini-3.6-flash": {
-          "budget": 18,
-          "by_kind": {
-            "eyecatch_layout": 5,
-            "product_review": 2
-          },
-          "exhausted": false,
-          "used": 7
-        },
-        "gemini-3.7-flash": {
-          "budget": 18,
-          "by_kind": {
-            "product_review": 1
+            "deep_dive": 1
           },
           "exhausted": false,
           "used": 1
@@ -49,8 +14,8 @@
     }
   },
   "provider_project_fingerprint": "8feffa4385ed3d61",
-  "quota_date": "2026-10-11",
+  "quota_date": "2026-10-12",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-10-12T00:41:32.158104+00:00"
+  "updated_at": "2026-10-12T08:37:51.870438+00:00"
 }
