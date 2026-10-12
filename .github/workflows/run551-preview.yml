@@ -6,6 +6,7 @@ on:
       - autopilot/run551-eyecatch-editorial-v2-20261012
     paths:
       - .github/workflows/run551-preview.yml
+      - run551_eyecatch_editorial_v2.py
 
 permissions:
   contents: read
