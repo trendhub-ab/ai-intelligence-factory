@@ -14,9 +14,37 @@ def test_split_impact_phrase_keeps_japanese_keyword_as_primary_emphasis():
     assert r551.split_impact_phrase("AI運用が変わる") == ("AI運用", "が変わる")
 
 
-def test_compose_insight_collapses_badge_and_hook_into_one_reader_line():
-    assert r551.compose_insight("結局、何が重要なのか？") == "INSIGHT｜結局、何が重要なのか？"
-    assert r551.compose_insight("INSIGHT｜結局、何が重要なのか？") == "INSIGHT｜結局、何が重要なのか？"
+def test_dynamic_badge_changes_with_article_intent():
+    assert r551.select_badge(
+        "GPT-6 Astraを公開",
+        "新しいロボット制御機能が発表された。",
+        "ROBOTICS",
+    ) == "最新動向を理解"
+    assert r551.select_badge(
+        "AとBを比較する",
+        "どちらを選ぶべきか整理する。",
+        "AI & TECH",
+    ) == "比較で理解"
+    assert r551.select_badge(
+        "AIの脆弱性を検証",
+        "攻撃リスクと安全性を確認する。",
+        "SECURITY",
+    ) == "安全性を確認"
+
+
+def test_sample_layout_restores_badge_hook_title_vertical_rhythm():
+    layout = r551.editorial_layout_contract()
+    assert layout == {
+        "left": 48,
+        "badge_top": 140,
+        "badge_height": 42,
+        "hook_top": 207,
+        "title_top": 316,
+        "footer_top": 606,
+    }
+    assert layout["badge_top"] + layout["badge_height"] < layout["hook_top"]
+    assert layout["hook_top"] + 44 < layout["title_top"]
+    assert layout["title_top"] < layout["footer_top"]
 
 
 def test_editorial_v2_contract_reserves_one_third_for_visual_and_strengthens_impact_line():
@@ -71,3 +99,4 @@ def test_install_is_zero_api_and_does_not_patch_run180(monkeypatch):
     assert fake_run181._render_balanced_plan is not original_balanced_renderer
     assert pipeline._RUN551_EYECATCH_EDITORIAL_V2_INSTALLED is True
     assert pipeline.RUN551_EXTRA_PROVIDER_CALLS == 0
+    assert pipeline.RUN551_DYNAMIC_BADGE is True
