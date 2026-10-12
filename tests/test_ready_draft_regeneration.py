@@ -153,6 +153,83 @@ class ReadyDraftRegenerationTests(unittest.TestCase):
         self.assertEqual(kwargs["candidate_origin"], "manual_ready_draft_regeneration")
         sync.assert_called_once_with(target_sync_id=SYNC_ID)
 
+    def test_persistent_regeneration_accepts_real_plain_manuscript_only_after_ready_commit_proof(self):
+        pipeline = self._pipeline()
+        pipeline.generate_intelligence_report = lambda repo, **kwargs: "# New public title\n\ncurrent manuscript"
+        before = {
+            "sync_id": SYNC_ID,
+            "destination_page_id": DEST_PAGE_ID,
+            "note_draft_id": DRAFT_ID,
+            "title": OLD_TITLE,
+            "posting_state": "投稿準備中",
+            "quality_state": "Ready",
+        }
+        after = {**before, "title": NEW_TITLE}
+        with patch.dict(os.environ, self._approved_env(), clear=True), patch.object(
+            target, "destination_preflight", side_effect=[before, after]
+        ), patch.object(
+            target.article_revalidation,
+            "_read_current_statuses",
+            side_effect=[("Ready", "Deep Dive"), ("Ready", "Deep Dive")],
+        ) as statuses, patch.object(
+            target.article_revalidation, "_cap_validation_budget", return_value=8
+        ), patch.object(
+            target.ready_sync, "sync_note_ready_db", return_value={"source_ready": 1}
+        ):
+            result = target.run_ready_regeneration(pipeline, SYNC_ID)
+        self.assertEqual(result["accepted"], 1)
+        self.assertEqual(statuses.call_count, 2)
+
+    def test_persistent_regeneration_refuses_plain_manuscript_without_ready_commit_proof(self):
+        pipeline = self._pipeline()
+        pipeline.generate_intelligence_report = lambda repo, **kwargs: "# Draft\n\nnot safely persisted"
+        before = {
+            "sync_id": SYNC_ID,
+            "destination_page_id": DEST_PAGE_ID,
+            "note_draft_id": DRAFT_ID,
+            "title": OLD_TITLE,
+            "posting_state": "投稿準備中",
+            "quality_state": "Ready",
+        }
+        with patch.dict(os.environ, self._approved_env(), clear=True), patch.object(
+            target, "destination_preflight", return_value=before
+        ), patch.object(
+            target.article_revalidation,
+            "_read_current_statuses",
+            side_effect=[("Ready", "Deep Dive"), ("Needs Editorial Review", "Deep Dive")],
+        ), patch.object(
+            target.article_revalidation, "_cap_validation_budget", return_value=8
+        ), patch.object(
+            target.ready_sync, "sync_note_ready_db", return_value={"source_ready": 0}
+        ):
+            with self.assertRaisesRegex(target.ReadyDraftRegenerationError, "did not pass"):
+                target.run_ready_regeneration(pipeline, SYNC_ID)
+
+    def test_resume_persisted_ready_draft_reconciles_queue_without_provider_generation(self):
+        resume = getattr(target, "resume_persisted_ready_draft", None)
+        self.assertTrue(callable(resume), "resume_persisted_ready_draft must exist")
+        pipeline = self._pipeline()
+        before = {
+            "sync_id": SYNC_ID,
+            "destination_page_id": DEST_PAGE_ID,
+            "note_draft_id": DRAFT_ID,
+            "title": OLD_TITLE,
+            "posting_state": "投稿準備中",
+            "quality_state": "Ready",
+        }
+        after = {**before, "title": NEW_TITLE}
+        with patch.object(
+            target.article_revalidation, "_read_current_statuses", return_value=("Ready", "Deep Dive")
+        ), patch.object(
+            target.ready_sync, "sync_note_ready_db", return_value={"source_ready": 1}
+        ) as sync, patch.object(
+            target, "destination_preflight", side_effect=[before, after]
+        ):
+            result = resume(pipeline, SYNC_ID)
+        self.assertEqual(result["note_draft_id"], DRAFT_ID)
+        self.assertEqual(result["current_title"], NEW_TITLE)
+        sync.assert_called_once_with(target_sync_id=SYNC_ID)
+
     def test_regeneration_refuses_non_ready_or_rejected_without_note_mutation(self):
         pipeline = self._pipeline()
         pipeline.generate_intelligence_report = lambda *a, **k: self.fail("must not generate non-Ready target")
