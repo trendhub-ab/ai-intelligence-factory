@@ -65,10 +65,10 @@ class TestSubscriptionAttributionGithubUpload(unittest.TestCase):
                     json=lambda: {"content": {"download_url": "https://example.com/aif-test.json"}},
                 )
 
-            with patch.dict(
-                os.environ,
-                {"GH_PAT": "test-token", "GITHUB_REPOSITORY": "trendhub-ab/ai-intelligence-factory"},
-                clear=False,
+            with patch.object(
+                pipeline, "GH_PAT", "test-token"
+            ), patch.object(
+                pipeline, "EYECATCH_GITHUB_REPO", "trendhub-ab/ai-intelligence-factory"
             ), patch.object(
                 pipeline, "EYECATCH_GITHUB_BRANCH", "runtime-state"
             ), patch.object(
@@ -77,7 +77,7 @@ class TestSubscriptionAttributionGithubUpload(unittest.TestCase):
                 pipeline.requests, "put", side_effect=fake_put
             ) as put_mock:
                 pipeline._upload_subscription_attribution_to_github(
-                    {"article_id": "aif-test", "local_path": str(local_path)}
+                    str(local_path), "aif-test"
                 )
 
             self.assertEqual(
