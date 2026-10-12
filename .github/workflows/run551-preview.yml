@@ -20,24 +20,21 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: '3.12'
-      - name: Install preview dependency
-        run: python -m pip install --disable-pip-version-check pillow
-      - name: Diagnose Japanese font resolution
+      - name: Match production eyecatch dependencies
         run: |
-          printf '%s\n' '--- expected Noto paths ---'
-          for f in \
-            /usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc \
-            /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc \
-            /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf; do
-            if [ -f "$f" ]; then echo "FOUND $f"; else echo "MISSING $f"; fi
-          done
-          printf '%s\n' '--- Pillow selected font ---'
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk fonts-lato
+          python -m pip install --disable-pip-version-check pillow
+      - name: Verify Japanese font resolution
+        run: |
           python - <<'PY'
           import editorial_eyecatch as ee
           font = ee._jp_font(40, bold=True)
-          print('font_type=', type(font).__name__)
-          print('font_path=', getattr(font, 'path', None))
+          path = str(getattr(font, 'path', '') or '')
+          print('font_path=', path)
           print('font_name=', getattr(font, 'getname', lambda: None)())
+          if 'NotoSansCJK' not in path:
+              raise SystemExit(f'expected NotoSansCJK, got {path!r}')
           PY
       - name: Render production Run551 preview
         run: |
@@ -59,7 +56,7 @@ jobs:
           print('preview=run551-preview.png')
           PY
       - name: Upload preview
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: run551-visual-preview
           path: run551-preview.png
