@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import types
+from pathlib import Path
 
 import run551_eyecatch_editorial_v2 as r551
 
@@ -20,18 +22,24 @@ def test_editorial_v2_contract_reserves_one_third_for_visual_and_strengthens_imp
     assert 0.32 <= r551.VISUAL_ZONE_RATIO <= 0.38
     assert r551.LEAD_TITLE_SCALE <= 0.72
     assert r551.IMPACT_TITLE_SCALE >= 1.10
-    assert r551.BACKGROUND_DEPTH_ALPHA <= 0.10
 
 
-def test_visual_motif_is_premium_ai_core_to_industrial_robotics_not_cartoon_face():
-    contract = r551.visual_motif_contract()
+def test_background_master_contract_uses_exact_user_approved_raster_not_synthetic_visual():
+    contract = r551.background_master_contract()
     assert contract == {
-        "style": "isometric-glass-ai-core",
-        "flow": "ai-core-to-motion-control",
-        "action_symbol": "industrial-robot-arm",
-        "humanoid_face": False,
-        "warm_accent": "restrained-orange",
+        "path": "assets/eyecatch/v2/background_master.jpg",
+        "source_size": (1536, 804),
+        "target_size": (1280, 670),
+        "sha256": "adffa620c2323c8a94aadec22149c713e4fee32893df37c444abcd81b1269c34",
+        "synthetic_visual": False,
+        "crop_required": False,
     }
+
+
+def test_background_master_bytes_are_pinned_to_approved_image():
+    path = Path(r551.__file__).resolve().parent / "assets" / "eyecatch" / "v2" / "background_master.jpg"
+    payload = path.read_bytes()
+    assert hashlib.sha256(payload).hexdigest() == r551.BACKGROUND_MASTER_SHA256
 
 
 def test_install_is_zero_api_and_does_not_patch_run180(monkeypatch):
