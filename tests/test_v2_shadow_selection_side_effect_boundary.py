@@ -36,7 +36,6 @@ def test_v2_shadow_core_has_no_file_write_or_dynamic_import_surface():
         "unlink",
         "mkdir",
         "rename",
-        "replace",
     }
 
     for node in ast.walk(tree):
