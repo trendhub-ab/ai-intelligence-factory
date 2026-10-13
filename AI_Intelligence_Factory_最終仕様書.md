@@ -1,12 +1,14 @@
 # AI Intelligence Factory — 現行Production仕様
 
-最終更新: **2026-10-12**  
-Production Source of Truth: **`main`**  
-Canonical Specification: **本ファイル**  
-実装監査基準SHA: **`c91be9a42e4f5f7442b47594d00c47d05686f74a`**  
-（この仕様同期自体のmergeで `main` SHAは変わり得るが、Productionコード契約は上記SHAを基準に監査した。）
+仕様最終変更日: **2026-10-13**
+Production最終照合日: **2026-10-13**
+Production Source of Truth: **`main`**
+Canonical Specification: **本ファイル**
+Production Contract Fingerprint: **`913f76f2777cc27edde7a89ede55662e2eb83ace7e3ba1572e97b4351565e54d`**
+実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
-> 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。  
+> 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
+> 実装監査基準SHAは、本書の意味内容を人間が最後に横断照合した`main`の基準点である。Production Contract Fingerprintは、現行Productionの実行コード・workflow・runtime asset等の実バイトから機械計算し、仕様書自身・tests・docsは含めない。mergeでHEAD SHAが進んでも、Production bytesが同一ならFingerprintは同一である。
 > 過去のRun番号、検証レポート、Recovery文書、`docs/reference/`、`docs/archive/`、Git履歴は設計理由・監査証跡として参照できるが、現在の実装・安全契約を上書きしない。
 
 ---
@@ -29,7 +31,8 @@ Canonical Specification: **本ファイル**
 - Run番号は履歴識別子であり、現行仕様のAuthorityではない。
 - Recovery専用・診断専用・固定ID専用の過去surfaceを、文書だけを根拠にProductionへ戻さない。
 - Evidence / Fact / Publication / Reader / Note / Eyecatch のFail-Closed契約を文書整理の都合で弱めない。
-- Provider / Source / Gate / Ready / Daily / ChatOps / Note / Paid Product の意味が変わる変更をmergeする場合、本書も同じ変更単位で同期する。
+- Productionの意味が変わる変更は本書の本文も同じ変更単位で同期する。
+- Productionの意味が変わらない内部修正でも、Production surfaceが変わった場合はProduction最終照合日とProduction Contract Fingerprintを同期し、現行仕様と矛盾しないことを証明する。
 
 ---
 
@@ -69,9 +72,7 @@ AIIFは「ニュース自動要約機」ではない。
 4. Decision History
 5. 次のActionへ落とす判断メモ
 
-現行標準価格は **月額1,980円**。
-
-noteは販売チャネルの一つであり、Factoryそのものではない。
+現行標準価格は **月額1,980円**。noteは販売チャネルの一つであり、Factoryそのものではない。
 
 ---
 
@@ -113,9 +114,7 @@ Production Dailyは **Manual ONE-SHOT** が正規経路。
 
 ### 2.3 ChatOps
 
-通常のProduction発火は専用Control Issue経由の `AIIF ChatOps ONE-SHOT Bridge` を使える。
-
-代表コマンド:
+通常のProduction発火は専用Control Issue経由の `AIIF ChatOps ONE-SHOT Bridge` を使える。代表コマンド:
 
 - `/aiif run full`
 - `/aiif run article_validation`
@@ -125,18 +124,23 @@ Production Dailyは **Manual ONE-SHOT** が正規経路。
 - `/aiif run production_e2e_preflight`
 - `/aiif run local_skills_canary_validation`
 - `/aiif run local_skills_production_validation`
+- `/aiif note sync`
+- `/aiif note sync <32-hex sync_id>`
 - `/aiif note regenerate <32-hex sync_id>`
 - `/aiif note regenerate_resume <32-hex sync_id>`
+- `/aiif ready asset_recovery <32-hex sync_id>`
 
-Control Issue、owner、run_attempt等を二重認証し、GH_PATで既存manual workflowを1回だけdispatchする。Bridge自身がProduction処理を直接実行しない。
+Control Issue、owner、run_attempt等を認証し、GH_PATで既存manual workflowを1回だけdispatchする。Bridge自身がProduction処理を直接実行しない。exact target commandは32-hex identityを厳格に要求し、別記事へfallbackしない。
 
 `/aiif run full` は現行運用上 **`human_narrative`** を明示してDaily ONE-SHOTへ渡す。
 
-既存Ready下書きの再生成は `.github/workflows/ready-draft-regenerate-once.yml` を正規ONE-SHOTとし、ChatOpsからはexact 32-hex sync_idとliteral `RUN_ONCE` を渡す。
+既存Ready下書きの再生成は `.github/workflows/ready-draft-regenerate-once.yml` を正規ONE-SHOTとする。
 
 - `regenerate`: 現行Productionでexact targetを再生成し、現行Gate通過後に同じprivate draftへ反映する。
 - `resume_persisted`: 既に現行Content IntelligenceへReadyとしてpersist済みのexact targetだけを、Provider生成なしで同じprivate draftへ反映する。
 - どちらも新規draft作成とpublic releaseを禁止する。
+
+Ready asset persistence障害の限定Recoveryは `.github/workflows/ready-asset-recovery-once.yml` を使い、ChatOpsは `.github/workflows/chatops-ready-asset-recovery.yml` からexact targetだけをdispatchする。
 
 ### 2.4 Editorial Style
 
@@ -146,9 +150,7 @@ ONE-SHOTが受理するStyle:
 - `human_narrative`
 - `duo_narrative`
 
-未知StyleはFail-Closed。
-
-`duo_narrative` はフェルン／クレハを使う任意Styleであり、通常のFull Dailyでは自動選択しない。
+未知StyleはFail-Closed。`duo_narrative` はフェルン／クレハを使う任意Styleであり、通常のFull Dailyでは自動選択しない。
 
 ### 2.5 Production Entry Point
 
@@ -186,12 +188,11 @@ Xは **任意Discovery origin**。
 - 技術的Factはリンク先一次情報で確認する。
 - 必須4 Sourceの配分をXで置換しない。
 - Publication Source上は `X（一次情報への発見経路）` と明示する。
+- X / Apify障害で必須4 Source Dailyを停止させない。
 
 ### 3.3 Product Hunt
 
-**Product Huntはactive Production Sourceではない。**
-
-旧enumやhistorical artifactに残っていても、Fresh取得・Publication Source・現行商品価値の必須Sourceへ戻さない。
+**Product Huntはactive Production Sourceではない。** 旧enumやhistorical artifactに残っていても、Fresh取得・Publication Source・現行商品価値の必須Sourceへ戻さない。
 
 ### 3.4 OfficialVendor
 
@@ -215,7 +216,7 @@ Persistent daily budget:
 - 3.5 Flash-Lite: 450
 - 3.1 Flash-Lite: 450
 
-Screeningは大量候補の低コスト選別を担当し、記事本文の最終品質を担わない。
+Screeningは大量候補の低コスト選別を担当し、記事本文の最終品質を担わない。Lite laneからFull Flash laneへScreening fallbackしない。
 
 ### 4.2 Deep Dive / Article Models
 
@@ -225,15 +226,13 @@ Screeningは大量候補の低コスト選別を担当し、記事本文の最�
 - `gemini-3.8-flash`
 - `gemini-3.6-flash`
 - `gemini-3.5-flash`
-- `gemini-3-flash-preview`（既存health routingの候補）
+- `gemini-3-flash-preview`
 
 モデル別persistent daily budgetは各18。
 
-公開用記事の初稿・Human Narrative / Quality Retryは上記のFull Flash系のみを候補にする。Flash-Lite系はScreening、分類、Evidence整理、JSON抽出等の非公開補助処理に限る。上位Writer候補が全て503、timeout、quota等で利用不能なら記事をReadyへ進めず、既存のPending Retry等の非Ready状態で止め、note下書きへ配送しない。Quality repairの最大2モデル制限とhealth routingを維持する。
+公開用記事の初稿・Human Narrative / Quality RetryはFull Flash系のみを候補にする。Flash-Lite系はScreening、分類、Evidence整理、JSON抽出等の非公開補助処理に限る。上位Writer候補が503、timeout、quota等で利用不能なら記事をReadyへ進めず、Pending Retry等の非Ready状態で止め、note下書きへ配送しない。
 
-通常Deep Diveはprovider reliability layerで `thinking_level=low`、Quality Retryは `medium` を明示する。本文の `max_output_tokens` は既存の `GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS`（既定9000）を維持する。各モデルのthinking対応値はGoogleの現行SDK/API仕様で照合済み。
-
-Deep Dive run budgetは **12 provider-visible requests** を上限とする。
+通常Deep Diveは `thinking_level=low`、Quality Retryは `medium`。本文の `max_output_tokens` は `GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS`（既定9000）。Deep Dive run budgetは **12 provider-visible requests** を上限とする。
 
 ### 4.3 Health-aware routing
 
@@ -248,27 +247,17 @@ Article routingは固定順だけで決めない。
 - health stateは記事本文やpromptを保存しない
 - health stateのread/write失敗は記事生成自体を止めない
 
-履歴が同条件なら、Routerのcold-start tie-breakは概ね:
-
-**3.6 → 3.5 → 3.7 → 3.8**
-
-ただし、実際に使えるmodel setはそのWorkflowで明示されたallowlistとquota状態を優先する。
+履歴が同条件なら、Routerのcold-start tie-breakは概ね **3.6 → 3.5 → 3.7 → 3.8**。ただし実際のmodel setはWorkflow allowlistとquota状態を優先し、`gemini-3-flash-preview` もFull Flash article laneの正規候補になり得る。
 
 ### 4.4 503 / Retry ownership
 
 google-genai SDK内部のtransient retryはProductionで無効化し、**Factoryを唯一のretry owner** とする。
 
-通常Deep DiveのFull Flash modelでは、provider-verified 503を受けた場合、同一modelへ無駄な再送を重ねず次のdistinct modelへ進み、限られたrequest budgetを保護する。
-
-Quality repairは最大 **2 distinct models**。
-
-429 / RPD / RPM / timeout / 404は既存quota・circuit契約に従い、無制限retryしない。
+provider-verified 503では同一modelへ無駄な再送を重ねず次のdistinct modelへ進む。Quality repairは最大 **2 distinct models**。429 / RPD / RPM / timeout / 404は既存quota・circuit契約に従い、無制限retryしない。
 
 ### 4.5 Product Review
 
-Product Reviewは記事Deep Dive内に混在させない。
-
-Full Dailyでは:
+Product Reviewは記事Deep Dive内に混在させない。Full Dailyでは:
 
 - main Production中の `PRODUCT_REVIEW_MAX_PER_RUN=0`
 - 旧bootstrapも0
@@ -280,13 +269,11 @@ Product Review runtimeは記事Publication / Reader / Eyecatch layersを持た�
 
 ---
 
-## 5. Candidate Identity / Dedupe / Entity Resolution
+## 5. Candidate Identity / Dedupe / Existing-Article Admission
 
 ### 5.1 URL dedupe
 
-`candidate_identity.py` が保守的にcanonicalizeする。
-
-除外してよいもの:
+`candidate_identity.py` が保守的にcanonicalizeする。除外してよいもの:
 
 - `utm_*`
 - `fbclid`
@@ -296,15 +283,13 @@ Product Review runtimeは記事Publication / Reader / Eyecatch layersを持た�
 - default port
 - presentation-level trailing slash差
 
-ArXivは `abs/pdf/version/.pdf` の差を同一paper IDへcanonicalizeする。
-
-意味のあるpath/queryを勝手に消さない。
+ArXivは `abs/pdf/version/.pdf` の差を同一paper IDへcanonicalizeする。意味のあるpath/queryを勝手に消さない。
 
 ### 5.2 Content EventとEvidence identityを分離
 
-OfficialVendorのpage-level revisionは、revision付きURLを **Content Event key** とする。
+OfficialVendorのpage-level revisionは、revision付きURLを **Content Event key** とする。stable primary URLまで同一dedupe集合へ混ぜて、後続revisionを旧イベント扱いにしない。
 
-stable primary URLまで同一dedupe集合へ混ぜて、後続revisionを旧イベント扱いにしない。
+同じTechnologyでも、materially new Eventまたは新しいOfficialVendor `aif_revision` は新しいArticle候補になり得る。Technology identityはgrouping metadataであり、過去Articleを永久blockするIDではない。
 
 ### 5.3 Technology Entity Resolution
 
@@ -325,6 +310,24 @@ Technology IntelligenceのEntity Resolutionは **保守的** に行う。
 - 発見記事の深いURLを自動的にdurable Technology identityへ昇格
 
 Evidence URLがidentityに寄与できるのは、`IDENTITY_ANCHOR` 等の明示的なbound stateを持つ場合に限る。
+
+### 5.4 Published Terminal / automatic regeneration
+
+既存Articleの自動再生成は `automatic_regeneration_decision()` の共通契約に従う。
+
+許可:
+
+- delivery stateが正に `not_queued` または `waiting` と証明できる場合のみ
+
+Fail-Closed:
+
+- delivery authority未設定 / 読取不能
+- empty / malformed / ambiguous state
+- `投稿準備中` / `投稿済み` 等のdelivery-started state
+- `保留` / `取下げ` 等のhuman-blocked state
+- published evidenceがある既存article
+
+Ready Rescue / existing editorial recovery / Pending RetryはProvider予算を使う前にこの契約を通す。Freshの新規candidate acquisitionはこの既存Article terminal contractで塞がない。個別記事IDやタイトルのblacklistで再発防止しない。
 
 ---
 
@@ -358,9 +361,7 @@ A+導入のために追加Provider callを要求しない。
 
 ### 6.3 Provider-free fallback
 
-Local fallbackは何でも生成してよい逃げ道ではない。
-
-使用条件:
+Local fallbackは何でも生成してよい逃げ道ではない。使用条件:
 
 - structured MANAGEMENT DATAが完成済み
 - Evidence stateがSUFFICIENT
@@ -385,7 +386,7 @@ Fact不足をLocal Writerで埋めない。
 - article / Ready stateは検証可能
 - このstageではdownstream note synchronizationを禁止
 
-### 6.5 Human Narrative
+### 6.5 Human Narrative / Naturalness
 
 `human_narrative` は事実を脚色するStyleではない。
 
@@ -398,19 +399,12 @@ Fact不足をLocal Writerで埋めない。
 
 禁止:
 
-- 架空の体験談
-- 架空の会話をFact扱い
+- 架空の体験談 / 架空の会話をFact扱い
 - Evidenceにない因果
 - 誇張された断定
 - 同じ会社員ネタ等のテンプレ使い回し
 
-Human Narrativeは **Source-specific Hook** を優先する。
-
-- 冒頭1〜2段落で一次情報固有の数字、出来事、矛盾、制約、著者の強い問題提起、比喩等へ早く接続する
-- 「私たち」「多くの人」「そんな経験は少なくない」等の一般化された共感だけで導入を作らない
-- オピニオン/エッセイの温度・違和感・ユーモアを全部消して無難な企業向け一般論へ均さない
-- 「こうした背景から」「この現状を踏まえて」「まずは小さく」等の汎用ビジネス作文を複数連鎖させない
-- Source固有のEvidenceと無関係な「ガイドラインを見直す」「評価項目に加える」だけでActionを閉じない
+Source-specific Hookを優先し、一次情報固有の数字・出来事・矛盾・制約へ早く接続する。Generic business proseや過剰な煽り、抽象的な大団円等のNaturalness signalはQuality Retryの具体的feedbackに使えるが、それ自体でHard GateやReady閾値を増やさない。
 
 ---
 
@@ -433,7 +427,7 @@ Human Narrativeは **Source-specific Hook** を優先する。
 - Final Publication Surface
 - Publication Contract
 
-Human Appealの中核品質が `WEAK` の原稿は最大1回のQuality Retryを行う。Retry後も `WEAK` ならFact / PublicationがPASSでもNeeds Editorial Review等の非Readyへ送り、note下書き配送を禁止する。記事固有の導入が弱い `opening_hook_weak`、判断の欠落、AI調の複合的な兆候、読者価値の重大な不足はREVIEWとする。軽微な語尾・反復・表面表現だけのSOFT warningは、Human AppealがACCEPTABLEなら警告付きReadyを許可できる。Run #186の「The revolt of the reader」実稿を回帰fixtureとする。
+Human Appealの中核品質が `WEAK` の原稿は最大1回のQuality Retry。Retry後も `WEAK` ならNeeds Editorial Review等の非Readyへ送り、note下書き配送を禁止する。軽微な表面表現だけのSOFT warningは、Human AppealがACCEPTABLEなら警告付きReadyを許可できる。
 
 ### 7.1 Fail-Closed
 
@@ -451,34 +445,24 @@ Human Appealの中核品質が `WEAK` の原稿は最大1回のQuality Retryを�
 
 ### 7.2 Reader-first public format
 
-現行Public manuscriptは、記事固有のNarrative Leadを保持した上で、固定のReader Summaryを使う。
-
-主要見出し:
+現行Public manuscriptは記事固有のNarrative Leadを保持した上で、主要見出しを次に統一する。
 
 - **どんな内容？**
 - **なぜ重要？**
 - **結論は？**
 - **元情報**
 
-「何が出た？」の重複labelは使わない。
-
-元情報には主一次情報と発見経路を表示する。
-
-未知の技術・製品・略語は「知っていて当然」で進めず、初出で非専門読者に役割が分かる日本語へ橋渡しする。
+「何が出た？」の重複labelは使わない。元情報には主一次情報と発見経路を表示する。未知の技術・製品・略語は初出で非専門読者に役割が分かる日本語へ橋渡しする。
 
 ### 7.3 Decision語彙
 
-NOW / TRY / WATCH / WAIT / AVOIDをそのままpublic本文へ漏らさない。
-
-歴史・研究・事件・制度・ベンチマーク等を、無理に「導入する／しない」へ翻訳しない。対象に合うAction（確認、比較、検証、追跡、基準点化等）を使う。
+NOW / TRY / WATCH / WAIT / AVOIDをそのままpublic本文へ漏らさない。歴史・研究・事件・制度・ベンチマーク等を無理に「導入する／しない」へ翻訳せず、対象に合うAction（確認、比較、検証、追跡、基準点化等）を使う。
 
 ---
 
 ## 8. Publication / Ready Contract
 
-Readyは単なるSelect値ではない。
-
-現行Ready blockは少なくとも次を証明する。
+Readyは単なるSelect値ではない。現行Ready blockは少なくとも次を証明する。
 
 - Publication Contract ID
 - Editorial Style
@@ -495,23 +479,36 @@ Readyは単なるSelect値ではない。
 - body SHA不一致をcurrent Readyとして扱わない
 - provenanceを偽装してReadyを維持しない
 
-### 8.1 Visual-only repair
+### 8.1 Single canonical manuscript persistence
 
-Article policyがstaleでも、過去本文が
+Content Intelligence pageがReadyとしてcommitされた後、そのページのmanuscript blockは **byte-exact current canonical body 1本だけ** に収束させる。
 
-- Ready caption family
-- 正しいmanuscript SHA
-- exact title一致
+- 元のtwo-phase Notion transaction / rollback契約は維持する
+- current exact manuscriptが存在することを確認してからstale / legacy / duplicate blockをclean upする
+- Notion rich_text segmentationはtransport-onlyで、join後のmanuscript bytesを変えない
+- cleanup後にfresh readbackし、残存blockが1本かつexact current bodyであることを証明する
+- readback / cleanup / exact-body proofに失敗した場合はReadyを維持せず **Pending RetryへFail-Closed**
 
-を満たす場合、**visual-only repair** のためだけにbyte-authenticated本文を利用できる。
+古い原稿を監査目的で同じReady page本文内へ残す運用は禁止する。履歴はGit/監査資産等で保持し、current Ready本文と混在させない。
 
-この経路は:
+### 8.2 Visual-only repair
 
-- article bodyをrestampしない
-- titleを変えない
-- article regenerationしない
-- public releaseしない
-- 現行Eyecatch Contractだけを更新する
+Article policyがstaleでも、過去本文がReady caption family・正しいmanuscript SHA・exact title一致を満たす場合、**visual-only repair** のためだけにbyte-authenticated本文を利用できる。
+
+この経路はarticle bodyをrestampせず、titleを変えず、article regenerationせず、public releaseせず、現行Eyecatch Contractだけを更新する。
+
+### 8.3 Exact Ready Asset Persistence Recovery
+
+通常のrecent-row scanで届かない、またはeyecatch asset persistenceでReady化に失敗したexact articleには限定Recovery laneを使える。
+
+- exact 32-hex Content Intelligence page IDをdirect GETする
+- Fresh acquisition / recent-row scanを使わない
+- Provider call前にPublished Terminal / delivery authorityを確認する
+- same Content Intelligence pageへ `persist_results=True` で現行Production article stackを通す
+- truthy manuscript返却だけを成功とみなさない
+- generation後に同じpageをfresh readし、`Article Status=Ready` を証明できた場合だけ成功
+- Ready proof後だけ `note-ready-sync.yml` をdispatch可能
+- new draft / public releaseは禁止
 
 ---
 
@@ -521,7 +518,7 @@ Eyecatchは単なるPNGではない。Public titleと現行rendering policyにbi
 
 ### 9.1 Geometry / Format
 
-必須:
+最終asset必須:
 
 - PNG
 - RGB
@@ -529,7 +526,37 @@ Eyecatchは単なるPNGではない。Public titleと現行rendering policyにbi
 - Noto Sans JP production font
 - 日本語fontがない場合はFail-Closed
 
-### 9.2 Headline integrity
+### 9.2 Approved Eyecatch V2 master
+
+現行Editorial V2は、ユーザー承認済みの **白背景・右側に青いガラス調AIコア** のrasterをimmutable visual sourceとする。synthetic redrawで置換しない。
+
+Background master:
+
+- source: 1536 × 804
+- production master: 1280 × 670 WEBP
+- cropなしのstraight downscale
+- 6個のBase64 text partsから復元
+- SHA-256: `5f1ab5f8ddc807825ad8fa29fdb96b5a165742af73b779223b7fccf8547a77fd`
+- decode / format / size / SHA mismatchはFail-Closed
+- Run551追加Provider call: 0
+
+上部構成:
+
+**brand → dynamic reader-purpose badge → editorial hook → validated title → footer**
+
+主要geometry / typography:
+
+- left 48
+- badge top 140 / height 44 / font 24
+- hook top 204 / font 33
+- title top 310
+- lead title font 74 / left 45
+- impact title font 85 / left 42
+- title line gap 8
+- footer top 592 / font 19
+- brand font 32
+
+### 9.3 Headline integrity
 
 保存PNGには以下を埋め込む。
 
@@ -545,16 +572,22 @@ Eyecatchは単なるPNGではない。Public titleと現行rendering policyにbi
 - glyph pixel proofが実画像と一致
 - 画像外へ文字がはみ出さない
 - `...` / `…` を含まない
+- headlineが不完全な日本語文節で終わらない
 
 を要求する。
 
-省略記号で「収まったことにする」運用は禁止。
+不完全終端の代表例:
 
-### 9.3 Japanese line-break integrity
+- `は、`
+- `が、`
+- `けれど、`
+- `しかし、`
 
-Headlineは原則1〜3行。
+Run248のemphasis repairも、完全なupstream titleを上記のような意味未完の短縮headlineへ変えてはならない。Run248 quality calibrationはEyecatch policy hashの対象であり、保存前と保存済みPNG検証の双方で不完全文節をFail-Closedにする。
 
-禁止例:
+### 9.4 Japanese line-break integrity
+
+Headlineは原則1〜3行。禁止例:
 
 - `新し｜い`
 - `管｜理者`
@@ -568,41 +601,32 @@ Headlineは原則1〜3行。
 - 英数字product / model token
 - 明示的空白境界
 
-収まらない場合:
+収まらない場合は自然な意味境界へ改行 → 3行化 → 許容範囲内font縮小を優先し、語中改行や省略記号で無理に収めない。
 
-1. 自然な意味境界へ改行
-2. 3行化
-3. 許容範囲内でfont縮小
+Eyecatch semantic layout Providerは補助処理としてbounded:
 
-を優先し、語中改行で無理に収めない。
+- `gemini-3.6-flash` → `gemini-3.5-flash` の順で各1回
+- 各Provider sendは30秒watchdog
+- watchdog不可ならProviderを呼ばずFail-Closed
+- 503 / timeout / invalid layoutは次Providerまたはdeterministic layoutへfallback
+- layout待機がDaily全体timeoutを占有することを禁止
 
-Eyecatch semantic layoutのProvider利用は補助処理としてboundedに扱う。
+### 9.5 Asset version binding
 
-- `gemini-3.6-flash` → `gemini-3.5-flash` の順で各1回だけ試行
-- 各Provider sendは **30秒 watchdog** 内で実行
-- watchdogが利用できない場合はProviderを呼ばずFail-Closed
-- 503 / timeout / invalid layoutは次のProviderまたは既存deterministic layoutへfallback
-- Eyecatch layout待機がDaily全体のjob timeoutを占有することを禁止
+Eyecatch file名tokenはPublic title SHA + Eyecatch policy SHAへbindされる。image + sidecar manifestを対で扱い、古いPNG URLが残るだけではcurrent assetと認めない。
 
-### 9.4 Asset version binding
-
-Eyecatch file名tokenは:
-
-- Public title SHA
-- Eyecatch policy SHA
-
-へbindされる。
-
-image + sidecar manifestを対で扱い、古いPNG URLが残っているだけではcurrent assetと認めない。
-
-### 9.5 Existing note cover-only apply
+### 9.6 Existing note cover-only apply / stable draft identity
 
 既存private draftへcoverだけを差し替える場合:
 
 - exact sync_id
 - exact current asset
 - exact existing private draft
-- same edit route
+- persisted `note下書きID` を唯一のstable draft routing authorityとする
+- Chrome historyからdraftを探索しない
+- visual-repair projectionでも `note下書きID` を落とさない
+- `note.com` と `editor.note.com` のhost差は、opaque edit path / draft identityが同一なら同一draftとして扱える
+- opaque draft identityが異なるrouteはFail-Closed
 - title unchanged
 - body unchanged
 - new draft作成禁止
@@ -611,19 +635,15 @@ image + sidecar manifestを対で扱い、古いPNG URLが残っているだけ�
 - failure時restore
 - reload後に新coverのpersistを再確認
 
-を必須とする。
-
-### 9.6 Subscription Attribution runtime-state write
+### 9.7 Subscription Attribution runtime-state write
 
 Subscription Attribution JSONをGitHubへ保存する場合、readとwriteのbranch authorityを分離しない。
 
-- target branchは `EYECATCH_GITHUB_BRANCH` を正とする。
-- 既存ファイル確認のGETも同じbranchを `ref` に指定する。
-- 既存ファイルがある場合はそのbranch上のcurrent blob SHAを取得し、PUT payloadへ `sha` を含める。
-- PUTの`branch`も同じ `EYECATCH_GITHUB_BRANCH` を指定する。
-- default branchをGETし、`runtime-state`等の別branchへSHAなしPUTする経路は禁止する。
-
-既存attribution更新時のGitHub 422を回避するためにSHA整合を弱めず、同一branch上の既存identityを更新する。
+- target branchは `EYECATCH_GITHUB_BRANCH`
+- GETも同じbranchを `ref` 指定
+- 既存ファイルがある場合はそのbranch上のcurrent blob SHAを取得しPUT payloadへ含める
+- PUTの`branch`も同じ `EYECATCH_GITHUB_BRANCH`
+- default branchをGETし別branchへSHAなしPUTする経路は禁止
 
 ---
 
@@ -631,9 +651,7 @@ Subscription Attribution JSONをGitHubへ保存する場合、readとwriteのbra
 
 ### 10.1 Content Intelligence DB
 
-Content Intelligenceは **Content Event / Article単位** のSource of Truth。
-
-保持するもの:
+Content Intelligenceは **Content Event / Article単位** のSource of Truth。保持するもの:
 
 - 発見元
 - 元情報URL / 一次情報URL
@@ -644,6 +662,8 @@ Content Intelligenceは **Content Event / Article単位** のSource of Truth。
 - Ready provenance
 - eyecatch
 - publication candidate state
+
+Ready page本文は8.1のsingle canonical manuscript invariantに従う。
 
 ### 10.2 Note Ready DB
 
@@ -657,9 +677,7 @@ Content Intelligenceは **Content Event / Article単位** のSource of Truth。
 - manuscript SHA一致
 - current Eyecatch asset
 
-Human workflow fieldsは自動同期で上書きしない。
-
-保護対象:
+Human workflow fieldsは自動同期で上書きしない。保護対象:
 
 - 投稿状態
 - note公開URL
@@ -670,34 +688,28 @@ Human workflow fieldsは自動同期で上書きしない。
 
 Full ONE-SHOT終了後、`run624_delivery_causality.py` が **今回runで実際にReady保存された候補だけ** を監査する。
 
-契約:
-
 - funnel ready_countとcandidate Ready数が一致
 - article_saved=true
 - valid source URL
 - candidate rank有効
 - 全current-run Ready targetをexact setで保持
 
-Current-run Readyが0件なら、古いReadyを勝手に次のdraft候補へ回さない。
+Current-run Readyが0件なら古いReadyを勝手に次のdraft候補へ回さない。複数なら全件を個別exact targetで `note-ready-sync.yml` へdispatchする。
 
-Current-run Readyが複数なら、**全件を個別にexact targetで `note-ready-sync.yml` へdispatch** する。
+記事品質としてのReadyと新規note draft配送対象は分離する。
 
-ここで **記事品質としてのReady** と **新規note draft配送対象** は分離する。
+- queue rowなし / `投稿状態=投稿待ち` → 新規draft配送候補
+- `投稿状態=投稿準備中` / `投稿済み` → already_delivered、再生成・再draft作成禁止、exact配送は成功no-opまたは既存ledger reconciliation
+- `投稿状態=保留` / `取下げ` → 人間判断を優先しFail-Closed
+- note配送状態を確認できない場合もFail-Closed
 
-- note Ready DBに行が無い / `投稿状態=投稿待ち` → 新規draft配送対象
-- `投稿状態=投稿準備中` / `投稿済み` → **already_delivered**。再生成・再draft作成を禁止し、exact配送は成功no-op
-- `投稿状態=保留` / `取下げ` → 人間判断を優先してFail-Closed
-- 自動同期はHuman workflow fieldの`投稿状態`を`投稿待ち`へ巻き戻さない
+### 10.4 Reconcile-existing fan-out / exact sync retry
 
-また、write-enabledのautomatic stale Ready Recoveryは、note配送状態が
-`not_queued` または `投稿待ち` と確認できる記事だけを対象にする。
-`投稿準備中` / `投稿済み` / `保留` / `取下げ` はProvider呼び出し前に除外する。
-note配送状態を確認できない場合もFail-Closedで自動Recoveryしない。
+`note-ready-sync` preflightが `reconcile_existing` かつ `should_start_vm=true` を返した場合、durable-ledger reconciliationの正規対象としてnote VM child workflowへfan-outする。`eligible_ready` だけをVM起動条件にしてreconciliationを落とさない。
 
-したがって「Readyになった記事はすべてexact配送判定へ送る」が契約であり、
-**既に配送済みの記事を重複して下書き生成する、という意味ではない。**
+ChatOpsはbare `/aiif note sync` を保持しつつ、`/aiif note sync <32-hex sync_id>` でexact targetだけを再同期できる。exact target retryは別記事へfallbackしない。
 
-### 10.4 Downstream fan-out
+### 10.5 Downstream fan-out
 
 成功した通常ONE-SHOTはGH_PATで明示dispatchする。
 
@@ -713,16 +725,9 @@ passive `workflow_run` subscribeによる二重writeを正規経路にしない�
 
 ### 11.1 Private Draft
 
-note automationの自動到達点は **private draft**。
+note automationの自動到達点は **private draft**。Public releaseは人間のみ。
 
-Public releaseは人間のみ。
-
-公開本文へ内部生成制御ラベルを出さない。
-
-- Provider promptは記事タイトル直後から本文を開始し、公開用ではない本文開始ラベルを要求しない
-- parser / note normalizationは旧出力互換として既知の内部制御ラベルをdeterministicに除去する
-- Final Publication Surfaceで内部マーカーが1件でも残ればFail-Closed
-- 内部マーカー除去を理由にFact / Evidence / Decision本文を削除しない
+公開本文へ内部生成制御ラベルを出さない。parser / note normalizationは旧出力互換として既知の内部制御ラベルをdeterministicに除去し、Final Publication Surfaceで内部マーカーが1件でも残ればFail-Closed。内部マーカー除去を理由にFact / Evidence / Decision本文を削除しない。
 
 ### 11.2 Existing draft repair / exact regeneration
 
@@ -733,43 +738,38 @@ Public releaseは人間のみ。
 - Ready note cover apply
 - Ready existing-draft regenerate
 - persisted Ready existing-draft resume
+- Ready asset persistence recovery
 
-いずれもexact sync_idと既存stateをFail-Closed確認する。
+いずれもexact sync_idと既存stateをFail-Closed確認する。既存draft修復を理由に別記事・新規draftへ逃げない。
 
-既存draft修復を理由に別記事・新規draftへ逃げない。
-
-Ready existing-draft regenerationは、少なくとも次を満たすexact targetだけに許可する。
+Ready existing-draft regenerationは少なくとも:
 
 - Note Ready側が `Ready` / `投稿準備中`
 - 既存 `note下書きID` があり、そのIDをdraft identity authorityとする
-- `note公開URL` と `投稿日` が空で未公開
-- Provider/source mutation前に既存private draftのedit routeへ到達できることをread-only確認
-- 現行Production Gateが再生成結果を受理すること
-- Content Intelligenceは同じexact pageへpersistすること
-- noteへの反映は同じdraft routeのtitle / body / current eyecatchだけを置換すること
-- same edit route、title、body、eyecatchのpersistを再検証すること
-- new draft作成禁止
-- public release禁止
+- `note公開URL` と `投稿日` が空
+- Provider/source mutation前に既存private draftのedit routeへread-only到達確認
+- 現行Production Gateが再生成結果を受理
+- Content Intelligenceは同じexact pageへpersist
+- note反映は同じdraft routeのtitle / body / current eyecatchだけ
+- same edit route、title、body、eyecatchのpersistを再検証
+- new draft / public release禁止
 
-`persist_results=True` のProduction生成結果はnon-persistent report契約で判定しない。明示的なtuple statusがある場合は `accepted` / `rejected` を尊重し、plain manuscriptが返った場合はfresh lifecycle readで **article status=`Ready` かつ content status=`Deep Dive`** を確認できた場合だけacceptedとする。それ以外はFail-Closed。
+`persist_results=True` のProduction生成結果はnon-persistent report契約で判定しない。explicit tuple statusがあればそれを尊重し、plain manuscriptの場合はfresh lifecycle readで **article status=`Ready` かつ content status=`Deep Dive`** を確認できた場合だけaccepted。
 
-`resume_persisted` は、Production生成とReady persistが既に成功した後にdelivery wrapperだけが停止した場合の限定resumeである。
+`resume_persisted` はProduction生成とReady persistが成功した後にdelivery wrapperだけ停止した場合の限定resume:
 
-- source lifecycleがfresh readで `Ready / Deep Dive`
-- exact targetを `target_sync_id` でqueue reconciliation
-- destination page / note draft ID / posting stateのbinding不変
-- generated countは0
+- source lifecycleをfresh readで `Ready / Deep Dive`
+- exact targetをqueue reconciliation
+- destination page / draft ID / posting state binding不変
+- generated count 0
 - `production_pipeline.main()` を呼ばない
-- Provider generation / Gemini callは0
-- 既にpersist済みのcurrent Ready manuscript / eyecatchを同じprivate draftへ反映する
-- new draft作成禁止
-- public release禁止
+- Provider generation / Gemini call 0
+- persisted current Ready manuscript / eyecatchを同じprivate draftへ反映
+- new draft / public release禁止
 
 ### 11.3 Human publication reconciliation
 
-Full Dailyは、過去に人間が公開したnoteを `note_publication_reconcile.py` でread-only RSS確認できる。
-
-この処理は:
+Full Dailyは過去に人間が公開したnoteを `note_publication_reconcile.py` でread-only RSS確認できる。
 
 - model call 0
 - note editor write 0
@@ -778,13 +778,7 @@ Full Dailyは、過去に人間が公開したnoteを `note_publication_reconcil
 - exact queue row 1件一致
 - source page identity一致
 
-の場合だけNote Ready DBへ:
-
-- 投稿状態=投稿済み
-- note公開URL
-- 投稿日
-
-を記録する。
+の場合だけNote Ready DBへ投稿済み・note公開URL・投稿日を記録する。
 
 ### 11.4 Publication date provenance
 
@@ -793,9 +787,7 @@ Full Dailyは、過去に人間が公開したnoteを `note_publication_reconcil
 - Content Intelligence 公開日 = 一次Source側のpublication / update provenance
 - note 投稿日 = 人間がnoteで公開した日
 
-note RSS reconciliationでSource側公開日を上書きしない。
-
-Hacker News timestampはHN投稿 / discovery時刻であり、外部一次記事の公開日へ昇格させない。
+note RSS reconciliationでSource側公開日を上書きしない。Hacker News timestampを外部一次記事の公開日へ昇格させない。
 
 ---
 
@@ -803,83 +795,43 @@ Hacker News timestampはHN投稿 / discovery時刻であり、外部一次記事
 
 ### 12.1 Technology Intelligence DB
 
-Technology IntelligenceはArticle一覧ではない。
-
-**durable Technology / Project entityのcurrent state** を持つ。
+Technology IntelligenceはArticle一覧ではなく、**durable Technology / Project entityのcurrent state** を持つ。
 
 主な情報:
 
-- canonical entity ID
-- aliases
-- official URL
+- canonical entity ID / aliases / official URL
 - sources
-- adoption score
-- adoption status
-- evidence confidence
-- production readiness
+- adoption score / status
+- evidence confidence / production readiness
 - main risk
 - best / avoid use
-- tracking status
-- assessment state
-- last evidence update
-- next review
+- tracking / assessment state
+- last evidence update / next review
 - current article / source state
 
-同じTechnologyの再評価は新しいArticle rowを増やすだけではなく、current stateを更新する。
+同じTechnologyの再評価はArticle rowを増やすだけではなくcurrent stateを更新する。
 
 ### 12.2 Decision History DB
 
-Decision Historyはcurrent stateの上書きDBではなく、変化を追うappend-oriented history。
-
-記録:
-
-- score delta
-- status change
-- previous score/status
-- risk / evidence change
-- snapshot type
-- entity ID
-- event ID
+Decision Historyはappend-oriented history。score delta、status change、previous score/status、risk/evidence change、snapshot type、entity ID、event IDを記録する。
 
 ### 12.3 Content Intelligenceとの違い
 
-**Content Intelligence DB**
-- 「何が起きたか」
-- Content Event / 記事候補
-- 記事生成・Ready・note連携の正本
-
-**Technology Intelligence DB**
-- 「その技術を今どう評価するか」
-- Technology / Project entity
-- 複数Source・複数Eventを統合したcurrent state
-
-両者を同一DBの重複行として扱わない。
+**Content Intelligence DB** = 「何が起きたか」。Content Event / 記事候補 / 記事生成・Ready・note連携の正本。
+**Technology Intelligence DB** = 「その技術を今どう評価するか」。複数Source / Eventを統合したTechnology current state。
 
 ### 12.4 Member / Subscriber derived surfaces
 
 Member PresentationはTechnology / Decision stateから生成するderived surface。
 
-- canonical member DBをAuthorityとする
+- canonical member DBをAuthority
 - presentation都合でDecision/Evidenceを書き換えない
 - legacy DBへ戻さない
 - 不要なGemini callを追加しない
 
 ### 12.5 Monthly Decision Brief
 
-Paid-product freshnessを保つため、Member sync後にexact monthly briefをzero-modelで更新する。
-
-内容:
-
-- 今月のTop判断
-- ADOPT / TEST中心の実務判断
-- 重要なscore / decision change
-- 主リスク
-- 次の一手
-- DB / 公式情報へのリンク
-
-更新方式はcontent-first replacement。新bodyのNotion受理前に旧bodyを消さない。
-
-「変化がない」場合も判断情報として明示する。
+Member sync後にexact monthly briefをzero-modelで更新する。今月のTop判断、ADOPT / TEST中心の実務判断、重要なscore / decision change、主リスク、次の一手、DB / 公式情報へのリンクを含む。更新方式はcontent-first replacementで、新bodyのNotion受理前に旧bodyを消さない。「変化がない」場合も判断情報として明示する。
 
 ---
 
@@ -921,11 +873,12 @@ Source ROIは過去のscreened / deep dive / stock / Ready効率からfetch配�
 - 503で無制限retry
 - current-run Ready 0件なのに過去Readyをdraft
 - test / auditの副作用としてnote公開
-- note publicationを自動化
+- note publication自動化
 - secret/tokenをartifactやrepositoryへ保存
 - Notionの人間管理fieldを品質同期で上書き
 - Gateを通すためのEvidence捏造
 - stale Readyをmanual property変更だけでcurrent扱い
+- published / delivery-started articleを自動再生成
 
 X / ApifyもFull時だけ明示的に有効化し、charge / record上限を持つ。
 
@@ -941,23 +894,44 @@ X / ApifyもFull時だけ明示的に有効化し、charge / record上限を持�
 - Repository-wide Falsification Guard
 - Notion Access Policy Guard
 - Workflow Reference Guard
+- Cross DB Contract Guard等の領域別contract check
 
 Required / protective checksは過去文書の文言一致ではなく、**実行可能なSafety invariant** を監査する。
 
-### 15.2 Deterministic regression
+### 15.2 Canonical Specification Freshness Guard
 
-可能な限り:
+`specification_freshness_guard.py` をzero-provider / deterministic guardとしてRepository-wide Falsification Guardへ接続する。
 
-- zero-provider
-- deterministic
-- hermetic
-- synthetic smoke
+Production Contract Fingerprintの対象:
 
-を先に実行する。
+- tracked Production Python / shell surfaces
+- `local_skills/`
+- `.github/workflows/` / `.github/actions/`
+- `assets/`
+- runtime dependency/config files
 
-実Provider / Notion / note書き込みが必要な検証は、明示的なONE-SHOT / maintenance workflowへ分離する。
+対象外:
 
-### 15.3 Dependency
+- `AI_Intelligence_Factory_最終仕様書.md` 自身
+- `tests/`
+- `docs/`
+- `.runtime/`
+
+CIは少なくとも:
+
+1. 現行Production surface bytesからFingerprintを計算
+2. 本書記載Fingerprintと完全一致を要求
+3. git historyから最新Production-surface変更日を求め、本書のProduction最終照合日と完全一致を要求
+4. metadata欠落・形式不正・Fingerprint不一致・照合日staleをFail-Closed
+5. full historyが必要なためcheckoutは `fetch-depth: 0`
+
+Production surfaceが変わったのに本書を更新しないPRはGREENにしない。tests/docsのみの変更はFingerprintを変えず、無意味な仕様書churnを要求しない。
+
+### 15.3 Deterministic regression
+
+可能な限りzero-provider / deterministic / hermetic / synthetic smokeを先に実行する。実Provider / Notion / note書き込みが必要な検証は明示ONE-SHOT / maintenance workflowへ分離する。
+
+### 15.4 Dependency
 
 Production Pillow:
 
@@ -987,10 +961,13 @@ Eyecatch layout / font / pixel proofの互換性をCIで守る。
 - note自動公開
 - 古いeyecatch PNGをURL存在だけでcurrent扱い
 - `...` / `…` でheadline truncationを許容
+- 不完全文節で終わるeyecatch headline
 - 日本語語中改行を文字幅都合で許容
 - EvidenceとContent Event identityの混同
 - fuzzy titleだけのTechnology entity merge
 - Product Reviewを記事Deep Dive中へ重複混在
+- Chrome historyをprivate draft identity authorityとして使うこと
+- 複数の旧Markdown manuscriptを1つのReady Content Intelligence pageへ残すこと
 
 ---
 
@@ -998,49 +975,54 @@ Eyecatch layout / font / pixel proofの互換性をCIで守る。
 
 ### 17.1 唯一の全体入口
 
-Factory全体を理解するときは、まず本書を読む。
+Factory全体を理解するときは、まず本書を読む。ただし最終Authorityは `main`。
 
-ただし最終Authorityは `main`。
+### 17.2 Production変更時の更新ルール
 
-### 17.2 更新必須の変更
+Production surfaceが変わるPRでは、**本書の同期をmerge条件**とする。
 
-次の変更をmergeしたら本書も同期する。
+必須:
+
+- `Production最終照合日` を最新Production変更日へ更新
+- `Production Contract Fingerprint` をcurrent bytesへ更新
+- Productionの意味・契約が変わった場合は該当本文も同じPRで更新
+- 本書の意味内容自体を変えた場合は `仕様最終変更日` も更新
+- `実装監査基準SHA` は人間が横断照合したmain基準点を記録
+
+「本文変更不要」と判断した内部修正でも、Production bytesが変われば照合日とFingerprintを更新し、仕様との矛盾なしを明示する。逆にtests/docsだけの変更ではこの更新を要求しない。
+
+この契約は注意書きではなく **CI fail-closed contract** とする。日付だけを新しくして古いFingerprintを残す、またはFingerprintだけ更新して古い照合日を残す状態もGREENにしない。
+
+### 17.3 本文更新必須の代表変更
 
 - Provider / model routing
 - Screening / Deep Dive pool
 - Source architecture
-- Candidate dedupe / Entity Resolution
+- Candidate dedupe / Entity Resolution / Published Terminal
 - Publication / Ready contract
 - Article / Reader Gateの意味
 - A+ / Local Skills Production経路
 - Editorial Style
-- Eyecatch rendering / integrity
+- Eyecatch rendering / integrity / approved master
 - Subscription Attribution / runtime-state asset persistence
+- Content Intelligence manuscript persistence
 - Note Ready / Draft / Publication reconciliation
-- exact existing-draft regeneration / persisted resume
+- exact existing-draft regeneration / persisted resume / Ready asset recovery
 - Daily / ChatOps entrypoint
 - Current-run delivery causality
 - Paid Product / Member surface
 - Technology / History DB authority
 - Repository全体の大規模整理
 
-内部リファクタだけで意味が変わらない場合は、Run番号や履歴を本書へ増やさない。
+内部リファクタだけで意味が変わらない場合はRun番号や履歴を本書へ増やさない。
 
-### 17.3 過去資料
+### 17.4 過去資料
 
-`docs/reference/` / `docs/audits/` / `docs/archive/` は:
-
-- 設計理由
-- 障害記録
-- 検証結果
-- 回帰由来
-- 監査証跡
-
-としてのみ使う。
+`docs/reference/` / `docs/audits/` / `docs/archive/` は設計理由、障害記録、検証結果、回帰由来、監査証跡としてのみ使う。
 
 ---
 
-## 18. Current-state Summary — 2026-10-12
+## 18. Current-state Summary — 2026-10-13
 
 現在のFactoryは次を正式基準とする。
 
@@ -1048,23 +1030,28 @@ Factory全体を理解するときは、まず本書を読む。
 - **Full Daily:** ChatOps経由では `human_narrative`。
 - **Entry point:** `production_pipeline.py`。
 - **Runtime:** `runtime_layers.py` が正本。
-- **Screening:** Gemini 3.5 Flash-Lite / 3.1 Flash-Lite。
-- **Article Deep Dive:** Gemini 3.6 / 3.5 / 3.7 / 3.8 / 3 Flash Previewをhealth-aware routingで運用。Flash-Liteは公開Writerから除外。
-- **503:** Factory single retry owner + bounded fallback。
+- **Screening:** Gemini 3.5 Flash-Lite / 3.1 Flash-Liteのみ。
+- **Article Deep Dive:** Gemini 3.6 / 3.5 / 3.7 / 3.8 / 3 Flash Previewをhealth-aware Full Flash laneで運用。Flash-Liteは公開Writerから除外。
+- **503:** Factory single retry owner + bounded distinct-model fallback。
 - **A+:** Local Skills skeleton + Gemini prose + deterministic Gates + safe local fallback。
-- **Local Skills:** canary / bounded Production validationを持つ。
 - **Active acquisition:** GitHub / HackerNews / ArXiv / OfficialVendor。
 - **X:** Discovery専用。X本文はEvidenceにしない。
 - **Product Hunt:** retired。
 - **Dedupe:** URL canonicalization + OfficialVendor revision event identity。
+- **Published Terminal:** delivered/published existing articleは自動再生成しない。pre-publication delivery stateを正に証明できる場合だけ自動Recovery可。
 - **Entity Resolution:** conservative、bound Evidenceのみalias可、fuzzy title merge禁止。
 - **Reader format:** Narrative Lead + どんな内容？ / なぜ重要？ / 結論は？ / 元情報。
 - **Ready:** policy SHA + manuscript SHA + style provenance。
-- **Eyecatch:** 1280×670、PNG pixel proof、ellipsis禁止、語中改行禁止。
-- **Subscription Attribution:** GitHub GET/PUTは同じ `EYECATCH_GITHUB_BRANCH` を使用し、既存更新はbranch上のcurrent SHAをPUTへ渡す。
-- **Note:** current-run Ready全件をexact targetでprivate draftへ送る。公開は人間のみ。
-- **Existing draft regeneration:** exact sync_id、既存draft identity、未公開stateを固定し、現行Gate通過後も同じdraftだけを更新する。
-- **Persisted resume:** `Ready / Deep Dive` をfresh確認し、Provider generation / Gemini call 0でpersist済み本文とeyecatchを同じdraftへ反映する。
+- **Content Intelligence Ready body:** current canonical manuscriptをexact 1本だけ保持。複数旧稿残存はFail-Closed対象。
+- **Eyecatch V2:** 承認済み白背景＋右側青ガラスAIコア、zero-provider overlay、動的badge、hook、title、footer。
+- **Eyecatch integrity:** 1280×670、PNG pixel proof、ellipsis禁止、語中改行禁止、不完全文節終端禁止、Run248もpolicy hash対象。
+- **Stable note draft identity:** persisted `note下書きID` をauthorityとし、note.com / editor.note.comのhost差よりopaque draft path一致を優先。
+- **Subscription Attribution:** GitHub GET/PUTは同じ `EYECATCH_GITHUB_BRANCH` を使用し、既存更新はbranch上current SHAをPUTへ渡す。
+- **Note delivery:** current-run Ready全件をexact target判定へ送る。`reconcile_existing` はdurable-ledger reconciliationとしてVM fan-out可能。
+- **Exact note sync:** bare syncに加え32-hex target指定のChatOps再同期を持つ。
+- **Existing draft regeneration:** exact sync_id、既存draft identity、未公開stateを固定し、現行Gate通過後も同じdraftだけ更新。
+- **Persisted resume:** `Ready / Deep Dive` をfresh確認し、Provider generation / Gemini call 0でpersist済み本文とeyecatchを同じdraftへ反映。
+- **Ready asset recovery:** exact Content Intelligence pageをdirect GETし、terminal guard → current Production → fresh Ready proof後だけ配送。
 - **Publication reconcile:** RSS read-only。note投稿日と一次Source公開日を分離。
 - **Content Intelligence:** Event / Articleの正本。
 - **Technology Intelligence:** durable Technology current state。
@@ -1072,7 +1059,7 @@ Factory全体を理解するときは、まず本書を読む。
 - **Paid Product:** Use-Decision Intelligence / 月額1,980円。
 - **Monthly Brief:** zero-modelでMember current stateから更新。
 - **Product Review:** Daily内で専用1 pass。
-- **CI:** Falsification / Integration / Notion / Workflow guardsを維持。
-- **Recovery:** 過去Recovery専用surfaceを復活させない。
+- **CI:** Falsification / Integration / Notion / Workflow guardsに加え、Canonical Specification Freshness Guardで仕様書の照合日とProduction Fingerprintを機械強制。
+- **Recovery:** 過去Recovery専用surfaceを復活させず、現行exact / fail-closed laneだけを使う。
 
 この状態から次の開発を行う。過去Run文書・旧Recovery・旧Provider構成・旧Source構成を暗黙の前提として引き継がない。
