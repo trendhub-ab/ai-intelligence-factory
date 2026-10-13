@@ -1,0 +1,72 @@
+name: Ready Asset Recovery ChatOps Bridge
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+  issues: read
+
+concurrency:
+  group: aiif-ready-asset-recovery-chatops
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    if: >-
+      github.run_attempt == 1 &&
+      github.event.issue.number == 71 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.user.login == 'trendhub-ab' &&
+      github.actor == 'trendhub-ab' &&
+      startsWith(github.event.comment.body, '/aiif ready asset_recovery ')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Parse exact command fail-closed
+        id: parse
+        shell: bash
+        env:
+          BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$BODY" =~ ^/aiif\ ready\ asset_recovery\ ([0-9a-fA-F]{32})$ ]]; then
+            echo '::error::Invalid exact Ready asset recovery command'
+            exit 1
+          fi
+          sync_id="${BASH_REMATCH[1],,}"
+          echo "sync_id=$sync_id" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch exact recovery ONE-SHOT
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          TARGET_SYNC_ID: ${{ steps.parse.outputs.sync_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo '::error::GH_PAT is required for chainable workflow dispatch'
+            exit 1
+          fi
+          payload="$(printf '{"ref":"main","inputs":{"sync_id":"%s","confirm":"RUN_ONCE"}}' "$TARGET_SYNC_ID")"
+          printf '%s' "$payload" | gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/ready-asset-recovery-once.yml/dispatches" \
+            --input -
+
+      - name: Record dispatch boundary
+        env:
+          TARGET_SYNC_ID: ${{ steps.parse.outputs.sync_id }}
+        run: |
+          {
+            echo '### Ready Asset Recovery ChatOps dispatch'
+            echo '- control issue: #71'
+            echo "- exact sync_id: \`$TARGET_SYNC_ID\`"
+            echo '- target: `ready-asset-recovery-once.yml` on `main`'
+            echo '- confirmation injected: `RUN_ONCE`'
+            echo '- public note release performed: `false`'
+          } >> "$GITHUB_STEP_SUMMARY"
