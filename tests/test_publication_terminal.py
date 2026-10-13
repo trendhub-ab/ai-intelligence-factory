@@ -1,6 +1,6 @@
 import pytest
 
-from publication_terminal import automatic_regeneration_decision
+from note_delivery_runtime import automatic_regeneration_decision
 
 
 @pytest.mark.parametrize("state", ["already_delivered", "human_blocked", "invalid"])
