@@ -10,7 +10,7 @@ or any provider SDK.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from itertools import islice
 from typing import Any, Callable, Iterable, Mapping
 
@@ -44,6 +44,40 @@ def _timestamp_text(value: Any) -> str | None:
         return value.isoformat()
     text = str(value).strip()
     return text or None
+
+
+def _freshness_signal(value: Any, *, now: datetime) -> tuple[int, str | None]:
+    """Return a small deterministic freshness bonus without making age a hard gate.
+
+    V2-001 is selection-only, so stale items remain eligible when their other
+    evidence is strong. Freshness only influences ordering. Timestamps must be
+    timezone-aware ISO-8601 values; malformed or materially future timestamps
+    receive no freshness credit.
+    """
+
+    if not value:
+        return 0, None
+    try:
+        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return 0, "source_timestamp_invalid"
+    if parsed.tzinfo is None or now.tzinfo is None:
+        return 0, "source_timestamp_invalid"
+
+    try:
+        age_seconds = (
+            now.astimezone(timezone.utc) - parsed.astimezone(timezone.utc)
+        ).total_seconds()
+    except (OverflowError, ValueError):
+        return 0, "source_timestamp_invalid"
+
+    if age_seconds < -86400:
+        return 0, "source_timestamp_future"
+    if age_seconds <= 7 * 86400:
+        return 15, "fresh_within_7d"
+    if age_seconds <= 30 * 86400:
+        return 8, "recent_within_30d"
+    return 0, "stale_over_30d"
 
 
 def normalize_candidate(
@@ -107,13 +141,7 @@ def screen_candidate(
     *,
     now: datetime,
 ) -> dict[str, Any]:
-    """Apply deterministic, provider-free V2-001 cheap screening.
-
-    ``now`` is an explicit input so the contract remains deterministic even
-    though V2-001 does not yet apply an age-decay calculation.
-    """
-
-    del now  # Reserved for a later, explicitly designed freshness policy.
+    """Apply deterministic, provider-free V2-001 cheap screening."""
 
     result = dict(candidate)
     score = 0
@@ -137,9 +165,12 @@ def screen_candidate(
     elif len(description) >= 20:
         score += 10
         reasons.append("description_present")
-    if source_timestamp:
-        score += 15
-        reasons.append("source_timestamp_present")
+
+    freshness_score, freshness_reason = _freshness_signal(source_timestamp, now=now)
+    score += freshness_score
+    if freshness_reason:
+        reasons.append(freshness_reason)
+
     if provider in {"officialvendor", "official", "official_vendor"}:
         score += 20
         reasons.append("official_source")
