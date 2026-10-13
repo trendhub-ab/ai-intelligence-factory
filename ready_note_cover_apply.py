@@ -257,53 +257,46 @@ def _backup_current_cover(page: Any, sync_id: str) -> Path:
 
 
 def _find_exact_existing_draft(page: Any, profile: Path, article: dict[str, Any]) -> str:
-    candidates = audit_base._recent_private_edit_urls(profile)
-    if not candidates:
-        raise ReadyNoteCoverError("no existing private note edit route is present in Chrome history")
+    # Keep the signature stable for existing callers, but never discover drafts from
+    # Chrome history. The persisted opaque draft ID is the only routing authority.
+    del profile
+    draft_id = str(article.get("draft_id") or "").strip()
+    if not draft_id:
+        raise ReadyNoteCoverError("existing destination has no stable private draft identity")
+    try:
+        stable_route = audit_base._draft_edit_url(draft_id)
+    except audit_base.PrivateDraftAuditError as exc:
+        raise ReadyNoteCoverError("stable private draft identity is malformed") from exc
 
-    matched: dict[str, str] = {}
-    title_conflicts = 0
-    seeded = False
-    for candidate in candidates:
-        try:
-            page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
-            page.wait_for_timeout(900)
-            if note_base._looks_logged_out(page) and not seeded:
-                seeded = bool(run190._seed_note_state(page.context, page))
-                if seeded:
-                    page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
-                    page.wait_for_timeout(900)
-            if note_base._looks_logged_out(page):
-                continue
-            if not audit_base._is_note_edit_url(str(page.url or "")):
-                continue
-            if audit_base._title_value(page) != str(article["title"]).strip():
-                continue
-            try:
-                _audit_current_private_draft(
-                    page,
-                    str(article["title"]),
-                    str(article["manuscript"]),
-                )
-            except audit_base.PrivateDraftAuditError:
-                title_conflicts += 1
-                continue
-            actual = str(page.url or "")
-            matched[_route_key(actual)] = actual
-        except ReadyNoteCoverError:
-            raise
-        except Exception:
-            continue
-
-    if len(matched) != 1:
-        if title_conflicts and not matched:
-            raise ReadyNoteCoverError(
-                "a private draft with the target title exists but its body is not the approved current article"
-            )
-        raise ReadyNoteCoverError(
-            f"expected exactly one approved existing private draft; found {len(matched)}"
+    try:
+        page.goto(stable_route, wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(900)
+        if note_base._looks_logged_out(page):
+            seeded = bool(run190._seed_note_state(page.context, page))
+            if seeded:
+                page.goto(stable_route, wait_until="domcontentloaded", timeout=60000)
+                page.wait_for_timeout(900)
+        if note_base._looks_logged_out(page):
+            raise ReadyNoteCoverError("note authentication is not active")
+        actual = str(page.url or "")
+        if not audit_base._is_note_edit_url(actual) or not _same_edit_route(stable_route, actual):
+            raise ReadyNoteCoverError("stable private draft did not resolve to the persisted edit route")
+        if audit_base._title_value(page) != str(article["title"]).strip():
+            raise ReadyNoteCoverError("stable private draft title does not match the requested article")
+        _audit_current_private_draft(
+            page,
+            str(article["title"]),
+            str(article["manuscript"]),
         )
-    return next(iter(matched.values()))
+        return actual
+    except ReadyNoteCoverError:
+        raise
+    except audit_base.PrivateDraftAuditError as exc:
+        raise ReadyNoteCoverError(
+            "stable private draft body is not the approved current article"
+        ) from exc
+    except Exception as exc:
+        raise ReadyNoteCoverError("stable private draft route could not be opened") from exc
 
 
 def _restore_backup(page: Any, backup_path: Path, article: dict[str, Any]) -> bool:
