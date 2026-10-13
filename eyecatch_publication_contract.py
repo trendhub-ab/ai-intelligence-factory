@@ -42,6 +42,7 @@ class EyecatchContractError(RuntimeError):
 
 
 _ELLIPSIS_RE = re.compile(r"\.\.\.|…")
+_INCOMPLETE_TITLE_END_RE = re.compile(r"(?:は|が|けれど|しかし)[、,]\s*$")
 
 
 def headline_pnginfo(public_title: str, expected: str, rendered_lines: list[str]) -> PngImagePlugin.PngInfo:
@@ -144,6 +145,8 @@ def require_public_title(parsed: dict[str, Any]) -> str:
         raise EyecatchContractError("public note title is required for eyecatch generation")
     if "\n" in title or "\r" in title:
         raise EyecatchContractError("public note title must be one logical line")
+    if _INCOMPLETE_TITLE_END_RE.search(title):
+        raise EyecatchContractError("public note title ends with an incomplete Japanese clause")
     return title
 
 
