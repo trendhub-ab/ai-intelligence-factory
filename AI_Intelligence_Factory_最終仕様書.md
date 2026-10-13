@@ -1,14 +1,14 @@
 # AI Intelligence Factory — 現行Production仕様
 
-仕様最終変更日: **2026-10-13**  
-Production最終照合日: **2026-10-13**  
-Production Source of Truth: **`main`**  
-Canonical Specification: **本ファイル**  
-Production Contract Fingerprint: **`913f76f2777cc27edde7a89ede55662e2eb83ace7e3ba1572e97b4351565e54d`**  
-実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**  
+仕様最終変更日: **2026-10-13**
+Production最終照合日: **2026-10-13**
+Production Source of Truth: **`main`**
+Canonical Specification: **本ファイル**
+Production Contract Fingerprint: **`913f76f2777cc27edde7a89ede55662e2eb83ace7e3ba1572e97b4351565e54d`**
+実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
-> 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。  
-> 実装監査基準SHAは、本書の意味内容を人間が最後に横断照合した`main`の基準点である。Production Contract Fingerprintは、現行Productionの実行コード・workflow・runtime asset等の実バイトから機械計算し、仕様書自身・tests・docsは含めない。mergeでHEAD SHAが進んでも、Production bytesが同一ならFingerprintは同一である。  
+> 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
+> 実装監査基準SHAは、本書の意味内容を人間が最後に横断照合した`main`の基準点である。Production Contract Fingerprintは、現行Productionの実行コード・workflow・runtime asset等の実バイトから機械計算し、仕様書自身・tests・docsは含めない。mergeでHEAD SHAが進んでも、Production bytesが同一ならFingerprintは同一である。
 > 過去のRun番号、検証レポート、Recovery文書、`docs/reference/`、`docs/archive/`、Git履歴は設計理由・監査証跡として参照できるが、現在の実装・安全契約を上書きしない。
 
 ---
@@ -817,7 +817,7 @@ Decision Historyはappend-oriented history。score delta、status change、previ
 
 ### 12.3 Content Intelligenceとの違い
 
-**Content Intelligence DB** = 「何が起きたか」。Content Event / 記事候補 / 記事生成・Ready・note連携の正本。  
+**Content Intelligence DB** = 「何が起きたか」。Content Event / 記事候補 / 記事生成・Ready・note連携の正本。
 **Technology Intelligence DB** = 「その技術を今どう評価するか」。複数Source / Eventを統合したTechnology current state。
 
 ### 12.4 Member / Subscriber derived surfaces
