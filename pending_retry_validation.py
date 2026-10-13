@@ -62,6 +62,13 @@ VALIDATION_OUTCOME_NOT_GENERATED = "not_generated"
 VALIDATION_OUTCOME_UNVERIFIED = "unverified"
 
 
+def automatic_regeneration_decision(page_id: str) -> tuple[bool, str]:
+    """Lazy bridge to durable delivery authority; keeps import-only tests hermetic."""
+    from note_delivery_runtime import automatic_regeneration_decision as resolve
+
+    return resolve(page_id)
+
+
 def prepare_fast_lane_env(env: MutableMapping[str, str] | None = None) -> MutableMapping[str, str]:
     """Pin narrow fast-lane controls before ``pipeline`` is imported."""
     target = env if env is not None else os.environ
@@ -82,14 +89,7 @@ def prioritize_pending_items(items: list[dict[str, Any]] | None) -> list[dict[st
 
 
 def classify_nonpersistent_report(report: Any) -> str:
-    """Classify the explicit ``persist_results=False`` Production return fail-closed.
-
-    ``pipeline.generate_intelligence_report`` returns ``(manuscript, status)`` in this
-    mode. A manuscript is intentionally truthy even when status is ``rejected`` so the
-    diagnostic artifact can be saved; truthiness therefore must never mean quality
-    success. Unknown/legacy return shapes remain ``unverified`` rather than being
-    promoted to success.
-    """
+    """Classify the explicit ``persist_results=False`` Production return fail-closed."""
     if report is None:
         return VALIDATION_OUTCOME_NOT_GENERATED
     if isinstance(report, tuple) and len(report) >= 2:
@@ -104,8 +104,6 @@ def classify_nonpersistent_report(report: Any) -> str:
 def _empty_lane_result() -> dict[str, int]:
     return {
         "attempted": 0,
-        # Backward-compatible key. In this non-persistent lane it now means explicit
-        # quality-pass (accepted), never merely "a truthy manuscript was returned".
         "succeeded": 0,
         "quality_passed": 0,
         "quality_failed": 0,
@@ -121,13 +119,7 @@ def run_pending_retry_lane(
     success_target: int = 1,
     article_attempt_limit: int = FAST_LANE_ARTICLE_ATTEMPT_LIMIT,
 ) -> dict[str, int]:
-    """Attempt a bounded number of *articles*, independently of model-request fallback.
-
-    The validation lane defaults to one article candidate. ``generate_intelligence_report`` may
-    still consume more than one provider request for that same candidate under the Production
-    fallback/recovery policy, but a failed first candidate must never cause the validation run to
-    move on to a second article implicitly.
-    """
+    """Attempt bounded pre-publication Pending Retry articles only."""
     result = _empty_lane_result()
     success_target = max(1, int(success_target or 1))
     article_attempt_limit = max(1, int(article_attempt_limit or 1))
@@ -135,6 +127,23 @@ def run_pending_retry_lane(
     for rank, item in enumerate(prioritize_pending_items(items), start=1):
         if result["quality_passed"] >= success_target or result["attempted"] >= article_attempt_limit:
             break
+
+        logger = getattr(pipeline_module, "logger", None)
+        page_id = str(item.get("notion_page_id") or "").strip()
+        if not page_id:
+            if logger is not None:
+                logger.info("[PENDING RETRY SKIP: DELIVERY] missing article identity")
+            continue
+        allowed, reason = automatic_regeneration_decision(page_id)
+        if not allowed:
+            if logger is not None:
+                logger.info(
+                    "[PENDING RETRY SKIP: DELIVERY] page=%s reason=%s",
+                    page_id,
+                    reason,
+                )
+            continue
+
         pending_budget = getattr(pipeline_module, "PENDING_RETRY_REQUEST_BUDGET")
         deep_budget = getattr(pipeline_module, "DEEP_DIVE_MODEL_BUDGET")
         run_budget = getattr(pipeline_module, "GEMINI_BUDGET")
@@ -147,7 +156,6 @@ def run_pending_retry_lane(
 
         repo = item.get("repo") or {}
         name = repo.get("nameWithOwner") or "Pending Retry"
-        logger = getattr(pipeline_module, "logger", None)
         if logger is not None:
             logger.info(
                 "[PENDING RETRY FAST LANE] rank=%s score=%s candidate=%s article_attempt=%s/%s request_cap=%s repair_reserve=%s",
@@ -163,7 +171,7 @@ def run_pending_retry_lane(
         result["attempted"] += 1
         report = pipeline_module.generate_intelligence_report(
             repo,
-            item.get("notion_page_id"),
+            page_id,
             item.get("screening_score"),
             item.get("screening_reason", ""),
             candidate_rank=rank,
@@ -192,11 +200,6 @@ def run_pending_retry_lane(
 
 
 def install_current_production_article_stack(pipeline_module, note_manuscript_module):
-    """Install the same current article-quality overlays as production_pipeline.main().
-
-    Fast-lane transport controls are deliberately excluded here and installed by main()
-    only after parity is established. Keep this order synchronized with Production.
-    """
     import production_pipeline
     from source_normalization import install as install_source_normalization
     from run231_performance_telemetry import install as install_performance_telemetry
@@ -221,23 +224,11 @@ def install_current_production_article_stack(pipeline_module, note_manuscript_mo
 
 
 def _model_is_excluded(model_name: Any) -> bool:
-    """Delegate temporary model exclusions to the shared expiry-bound policy."""
     from gemini_temporary_exclusion import excluded
-
     return bool(excluded(model_name))
 
-def install_validation_model_exclusions(pipeline_module):
-    """Enforce expiry-bound provider exclusions and the validation send ceiling.
 
-    Temporary model exclusions are owned by gemini_temporary_exclusion. Routing
-    overlays can restore their default pool, so this lane mirrors that shared policy
-    both when filtering runtime pools and in the final sender guard before reservation.
-    Its local ceiling follows the pipeline's usage-audit attempt record when available;
-    therefore a local/persistent pre-send rejection does not masquerade as a provider
-    send, while 429/503/provider-visible failures remain counted. Model-assisted
-    eyecatch layout is unnecessary for article-quality validation and is rejected before
-    reservation in this lane.
-    """
+def install_validation_model_exclusions(pipeline_module):
     if getattr(pipeline_module, "_pending_validation_exclusions_installed", False):
         return pipeline_module
     original = pipeline_module._generate_via_chat
@@ -276,13 +267,8 @@ def install_validation_model_exclusions(pipeline_module):
         finally:
             after = _audit_attempt_count()
             if before is not None and after is not None:
-                # _consume_gemini_request records the attempt only after all pre-send
-                # local/persistent budgets have admitted it. A 429/503 still leaves one
-                # audit record, while a pre-send rejection leaves zero.
                 sends += max(0, after - before)
             else:
-                # Lightweight tests/legacy adapters may not expose the audit object.
-                # Preserve the previous conservative admission accounting there.
                 sends += 1
 
     pipeline_module._generate_via_chat = guarded_send
@@ -335,15 +321,9 @@ def main() -> int:
     )
     pipeline.logger.info(
         "[PENDING RETRY FAST LANE RESULT] backlog=%s attempted=%s quality_passed=%s quality_failed=%s not_generated=%s unverified=%s ready_persisted=0 article_limit=%s request_cap=%s repair_reserve=%s",
-        len(items),
-        result["attempted"],
-        result["quality_passed"],
-        result["quality_failed"],
-        result["not_generated"],
-        result["unverified"],
-        FAST_LANE_ARTICLE_ATTEMPT_LIMIT,
-        FAST_LANE_PENDING_RETRY_REQUEST_BUDGET,
-        FAST_LANE_POST_GENERATION_REPAIR_RESERVE,
+        len(items), result["attempted"], result["quality_passed"], result["quality_failed"],
+        result["not_generated"], result["unverified"], FAST_LANE_ARTICLE_ATTEMPT_LIMIT,
+        FAST_LANE_PENDING_RETRY_REQUEST_BUDGET, FAST_LANE_POST_GENERATION_REPAIR_RESERVE,
     )
     pipeline.finalize_deep_dive_observability(funnel)
     return 0
