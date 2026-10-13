@@ -23,7 +23,7 @@ def _pipeline(calls):
         GEMINI_BUDGET=_Budget(),
         DEEP_DIVE_MODEL_POOL=["m1"],
         _model_pool_has_session_candidate=lambda pool: True,
-        generate_intelligence_report=lambda repo, **kwargs: calls.append((repo, kwargs)) or ("manuscript", "accepted"),
+        generate_intelligence_report=lambda repo, *args, **kwargs: calls.append((repo, args, kwargs)) or ("manuscript", "accepted"),
         logger=_Logger(),
     )
 
