@@ -1,6 +1,6 @@
 # V2-003 Manual Shadow Observation — Design Specification
 
-- Status: AWAITING_USER_REVIEW
+- Status: APPROVED_BY_USER
 - Date: 2026-10-14
 - Base main: `14d37baaaaa976aa8774329e98114a804db49e9f`
 - Depends on: V2-001 Shadow Selection Vertical Slice, V2-002 Bounded Live Shadow Acquisition
