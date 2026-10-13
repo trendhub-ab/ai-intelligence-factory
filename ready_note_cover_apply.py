@@ -65,7 +65,7 @@ def _route_key(url: str) -> str:
 def _same_edit_route(left: str, right: str) -> bool:
     if not audit_base._is_note_edit_url(left) or not audit_base._is_note_edit_url(right):
         return False
-    return _route_key(left) == _route_key(right)
+    return urlparse(str(left or "")).path.rstrip("/") == urlparse(str(right or "")).path.rstrip("/")
 
 
 def _source_current_asset(sync_id: str, title: str) -> tuple[str, str]:
