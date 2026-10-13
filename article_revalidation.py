@@ -18,7 +18,6 @@ Pending Retry keeps its dedicated operational lane.
 from __future__ import annotations
 
 from pending_retry_validation import classify_nonpersistent_report
-from note_delivery_runtime import automatic_regeneration_decision
 
 import os
 import re
@@ -31,6 +30,13 @@ DEFAULT_REQUEST_BUDGET = 4
 DEFAULT_FULL_RECOVERY_LIMIT = 1
 DEFAULT_STALE_READY_PROBE_LIMIT = 5
 _INSTALLED_ATTR = "_run277_existing_editorial_recovery_installed"
+
+
+def automatic_regeneration_decision(page_id: str) -> tuple[bool, str]:
+    """Lazy bridge to durable delivery authority; keeps lightweight imports hermetic."""
+    from note_delivery_runtime import automatic_regeneration_decision as resolve
+
+    return resolve(page_id)
 
 
 def _select_name(prop: dict[str, Any] | None) -> str:
@@ -142,16 +148,11 @@ def select_revalidation_items(
             continue
         article_status, content_status = statuses
 
-        # Delay the more expensive manuscript-provenance read until after higher-priority
-        # Editorial Review rows are known. If Editorial already fills the caller's limit,
-        # no Ready block read is necessary at all.
         if article_status == pipeline.ARTICLE_STATUS_READY:
             if include_stale_ready:
                 ready_candidates.append((item, article_status, content_status))
             continue
 
-        # Pending Retry belongs to its dedicated operational recovery lane and must never
-        # be double-consumed here.
         if content_status == pipeline.CONTENT_STATUS_PENDING_RETRY:
             continue
         if not include_quality_failed and content_status == pipeline.CONTENT_STATUS_QUALITY_FAILED:
@@ -167,8 +168,6 @@ def select_revalidation_items(
         elif include_quality_failed and content_status == pipeline.CONTENT_STATUS_QUALITY_FAILED:
             quality_failed.append(selected)
 
-    # Current-policy Ready is terminal. Only prove enough Ready rows to fill capacity
-    # not already owned by Editorial Review. Missing/failed provenance proof fails closed.
     stale_slots = limit if prefer_stale_ready else max(0, limit - len(editorial))
     if stale_slots and ready_candidates:
         has_current = getattr(pipeline, "_notion_page_has_manuscript_child", None)
@@ -399,8 +398,6 @@ def run_existing_editorial_recovery(
             break
         is_stale_ready = bool(item.get("revalidation_stale_ready"))
         page_id = str(item.get("notion_page_id") or "")
-        # Every write-enabled existing-article recovery candidate must prove that
-        # automatic delivery has not started. Missing/ambiguous authority fails closed.
         if not _automatic_existing_recovery_allowed(pipeline, page_id):
             continue
         repo = rehydrate_recovery_repo(pipeline, item)
