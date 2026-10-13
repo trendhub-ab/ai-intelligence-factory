@@ -27,6 +27,7 @@ from urllib.parse import urlparse
 import eyecatch_publication_contract as eyecatch_contract
 import note_draft_automation as note_base
 import note_eyecatch_persistence as eyecatch
+import note_publication_reconcile as note_lifecycle
 import note_ready_sync as ready_sync
 import run190_note_persistent_cloud as run190
 import run193_note_official_header_upload as official_image
@@ -111,6 +112,7 @@ def _destination_private_row(sync_id: str) -> dict[str, Any]:
     posting = ready_sync._select(props.get("投稿状態"))
     quality = ready_sync._select(props.get("品質状態"))
     title = ready_sync._text(props.get("記事タイトル"))
+    draft_id = ready_sync._text(props.get(note_lifecycle.DRAFT_ID_PROPERTY))
     published = str((((props.get("投稿日") or {}).get("date") or {}).get("start")) or "").strip()
     if posting != "投稿準備中":
         raise ReadyNoteCoverError(f"existing destination is not 投稿準備中: {posting!r}")
@@ -124,6 +126,7 @@ def _destination_private_row(sync_id: str) -> dict[str, Any]:
         "destination_page_id": str(page.get("id") or ""),
         "sync_id": sync_id,
         "title": title,
+        "draft_id": draft_id,
         "quality_state": quality,
         "posting_state": posting,
     }
