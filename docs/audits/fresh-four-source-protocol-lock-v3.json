@@ -24,7 +24,7 @@
     "deep_dive_portfolio.py": "27e4dd67b9eeba405b03adde200fddfb98e2dd42",
     "reader_value_review_bridge.py": "b1adec4f6bcf6e022530d5d147a9698ed8e030ab",
     "run208_reader_value_repair.py": "6a1c61b2c9ed2a3e05cb199be0adb9983164c8a7",
-    "run248_first_real_publish_quality_calibration.py": "02bc1899ae8ff686b57d8c4782b266fff87df1c9",
+    "run248_first_real_publish_quality_calibration.py": "07f61c65dd77133e2856214486934b9ed0f97cc2",
     "run249_final_publication_surface_gate.py": "47a12ae0ebeafc701a038e3e0b19bca2f02c7511",
     "run194_publication_contract.py": "631e026307e5bbd0d312ab3c31b3fa8d00a7c499",
     ".github/workflows/daily-one-shot.yml": "88d28d24b3b60d095806d15ea54b094bdb19ddab",
