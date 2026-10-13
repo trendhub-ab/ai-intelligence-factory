@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-10-12T22:43:55.641845+00:00",
+  "updated_at": "2026-10-13T04:30:20.645310+00:00",
   "items": [
     {
       "key": "https://ai.google.dev/gemini-api/docs/changelog?aif_revision=1d9c8b6a59a7b07a",
@@ -728,6 +728,43 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "MODEL",
       "deep_dive_priority_score": 73.25
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=50051583",
+      "deferred_at": "2026-10-13T04:30:20.644986+00:00",
+      "expires_at": "2026-10-15T04:30:20.644986+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Research Firm Calls Anthropic's IPO 'Unprecedented Test of Investor Gullibity'",
+        "originalTitle": "Research Firm Calls Anthropic's IPO 'Unprecedented Test of Investor Gullibity'",
+        "displayName": "Research Firm Calls Anthropic's IPO 'Unprecedented Test of Investor Gullibity'",
+        "sourceLanguage": "en",
+        "url": "https://www.cnbc.com/2026/10/07/anthropic-will-be-most-ridiculous-ipo-of-year-analyst-says.html",
+        "description": "Research Firm Calls Anthropic's IPO 'Unprecedented Test of Investor Gullibity'",
+        "stargazerCount": 238,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-12T05:03:47Z",
+        "sourceContext": "HN points=238 comments=210 matched_query=Anthropic",
+        "primaryUrl": "https://www.cnbc.com/2026/10/07/anthropic-will-be-most-ridiculous-ipo-of-year-analyst-says.html",
+        "sourceDetails": {
+          "hn_id": "50051583",
+          "hn_url": "https://news.ycombinator.com/item?id=50051583",
+          "external_url": "https://www.cnbc.com/2026/10/07/anthropic-will-be-most-ridiculous-ipo-of-year-analyst-says.html",
+          "comments": 210,
+          "matched_query": "Anthropic",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3f8479ff-dca9-818d-b9d7-fb2354d3f1b5",
+      "score": 60,
+      "reason": "市場観測であり技術的な意思決定への影響は限定的。",
+      "commercial_score": 75,
+      "shelf_life_score": 20,
+      "shelf_life": "FLASH",
+      "portfolio_topic": "OTHER",
+      "deep_dive_priority_score": 65.25
     }
   ]
 }
