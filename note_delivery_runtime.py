@@ -26,6 +26,7 @@ RUN222_TRANSFORM_VERSION = "note-presentation-integrity-v1"
 READY_PROVENANCE_VERSION = "ready-waiting-current-publication-v1"
 NOTE_DELIVERY_LEDGER_ENV = "NOTE_DELIVERY_LEDGER_PATH"
 DEFAULT_LEDGER_PATH = Path.home() / ".aiif-note" / "delivery-ledger-v1.sqlite3"
+_PREPUBLICATION_REGENERATION_STATES = frozenset({"not_queued", "waiting"})
 
 
 class InplaceUpdateBlocked(DeliveryLedgerError):
@@ -37,6 +38,48 @@ class PreparedDelivery:
     article: Mapping[str, Any]
     snapshot: DeliverySnapshot
     eyecatch_path: Path
+
+
+def automatic_regeneration_decision(
+    sync_id: str,
+    *,
+    classifier=None,
+    delivery_configured=None,
+) -> tuple[bool, str]:
+    """Fail closed unless durable note state proves an existing article is pre-publication.
+
+    This authority is provider-free. Missing delivery configuration, unreadable state,
+    duplicates/invalid states, and every delivery-started or human-blocked state stop
+    automatic regeneration. Only explicit ``not_queued`` or ``waiting`` may continue.
+    """
+    if classifier is None or delivery_configured is None:
+        try:
+            import note_ready_sync as ready_sync
+        except Exception:
+            return False, "delivery_authority_unavailable"
+        if classifier is None:
+            classifier = ready_sync.classify_exact_delivery_state
+        if delivery_configured is None:
+            delivery_configured = lambda: bool(
+                ready_sync.DEST_DATA_SOURCE_ID or ready_sync.DEST_DATABASE_ID
+            )
+
+    try:
+        configured = bool(delivery_configured())
+    except Exception:
+        return False, "delivery_authority_unavailable"
+    if not configured:
+        return False, "delivery_authority_unavailable"
+
+    try:
+        state = str(classifier(str(sync_id or "")) or "").strip()
+    except Exception:
+        return False, "delivery_state_unavailable"
+    if state in _PREPUBLICATION_REGENERATION_STATES:
+        return True, state
+    if state in {"already_delivered", "human_blocked"}:
+        return False, state
+    return False, "delivery_state_invalid"
 
 
 def _note_target(base: Any) -> str:

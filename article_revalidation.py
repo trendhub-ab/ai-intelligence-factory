@@ -32,6 +32,13 @@ DEFAULT_STALE_READY_PROBE_LIMIT = 5
 _INSTALLED_ATTR = "_run277_existing_editorial_recovery_installed"
 
 
+def automatic_regeneration_decision(page_id: str) -> tuple[bool, str]:
+    """Lazy bridge to durable delivery authority; keeps lightweight imports hermetic."""
+    from note_delivery_runtime import automatic_regeneration_decision as resolve
+
+    return resolve(page_id)
+
+
 def _select_name(prop: dict[str, Any] | None) -> str:
     selected = ((prop or {}).get("select") or {})
     return str(selected.get("name") or "")
@@ -63,45 +70,15 @@ def _read_current_statuses(pipeline, page_id: str) -> tuple[str, str] | None:
 
 
 def _automatic_existing_recovery_allowed(pipeline, page_id: str) -> bool:
-    """Prevent automatic write-enabled recovery after note delivery has started.
-
-    Read-only/manual article_validation remains able to inspect existing rows. This guard is
-    only for the write-enabled normal/full Production recovery lane and applies uniformly to
-    Editorial Review and stale Ready candidates. note_ready_sync is imported lazily so
-    lightweight validation/import surfaces do not acquire its requests dependency.
-
-    Only rows that are not queued yet, or are still merely waiting in the note queue, may
-    consume article-provider budget. 投稿準備中 / 投稿済み and every blocked/invalid state
-    are terminal for automatic Daily recovery. If delivery state cannot be read, fail closed.
-    """
-    try:
-        import note_ready_sync as ready_sync
-    except Exception as exc:
-        pipeline.logger.warning(
-            "[EXISTING ARTICLE RECOVERY SKIP: DELIVERY MODULE UNAVAILABLE] page=%s error=%s",
+    """Allow automatic write recovery only when durable delivery proves pre-publication."""
+    allowed, reason = automatic_regeneration_decision(page_id)
+    if not allowed:
+        pipeline.logger.info(
+            "[EXISTING ARTICLE RECOVERY SKIP: DELIVERY] page=%s reason=%s",
             page_id,
-            exc,
+            reason,
         )
-        return False
-    if not (ready_sync.DEST_DATA_SOURCE_ID or ready_sync.DEST_DATABASE_ID):
-        return True
-    try:
-        delivery_state = ready_sync.classify_exact_delivery_state(page_id)
-    except Exception as exc:
-        pipeline.logger.warning(
-            "[EXISTING ARTICLE RECOVERY SKIP: DELIVERY STATE UNAVAILABLE] page=%s error=%s",
-            page_id,
-            exc,
-        )
-        return False
-    if delivery_state in {"not_queued", "waiting"}:
-        return True
-    pipeline.logger.info(
-        "[EXISTING ARTICLE RECOVERY SKIP: DELIVERY] page=%s state=%s",
-        page_id,
-        delivery_state,
-    )
-    return False
+    return allowed
 
 
 def _automatic_stale_ready_recovery_allowed(pipeline, page_id: str) -> bool:
@@ -171,16 +148,11 @@ def select_revalidation_items(
             continue
         article_status, content_status = statuses
 
-        # Delay the more expensive manuscript-provenance read until after higher-priority
-        # Editorial Review rows are known. If Editorial already fills the caller's limit,
-        # no Ready block read is necessary at all.
         if article_status == pipeline.ARTICLE_STATUS_READY:
             if include_stale_ready:
                 ready_candidates.append((item, article_status, content_status))
             continue
 
-        # Pending Retry belongs to its dedicated operational recovery lane and must never
-        # be double-consumed here.
         if content_status == pipeline.CONTENT_STATUS_PENDING_RETRY:
             continue
         if not include_quality_failed and content_status == pipeline.CONTENT_STATUS_QUALITY_FAILED:
@@ -196,8 +168,6 @@ def select_revalidation_items(
         elif include_quality_failed and content_status == pipeline.CONTENT_STATUS_QUALITY_FAILED:
             quality_failed.append(selected)
 
-    # Current-policy Ready is terminal. Only prove enough Ready rows to fill capacity
-    # not already owned by Editorial Review. Missing/failed provenance proof fails closed.
     stale_slots = limit if prefer_stale_ready else max(0, limit - len(editorial))
     if stale_slots and ready_candidates:
         has_current = getattr(pipeline, "_notion_page_has_manuscript_child", None)
@@ -275,6 +245,7 @@ def rehydrate_recovery_repo(pipeline, item: dict) -> dict | None:
     details["recovery_primary_rehydrated"] = True
     repo["sourceDetails"] = details
     return repo
+
 
 def _cap_validation_budget(pipeline) -> int:
     requested = max(1, int(os.environ.get("ARTICLE_REVALIDATION_REQUEST_BUDGET", str(DEFAULT_REQUEST_BUDGET))))
@@ -416,8 +387,6 @@ def run_existing_editorial_recovery(
         exclude_page_ids=attempted_ids,
     )
     if items is None:
-        # Unlike authoritative fresh dedup, this optional leftover lane must not stop a
-        # completed fresh run merely because its recovery read failed.
         pipeline.logger.warning("[EXISTING EDITORIAL RECOVERY] candidate read failed; skip")
         return generated_count, next_candidate_rank
     if not items:
@@ -429,11 +398,6 @@ def run_existing_editorial_recovery(
             break
         is_stale_ready = bool(item.get("revalidation_stale_ready"))
         page_id = str(item.get("notion_page_id") or "")
-        # Run208 regression: every write-enabled existing-article recovery candidate must
-        # prove that automatic note delivery has not already started. This check happens
-        # before rank increment, source hydration, legal checks, and—critically—before any
-        # provider request, so an already-delivered article cannot consume Daily Ready or
-        # Gemini budget merely because its editorial lifecycle is non-terminal.
         if not _automatic_existing_recovery_allowed(pipeline, page_id):
             continue
         repo = rehydrate_recovery_repo(pipeline, item)
@@ -452,8 +416,6 @@ def run_existing_editorial_recovery(
             origin,
             item.get("revalidation_article_status"),
         )
-        # Preflight and leftover recovery share the same run. A rejected manuscript
-        # can remain Editorial Review, so lifecycle status alone cannot deduplicate it.
         attempted_ids.add(str(item.get("notion_page_id") or ""))
         pipeline._existing_article_recovery_attempted_ids = attempted_ids
         try:
@@ -495,9 +457,6 @@ def install_full_recovery(pipeline):
         return pipeline
 
     def process_article_backlog_with_existing_editorial(pending_items, generated_count, next_candidate_rank):
-        # Preserve the validated order first: fresh acquisition already ran before this helper,
-        # then canonical Deferred -> Pending Retry. Existing Editorial Review, followed by
-        # stale Ready, receives only capacity that would otherwise remain unused before Product Review.
         generated_count, next_candidate_rank = original(
             pending_items, generated_count, next_candidate_rank
         )
