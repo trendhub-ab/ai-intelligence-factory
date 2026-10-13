@@ -34,6 +34,23 @@ def test_policy_hash_covers_run248_quality_calibration():
     assert "run248_first_real_publish_quality_calibration.py" in contract.POLICY_FILES
 
 
+def test_headline_pnginfo_rejects_incomplete_headline_before_save():
+    public_title = "AIを「使う仕事」から「AIに任せる仕事」へ"
+    incomplete_headlines = (
+        "AIの仕事は、",
+        "導入効果が、",
+        "価値は高いけれど、",
+        "性能は改善した。しかし、",
+    )
+    for headline in incomplete_headlines:
+        try:
+            contract.headline_pnginfo(public_title, headline, [headline])
+        except contract.EyecatchContractError:
+            pass
+        else:
+            raise AssertionError(f"incomplete PNG headline must fail before save: {headline}")
+
+
 def test_saved_png_with_incomplete_headline_fails_closed(tmp_path):
     import base64
     import zlib
