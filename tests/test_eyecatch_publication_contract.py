@@ -14,6 +14,22 @@ def test_public_title_is_required_and_never_inferred_from_source_name():
         raise AssertionError("missing public title must fail closed")
 
 
+def test_incomplete_public_title_fails_closed_before_eyecatch_generation():
+    incomplete_titles = (
+        "OpenAIの「歴史を塗り替える数学的発見」は、",
+        "新モデルの評価結果が、",
+        "導入効果は高いけれど、",
+        "性能は改善した。しかし、",
+    )
+    for title in incomplete_titles:
+        try:
+            contract.require_public_title({"title_text": title})
+        except contract.EyecatchContractError:
+            pass
+        else:
+            raise AssertionError(f"incomplete public title must fail closed: {title}")
+
+
 def test_versioned_filename_is_bound_to_title_and_current_policy():
     title = "VT Code：AIのコード変更をどう確認する？"
     filename = contract.versioned_image_filename("Show_HN_VT_Code.png", title)
