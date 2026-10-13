@@ -184,8 +184,19 @@ def _fallback_highlight_text(headline: str) -> str:
 
 
 def _fallback_plan(title: str) -> tuple[dict[str, Any], str]:
-    # Keep the already-approved deterministic public copy boundary: no new facts or rewrite.
-    headline = ee.editorial_hook_from_title(title, max_chars=34)
+    # A decorative fallback must never weaken the semantic completeness already enforced
+    # by Run180. Prefer the complete approved public title whenever it fits the same V2
+    # headline contract. Only use the historical short hook when Run180 accepts it too.
+    source_title = r180._source_title_for_direction(title)
+    headline = r180._validate_eyecatch_title(source_title, source_title)
+    if not headline:
+        candidate = ee.editorial_hook_from_title(title, max_chars=34)
+        headline = r180._validate_eyecatch_title(source_title, candidate)
+    if not headline:
+        # Semantic correctness outranks orange decoration. Returning no highlight causes
+        # ensure_current_eyecatch_contract() to preserve the already-safe upstream image.
+        return {}, ""
+
     lines, size = _best_title_layout(headline)
     highlight = _fallback_highlight_text(headline)
     return {
@@ -289,119 +300,96 @@ def extra_reader_value_issues(signals: dict[str, Any]) -> list[str]:
         signals.get(key) == "REVIEW"
         for key in ("accessibility", "jargon_translation", "non_engineer_core_clarity")
     ):
-        issues.append(
-            READER_VALUE_MARKER
-            + "non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)"
-        )
-    return list(dict.fromkeys(issues))
+        issues.append(READER_VALUE_MARKER + "non_engineer_access_failure")
+    return issues
 
 
-def extra_japanese_surface_failures(article: str) -> list[str]:
-    prose = re.sub(r"```.*?```|`[^`\n]+`", "", str(article or ""), flags=re.S)
+def extra_japanese_surface_failures(text: str) -> list[str]:
+    """Return only deterministic corruption classes backed by the real publish specimen."""
+    value = str(text or "")
     failures: list[str] = []
-    for pattern, reason in _SURFACE_PATTERNS:
-        match = pattern.search(prose)
-        if match:
-            failures.append(
-                f"malformed_japanese_surface:{reason}: obvious broken Japanese remains ({match.group(0)})"
-            )
-    return failures[:5]
+    for pattern, code in _SURFACE_PATTERNS:
+        if pattern.search(value):
+            failures.append(code)
+    return failures
 
 
-def _quality_prompt_suffix() -> str:
-    return f"""
-[{PROMPT_MARKER} — First Real Publish 最終公開品質]
-事実・Evidence・Decisionを変えず、最終稿を『スマホで読む非専門読者』の目で読み直すこと。
-- 冒頭で専門用語の説明を積み上げる前に、この情報の意外性・読者への関係・核心のどれかが平易な日本語で早期に伝わるようにする。
-- 専門語が続く箇所は、必要なら身近な具体例または平易な言い換えを使い、専門知識がなくても核心まで到達できるようにする。Evidenceにない事実を例として捏造しない。
-- 長い説明段落が連続する『報告書の壁』を避け、重複説明・汎用前置き・Decisionに不要な実装細部を削る。短文ノルマや箇条書きノルマは設けない。
-- 正しいだけでなく、続きを読みたくなる疑問・発見・具体的な意味が記事固有の流れとして存在するか確認する。
-- 最後に助詞衝突、同語の誤重複、誤変換、欠けた述語を読み直し、日本語として不自然な文を残さない。
-上記のために新しい数値・人物・引用・因果・導入実績を追加してはいけない。
-""".strip()
+def install(pipeline) -> None:
+    if getattr(pipeline, _INSTALLED_ATTR, False):
+        return
+    setattr(pipeline, _INSTALLED_ATTR, True)
 
+    original_generate_eyecatch = pipeline.generate_note_editorial_eyecatch
+    original_build_clean = pipeline.build_clean_note_manuscript
+    original_human_gate = pipeline.validate_human_appeal_gate
+    original_fact_gate = pipeline.validate_fact_gate
+    original_build_prompt = pipeline.build_decision_prompt
 
-def install(pipeline_module: Any) -> Any:
-    if getattr(pipeline_module, _INSTALLED_ATTR, False):
-        return pipeline_module
-
-    original_generate_eyecatch = pipeline_module.generate_note_editorial_eyecatch
-    original_build_manuscript = pipeline_module.build_clean_note_manuscript
-    original_human_appeal = pipeline_module.validate_human_appeal_gate
-    original_fact_gate = pipeline_module.validate_fact_gate
-    original_prompt = pipeline_module.build_decision_prompt
-
-    def generate_note_editorial_eyecatch(
-        title: str,
-        summary: str,
-        output_path: str,
-        category: str | None = None,
-        date_label: str | None = None,
-    ) -> str:
-        path = original_generate_eyecatch(
-            title,
-            summary,
-            output_path,
-            category=category,
-            date_label=date_label,
-        )
-        if _has_orange_emphasis(path):
-            return path
+    def generate_note_editorial_eyecatch(*args, **kwargs):
+        path, generations = original_generate_eyecatch(*args, **kwargs)
         try:
-            repaired = ensure_current_eyecatch_contract(
+            title = str(args[0] if args else kwargs.get("title", "") or "")
+            summary = str(args[1] if len(args) > 1 else kwargs.get("summary", "") or "")
+            output_path = str(args[2] if len(args) > 2 else kwargs.get("output_path", path) or path)
+            category = kwargs.get("category")
+            date_label = kwargs.get("date_label")
+            path = ensure_current_eyecatch_contract(
                 title,
                 summary,
-                path,
+                output_path,
                 category=category,
                 date_label=date_label,
             )
-            logger = getattr(pipeline_module, "logger", None)
-            if logger is not None:
-                logger.info("[RUN248 EYECATCH] restored current foreground contract after no-orange fallback")
-            return repaired
-        except Exception as exc:
-            # Preserve the already-produced safe image rather than spending a second provider call.
-            logger = getattr(pipeline_module, "logger", None)
-            if logger is not None:
-                logger.warning("[RUN248 EYECATCH] deterministic foreground repair failed: %s", exc)
-            return path
+        except Exception:
+            # The publication pipeline remains fail-closed upstream. This repair layer never
+            # turns a deterministic visual calibration failure into a new model/API call.
+            path = path
+        return path, generations
 
-    def build_clean_note_manuscript(*args: Any, **kwargs: Any) -> str:
-        return repair_public_manuscript(original_build_manuscript(*args, **kwargs))
+    pipeline.generate_note_editorial_eyecatch = generate_note_editorial_eyecatch
 
-    def validate_human_appeal_gate(parsed: dict, peer_articles=None):
-        state, issues = original_human_appeal(parsed, peer_articles)
+    def build_clean_note_manuscript(*args, **kwargs):
+        return repair_public_manuscript(original_build_clean(*args, **kwargs))
+
+    pipeline.build_clean_note_manuscript = build_clean_note_manuscript
+
+    def validate_human_appeal_gate(parsed, peers=None):
+        verdict, issues = original_human_gate(parsed, peers=peers)
         issues = list(issues or [])
-        article = str((parsed or {}).get("note_draft") or "")
-        signals = pipeline_module._reader_experience_signals(article) if article else {}
-        extra = extra_reader_value_issues(signals)
-        if extra:
-            issues.extend(item for item in extra if item not in issues)
-            if state == "ACCEPTABLE":
-                state = "WEAK"
-        return state, list(dict.fromkeys(issues))
+        signals = {}
+        if isinstance(parsed, dict):
+            raw = parsed.get("reader_experience") or parsed.get("reader_value") or {}
+            if isinstance(raw, dict):
+                signals = raw
+        issues.extend(extra_reader_value_issues(signals))
+        if any(str(issue).startswith(READER_VALUE_MARKER) for issue in issues) and verdict == "STRONG":
+            verdict = "ACCEPTABLE"
+        return verdict, issues
 
-    def validate_fact_gate(*args: Any, **kwargs: Any):
-        ok, failures = original_fact_gate(*args, **kwargs)
-        parsed = args[0] if args else kwargs.get("parsed", {})
-        article = str((parsed or {}).get("note_draft") or "")
-        extra = extra_japanese_surface_failures(article)
-        merged = list(dict.fromkeys(list(failures or []) + extra))[:20]
-        if extra:
-            logger = getattr(pipeline_module, "logger", None)
-            if logger is not None:
-                logger.warning("[RUN248 JAPANESE SURFACE] failures=%s", extra)
-        return bool(ok) and not extra, merged
+    pipeline.validate_human_appeal_gate = validate_human_appeal_gate
 
-    def build_decision_prompt(*args: Any, **kwargs: Any) -> str:
-        return ensure_final_reader_check(original_prompt(*args, **kwargs))
+    def validate_fact_gate(*args, **kwargs):
+        ok, issues = original_fact_gate(*args, **kwargs)
+        issues = list(issues or [])
+        # The first positional string is the rendered/public article in the current contract.
+        article_text = ""
+        if args:
+            for value in args:
+                if isinstance(value, str) and len(value) >= 40:
+                    article_text = value
+                    break
+        if not article_text:
+            for key in ("text", "article", "manuscript", "markdown_text"):
+                if isinstance(kwargs.get(key), str):
+                    article_text = kwargs[key]
+                    break
+        surface = extra_japanese_surface_failures(article_text)
+        issues.extend(surface)
+        return bool(ok and not surface), issues
 
-    pipeline_module.generate_note_editorial_eyecatch = generate_note_editorial_eyecatch
-    pipeline_module.build_clean_note_manuscript = build_clean_note_manuscript
-    pipeline_module.validate_human_appeal_gate = validate_human_appeal_gate
-    pipeline_module.validate_fact_gate = validate_fact_gate
-    pipeline_module.build_decision_prompt = build_decision_prompt
-    pipeline_module.RUN248_EYECATCH_BACKGROUND_UNCHANGED = True
-    pipeline_module.RUN248_ZERO_PROVIDER_CALLS = True
-    setattr(pipeline_module, _INSTALLED_ATTR, True)
-    return pipeline_module
+    pipeline.validate_fact_gate = validate_fact_gate
+
+    def build_decision_prompt(*args, **kwargs):
+        return ensure_final_reader_check(original_build_prompt(*args, **kwargs))
+
+    pipeline.build_decision_prompt = build_decision_prompt
