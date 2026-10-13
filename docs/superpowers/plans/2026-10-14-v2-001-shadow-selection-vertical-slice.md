@@ -134,8 +134,10 @@ Commit message: `feat: orchestrate V2 shadow selection`
 
 ### Task 3: Bounded provider-free shadow proof and repository regression
 
+**Implementation adjustment:** the proof harness lives under `tests/`, not repository root. The repository classifies root Python files as Production runtime surfaces; keeping the deterministic proof under `tests/` prevents a test-only harness from becoming a Production contract while preserving a human-runnable JSON proof.
+
 **Files:**
-- Create: `v2_shadow_selection_fixture.py`
+- Create: `tests/v2_shadow_selection_fixture.py`
 - Create: `tests/test_v2_shadow_selection_fixture.py`
 - Modify: PR #777 description after verification only.
 
@@ -159,7 +161,7 @@ Expected: FAIL because fixture runner does not exist.
 
 - [ ] **Step 3: Implement provider-free fixture runner**
 
-Create `v2_shadow_selection_fixture.py` with `build_fixture_report()` and `if __name__ == "__main__": print(json.dumps(...))`. Use only in-memory fixtures and a deterministic Deep Dive callable; no external API or persistence.
+Create `tests/v2_shadow_selection_fixture.py` with `build_fixture_report()` and `if __name__ == "__main__": print(json.dumps(...))`. Use only in-memory fixtures and a deterministic Deep Dive callable; no external API or persistence.
 
 - [ ] **Step 4: Run focused GREEN verification**
 
@@ -177,7 +179,7 @@ Use Draft PR #777 CI for the implementation head. Inspect every triggered run/jo
 
 - [ ] **Step 7: Capture bounded shadow proof**
 
-Run: `python v2_shadow_selection_fixture.py`
+Run: `PYTHONPATH=. python tests/v2_shadow_selection_fixture.py`
 Expected JSON contains `mode="shadow"`, `deep_dive_attempted_count=1`, a stable winner identity, a non-mutating comparison status, and bounded configured/actual call counts.
 
 - [ ] **Step 8: Commit**
