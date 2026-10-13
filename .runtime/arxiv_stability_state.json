@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-10-13T04:34:42.822183+00:00",
+  "updated_at": "2026-10-13T04:34:55.152986+00:00",
   "last_request_at_epoch": 1791866082.8221748,
-  "last_status": 200,
+  "last_status": 429,
   "last_error_type": "",
-  "circuit_run_id": "37571203591",
-  "circuit_status": 0,
-  "circuit_opened_at": "2026-10-07T04:27:03.549230+00:00",
+  "circuit_run_id": "38345873287",
+  "circuit_status": 429,
+  "circuit_opened_at": "2026-10-13T04:34:55.152966+00:00",
   "entries": {
     "fe2a9a8fcd262f58bd31cf7b460821a14759503961c65512fd016813d641520f": {
       "fetched_at_epoch": 1791865877.6880293,
