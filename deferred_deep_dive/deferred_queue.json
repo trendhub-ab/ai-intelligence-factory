@@ -1,43 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-13T04:30:20.645310+00:00",
+  "updated_at": "2026-10-13T04:30:59.807854+00:00",
   "items": [
-    {
-      "key": "https://ai.google.dev/gemini-api/docs/changelog?aif_revision=1d9c8b6a59a7b07a",
-      "deferred_at": "2026-10-12T22:42:58.829052+00:00",
-      "expires_at": "2026-10-26T22:42:58.829052+00:00",
-      "repo": {
-        "source": "OfficialVendor",
-        "nameWithOwner": "Google Gemini — Gemini 3.7 Flash deprecation : gemini-3.7-flash is deprecated and has been replaced by gemini-3.8-flash . It is no longer available to select in Google AI Studio, and API requests to gemini-3.7-flash are automatically ro",
-        "originalTitle": "Google Gemini — Gemini 3.7 Flash deprecation : gemini-3.7-flash is deprecated and has been replaced by gemini-3.8-flash . It is no longer available to select in Google AI Studio, and API requests to gemini-3.7-flash are automatically ro",
-        "displayName": "Google Gemini — Gemini 3.7 Flash deprecation : gemini-3.7-flash is deprecated and has been replaced by gemini-3.8-flash . It is no longer available to select in Google AI Studio, and API requests to gemini-3.7-flash are automatically ro",
-        "sourceLanguage": "en",
-        "url": "https://ai.google.dev/gemini-api/docs/changelog?aif_revision=1d9c8b6a59a7b07a",
-        "description": "Gemini 3.7 Flash deprecation : gemini-3.7-flash is deprecated and has been replaced by gemini-3.8-flash . It is no longer available to select in Google AI Studio, and API requests to gemini-3.7-flash are automatically routed to gemini-3.8-flash . Update your model string to gemini-3.8-flash and review the Gemini 3.8 Flash guide .",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "October 8, 2026",
-        "sourceContext": "Gemini 3.7 Flash deprecation : gemini-3.7-flash is deprecated and has been replaced by gemini-3.8-flash . It is no longer available to select in Google AI Studio, and API requests to gemini-3.7-flash are automatically routed to gemini-3.8-flash . Update your model string to gemini-3.8-flash and review the Gemini 3.8 Flash guide .",
-        "primaryUrl": "https://ai.google.dev/gemini-api/docs/changelog",
-        "sourceDetails": {
-          "vendor": "Google Gemini",
-          "vendor_region": "US",
-          "source_role": "commercial_primary_source",
-          "official_release_url": "https://ai.google.dev/gemini-api/docs/changelog",
-          "candidate_revision": "1d9c8b6a59a7b07a",
-          "vendor_record_kind": "structured_html",
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3f7479ff-dca9-81d6-90ea-ef24bd1f4b6b",
-      "score": 78,
-      "reason": "Gemini 3.7 Flashの非推奨化と移行",
-      "commercial_score": 80,
-      "shelf_life_score": 45,
-      "shelf_life": "TREND",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 78.7
-    },
     {
       "key": "https://airlock.sorrel.systems",
       "deferred_at": "2026-10-12T22:42:58.828957+00:00",
