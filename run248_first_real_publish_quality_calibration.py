@@ -184,8 +184,19 @@ def _fallback_highlight_text(headline: str) -> str:
 
 
 def _fallback_plan(title: str) -> tuple[dict[str, Any], str]:
-    # Keep the already-approved deterministic public copy boundary: no new facts or rewrite.
-    headline = ee.editorial_hook_from_title(title, max_chars=34)
+    # A decorative fallback must never weaken the semantic completeness already enforced
+    # by Run180. Prefer the complete approved public title whenever it fits the same V2
+    # headline contract. Only use the historical short hook when Run180 accepts it too.
+    source_title = r180._source_title_for_direction(title)
+    headline = r180._validate_eyecatch_title(source_title, source_title)
+    if not headline:
+        candidate = ee.editorial_hook_from_title(title, max_chars=34)
+        headline = r180._validate_eyecatch_title(source_title, candidate)
+    if not headline:
+        # Semantic correctness outranks orange decoration. Returning no highlight causes
+        # ensure_current_eyecatch_contract() to preserve the already-safe upstream image.
+        return {}, ""
+
     lines, size = _best_title_layout(headline)
     highlight = _fallback_highlight_text(headline)
     return {

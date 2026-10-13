@@ -25,6 +25,13 @@ class Run248FirstRealPublishQualityCalibrationTests(unittest.TestCase):
         self.assertGreaterEqual(plan['title_font_size'], 68)
         self.assertEqual(highlight, '落とし穴。')
 
+    def test_fallback_plan_preserves_complete_openai_math_headline(self):
+        title = 'OpenAIの「歴史を塗り替える数学的発見」は、なぜ現場で一蹴されたのか。'
+        plan, _highlight = r248._fallback_plan(title)
+        self.assertEqual(''.join(plan['title_lines']), title)
+        self.assertEqual(plan['eyecatch_title'], title)
+        self.assertFalse(plan['eyecatch_title'].endswith(('は、', 'が、', 'けれど、', 'しかし、')))
+
     def test_deterministic_repair_restores_orange_and_keeps_approved_background(self):
         title = 'AIでAIを採点する「LLMジャッジ」の落とし穴。'
         summary = 'AI評価の統計手法に、尺度の床・天井が作る見かけ上の効果という落とし穴がある。'
@@ -83,7 +90,6 @@ class Run248FirstRealPublishQualityCalibrationTests(unittest.TestCase):
         self.assertIn('particle_collision_wo_ni', joined)
         self.assertIn('duplicated_primary_modifier', joined)
         self.assertIn('malformed_lexeme_ganpou', joined)
-
 
     def test_prompt_wrapper_uses_canonical_final_reader_check(self):
         pipe = SimpleNamespace(
