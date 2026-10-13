@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pending_retry_validation as fast_lane
 
@@ -16,6 +16,17 @@ class _Budget:
 
 
 class Run206PendingRetryFastLaneTests(unittest.TestCase):
+    def setUp(self):
+        # These historical tests exercise fast-lane accounting, not delivery
+        # terminality. Make their pre-publication premise explicit.
+        self._terminal = patch.object(
+            fast_lane,
+            "automatic_regeneration_decision",
+            return_value=(True, "not_queued"),
+        )
+        self._terminal.start()
+        self.addCleanup(self._terminal.stop)
+
     def _pipeline(self, reports):
         generate = Mock(side_effect=list(reports))
         return SimpleNamespace(
