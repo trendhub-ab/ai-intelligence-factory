@@ -80,6 +80,61 @@ class ReadyAssetRecoveryContractTests(unittest.TestCase):
         self.assertEqual(result["status"], "not_ready")
         self.assertFalse(result["ready"])
 
+    def test_loader_reads_exact_page_directly_instead_of_scanning_recent_rows(self):
+        from ready_asset_recovery import load_exact_existing_item
+
+        target = "e" * 32
+        calls = []
+
+        class Response:
+            status_code = 200
+            def json(self):
+                return {
+                    "id": target,
+                    "properties": {
+                        "Name": {"title": [{"plain_text": "Task Context Shapes Component Roles in Language Models"}]},
+                        "URL": {"url": "https://arxiv.org/abs/2610.13895"},
+                        "Source": {"select": {"name": "ArXiv"}},
+                        "Source Summary": {"rich_text": [{"plain_text": "summary"}]},
+                        "Engagement": {"number": 0},
+                        "Screening Score": {"number": 65},
+                        "Screening Reason": {"rich_text": [{"plain_text": "publication reliability slot"}]},
+                        "Published At": {"date": {"start": "2026-10-13"}},
+                        "License": {"rich_text": []},
+                    },
+                }
+
+        class Requests:
+            def get(self, url, headers=None, timeout=None):
+                calls.append(url)
+                return Response()
+
+        class Pipeline:
+            requests = Requests()
+            PROP_NAME = "Name"
+            PROP_URL = "URL"
+            PROP_SOURCE = "Source"
+            PROP_SOURCE_SUMMARY = "Source Summary"
+            PROP_ENGAGEMENT = "Engagement"
+            PROP_SCREENING_SCORE = "Screening Score"
+            PROP_SCREENING_REASON = "Screening Reason"
+            PROP_PUBLISHED_AT = "Published At"
+            PROP_LICENSE = "License"
+            NOTION_SAVE_THRESHOLD_SCORE = 60
+            @staticmethod
+            def _notion_headers():
+                return {"Authorization": "test"}
+            @staticmethod
+            def _notion_plain_text(prop):
+                rows = prop.get("title") or prop.get("rich_text") or []
+                return "".join(row.get("plain_text", "") for row in rows)
+
+        item = load_exact_existing_item(Pipeline(), target)
+        self.assertEqual(calls, [f"https://api.notion.com/v1/pages/{target}"])
+        self.assertEqual(item["notion_page_id"], target)
+        self.assertEqual(item["repo"]["source"], "ArXiv")
+        self.assertEqual(item["repo"]["url"], "https://arxiv.org/abs/2610.13895")
+
 
 if __name__ == "__main__":
     unittest.main()
