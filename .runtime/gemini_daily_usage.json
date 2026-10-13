@@ -54,12 +54,12 @@
         "gemini-3.8-flash": {
           "budget": 18,
           "by_kind": {
-            "deep_dive": 3,
+            "deep_dive": 4,
             "product_review": 1,
             "quality_retry": 1
           },
           "exhausted": false,
-          "used": 5
+          "used": 6
         }
       }
     }
@@ -68,5 +68,5 @@
   "quota_date": "2026-10-12",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-10-13T04:32:12.069334+00:00"
+  "updated_at": "2026-10-13T04:33:44.510653+00:00"
 }
