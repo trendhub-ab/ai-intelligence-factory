@@ -31,6 +31,7 @@ POLICY_FILES = (
     "run181_eyecatch_visual_balance.py",
     "run182_eyecatch_conclusion_emphasis.py",
     "run183_eyecatch_emphasis_scale.py",
+    "run248_first_real_publish_quality_calibration.py",
     "eyecatch_publication_contract.py",
 )
 
@@ -51,6 +52,8 @@ def headline_pnginfo(public_title: str, expected: str, rendered_lines: list[str]
     rendered = "".join(rendered_lines)
     if not expected or not rendered or _ELLIPSIS_RE.search(expected + rendered):
         raise EyecatchContractError("eyecatch main headline contains an ellipsis or is empty")
+    if _INCOMPLETE_TITLE_END_RE.search(expected) or _INCOMPLETE_TITLE_END_RE.search(rendered):
+        raise EyecatchContractError("eyecatch main headline ends with an incomplete Japanese clause")
     if re.sub(r"\s+", "", expected) != re.sub(r"\s+", "", rendered):
         raise EyecatchContractError("eyecatch rendered headline differs from approved copy")
     info = PngImagePlugin.PngInfo()
@@ -111,7 +114,7 @@ def _check_headline_pixels(image: Image.Image, records: Any) -> None:
 
 
 def verify_image_headline(image_path: str | Path, public_title: str) -> str:
-    """Fail closed on absent, shortened, or ellipsized title evidence in saved PNG bytes."""
+    """Fail closed on absent, shortened, ellipsized, or incomplete title evidence in saved PNG bytes."""
     from PIL import Image
     try:
         with Image.open(image_path) as image:
@@ -128,6 +131,8 @@ def verify_image_headline(image_path: str | Path, public_title: str) -> str:
         raise EyecatchContractError("eyecatch image cannot be inspected") from exc
     if digest != title_sha256(public_title) or not expected or _ELLIPSIS_RE.search(expected + rendered):
         raise EyecatchContractError("eyecatch title proof is missing or contains an ellipsis")
+    if _INCOMPLETE_TITLE_END_RE.search(expected) or _INCOMPLETE_TITLE_END_RE.search(rendered):
+        raise EyecatchContractError("eyecatch main headline ends with an incomplete Japanese clause")
     if re.sub(r"\s+", "", expected) != re.sub(r"\s+", "", rendered):
         raise EyecatchContractError("eyecatch rendered headline does not match expected headline")
     return expected
