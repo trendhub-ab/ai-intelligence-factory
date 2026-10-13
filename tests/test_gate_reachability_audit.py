@@ -185,6 +185,11 @@ def test_full_recovery_does_not_repeat_consumed_preflight_candidate(production, 
     p.DEEP_DIVE_MODEL_BUDGET.budget = 12
     p.DEEP_DIVE_MODEL_BUDGET.used = 0
     monkeypatch.setattr(p, "_model_pool_has_session_candidate", lambda pool: True)
+    monkeypatch.setattr(
+        article_revalidation,
+        "automatic_regeneration_decision",
+        lambda page_id: (True, "not_queued"),
+    )
     item = {"repo": {"nameWithOwner": "example/router", "url": URL, "primaryUrl": URL,
                      "source": "GitHub", "licenseInfo": {"spdxId": "MIT"}},
             "notion_page_id": "same-page", "screening_score": 72}
