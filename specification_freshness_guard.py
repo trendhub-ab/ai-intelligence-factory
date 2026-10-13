@@ -42,7 +42,10 @@ _RUNTIME_CONFIG_NAMES = {
 
 
 def _normalise(path: str) -> str:
-    return path.replace("\\", "/").lstrip("./")
+    value = path.replace("\\", "/")
+    while value.startswith("./"):
+        value = value[2:]
+    return value
 
 
 def is_production_surface(path: str) -> bool:
