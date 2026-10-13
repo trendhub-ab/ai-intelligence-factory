@@ -70,7 +70,15 @@ def test_validation_article_never_persists_generated_content():
     p.GEMINI_BUDGET = SimpleNamespace(can_request=lambda: True)
     p._model_pool_has_session_candidate = lambda pool: True
     p.generate_intelligence_report = Mock(return_value=("draft", "accepted"))
-    result = lane.run_pending_retry_lane(p, [{"repo": {"nameWithOwner": "target"}}])
+    item = {"repo": {"nameWithOwner": "target"}, "notion_page_id": "prepublication-page"}
+    # This test verifies non-persistence, not terminal delivery classification.
+    # Make the pre-publication premise explicit so fail-closed delivery semantics remain intact.
+    with patch.object(
+        lane,
+        "automatic_regeneration_decision",
+        return_value=(True, "not_queued"),
+    ):
+        result = lane.run_pending_retry_lane(p, [item])
     assert p.generate_intelligence_report.call_args.kwargs["persist_results"] is False
     assert result["quality_passed"] == 1
     assert result["succeeded"] == 1
