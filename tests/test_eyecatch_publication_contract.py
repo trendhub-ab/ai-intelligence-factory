@@ -30,6 +30,50 @@ def test_incomplete_public_title_fails_closed_before_eyecatch_generation():
             raise AssertionError(f"incomplete public title must fail closed: {title}")
 
 
+def test_policy_hash_covers_run248_quality_calibration():
+    assert "run248_first_real_publish_quality_calibration.py" in contract.POLICY_FILES
+
+
+def test_saved_png_with_incomplete_headline_fails_closed(tmp_path):
+    import base64
+    import zlib
+
+    from PIL import Image, PngImagePlugin
+
+    public_title = "AIを「使う仕事」から「AIに任せる仕事」へ"
+    incomplete_headlines = (
+        "AIの仕事は、",
+        "導入効果が、",
+        "価値は高いけれど、",
+        "性能は改善した。しかし、",
+    )
+    encoded_mask = base64.b64encode(zlib.compress(b"\x01" * 9)).decode("ascii")
+
+    for index, headline in enumerate(incomplete_headlines):
+        image = Image.new("RGB", (1280, 670), "white")
+        for x in range(3):
+            for y in range(3):
+                image.putpixel((x, y), (0, 0, 0))
+
+        info = PngImagePlugin.PngInfo()
+        info.add_text("aiif_public_title_sha256", contract.title_sha256(public_title))
+        info.add_text("aiif_expected_headline", headline)
+        info.add_text("aiif_rendered_headline", headline)
+        info.add_text(
+            "aiif_headline_ink_v1",
+            json.dumps([[0, 0, 3, 3, [0, 0, 0], encoded_mask]], separators=(",", ":")),
+        )
+        path = tmp_path / f"incomplete-{index}.png"
+        image.save(path, pnginfo=info)
+
+        try:
+            contract.verify_image_headline(path, public_title)
+        except contract.EyecatchContractError:
+            pass
+        else:
+            raise AssertionError(f"incomplete saved PNG headline must fail closed: {headline}")
+
+
 def test_versioned_filename_is_bound_to_title_and_current_policy():
     title = "VT Code：AIのコード変更をどう確認する？"
     filename = contract.versioned_image_filename("Show_HN_VT_Code.png", title)
