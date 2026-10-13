@@ -1,0 +1,145 @@
+name: Ready Asset Persistence Recovery [ONE-SHOT]
+
+on:
+  workflow_dispatch:
+    inputs:
+      sync_id:
+        description: Exact 32-hex Content Intelligence page id
+        required: true
+        type: string
+      confirm:
+        description: Type RUN_ONCE to recover exactly one article
+        required: true
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    if: ${{ inputs.confirm == 'RUN_ONCE' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      TARGET_SYNC_ID: ${{ inputs.sync_id }}
+      TZ: Asia/Tokyo
+      AIIF_EDITORIAL_STYLE: human_narrative
+      AIIF_RUNTIME_STATE_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
+      GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
+      GEMINI_DEEP_DIVE_MODEL_CANDIDATES: 'gemini-3.6-flash,gemini-3.5-flash,gemini-3.7-flash,gemini-3.8-flash,gemini-3-flash-preview'
+      GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '4'
+      GEMINI_36_FLASH_DAILY_BUDGET: '18'
+      GEMINI_35_FLASH_DAILY_BUDGET: '18'
+      GEMINI_37_FLASH_DAILY_BUDGET: '18'
+      GEMINI_38_FLASH_DAILY_BUDGET: '18'
+      GEMINI_QUOTA_TIMEZONE: America/Los_Angeles
+      GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
+      GEMINI_COUNTER_BRANCH: main
+      EYECATCH_GITHUB_BRANCH: runtime-state
+      GH_PAT: ${{ secrets.GH_PAT }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+      NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+      NOTION_API_VERSION: '2026-03-11'
+      NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+      NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+      NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+      NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+      ENABLE_DECISION_INTELLIGENCE_DB: ${{ vars.ENABLE_DECISION_INTELLIGENCE_DB || 'false' }}
+      ENABLE_JAPANESE_DISPLAY_LABEL: ${{ vars.ENABLE_JAPANESE_DISPLAY_LABEL || 'false' }}
+      NOTION_TECH_DATABASE_ID: ${{ secrets.NOTION_TECH_DATABASE_ID }}
+      NOTION_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_TECH_DATA_SOURCE_ID }}
+      NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
+      NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
+      ENABLE_EVIDENCE_LEDGER: ${{ vars.ENABLE_EVIDENCE_LEDGER || 'false' }}
+      EVIDENCE_LEDGER_REQUIRED: ${{ vars.EVIDENCE_LEDGER_REQUIRED || 'false' }}
+      NOTION_EVIDENCE_DATABASE_ID: ${{ secrets.NOTION_EVIDENCE_DATABASE_ID }}
+      NOTION_EVIDENCE_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_DATA_SOURCE_ID }}
+      ARTICLE_PUBLICATION_MODE: free
+      ENABLE_SUBSCRIPTION_ATTRIBUTION: 'true'
+      SUBSCRIPTION_LANDING_URL: ${{ vars.SUBSCRIPTION_LANDING_URL }}
+      SUBSCRIPTION_CAMPAIGN_ID: ai_intelligence_factory_subscription
+      SUBSCRIPTION_ATTRIBUTION_DIR: subscription_attribution/articles
+      SUBSCRIPTION_ATTRIBUTION_GITHUB_DIR: subscription_attribution/articles
+      EYECATCH_MIN_DECISION_SCORE: '60'
+      NOTION_SAVE_THRESHOLD_SCORE: '60'
+      MAX_EVIDENCE_DOCUMENTS: '3'
+      VERIFICATION_CONTEXT_MAX_CHARS: '180000'
+
+    steps:
+      - name: Require exact target and literal confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirm }}" = 'RUN_ONCE'
+          [[ "$TARGET_SYNC_ID" =~ ^[0-9a-fA-F]{32}$ ]]
+
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install production dependencies and fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk fonts-lato
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify focused recovery contract
+        run: python -m unittest tests.test_ready_asset_recovery -v
+
+      - name: Recover exact article through current Production persistence
+        run: |
+          set -o pipefail
+          python - <<'PY' | tee "${RUNNER_TEMP}/ready-asset-recovery.json"
+          import json
+          import os
+          import note_manuscript
+          import pipeline
+          import run179_eyecatch_font_refinement as run179
+          from operational_output_contract import run_exact_ready_asset_recovery
+          from pending_retry_validation import install_current_production_article_stack
+
+          install_current_production_article_stack(pipeline, note_manuscript)
+          run179.ensure_google_font_assets(enabled=True, logger=getattr(pipeline, 'logger', None))
+          run179.require_production_japanese_font()
+          pipeline.reset_article_audit_for_production_run()
+          pipeline.reset_article_style_memory()
+          pipeline.initialize_runtime()
+          result = run_exact_ready_asset_recovery(pipeline, os.environ['TARGET_SYNC_ID'])
+          print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+          if result.get('status') != 'ready_recovered' or result.get('ready') is not True:
+              raise SystemExit(1)
+          PY
+
+      - name: Verify Ready before downstream draft fan-out
+        env:
+          RESULT_FILE: ${{ runner.temp }}/ready-asset-recovery.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8').splitlines()[-1])
+          if result.get('status') != 'ready_recovered' or result.get('ready') is not True:
+              raise SystemExit('Exact article did not reach persisted Ready state; downstream draft refused')
+          PY
+
+      - name: Dispatch exact Ready to private note draft sync
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          gh workflow run note-ready-sync.yml --ref main \
+            -f create_private_draft=true \
+            -f target_sync_id="$TARGET_SYNC_ID"
