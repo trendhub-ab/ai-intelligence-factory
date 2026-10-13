@@ -3,6 +3,8 @@ import importlib.util
 import unittest
 from pathlib import Path
 
+import member_customer_surface_contract as member_contract
+
 
 ROOT = Path(__file__).resolve().parents[1]
 GUARD_PATH = ROOT / "specification_freshness_guard.py"
@@ -98,6 +100,9 @@ class SpecificationFreshnessGuardTests(unittest.TestCase):
         self.assertIn("Production最終照合日:", text)
         self.assertIn("Production Contract Fingerprint:", text)
         self.assertIn("実装監査基準SHA:", text)
+
+    def test_specification_guard_is_explicitly_non_member_infrastructure(self):
+        self.assertIn("specification_freshness_guard.py", member_contract.NON_MEMBER_MODULES)
 
 
 if __name__ == "__main__":
