@@ -242,6 +242,11 @@ def test_existing_recovery_persists_stale_ready_with_dedicated_origin(monkeypatc
         return [stale]
 
     monkeypatch.setattr(article_revalidation, "select_revalidation_items", select)
+    monkeypatch.setattr(
+        article_revalidation,
+        "automatic_regeneration_decision",
+        lambda page_id: (True, "not_queued"),
+    )
 
     generated_count, next_rank = article_revalidation.run_existing_editorial_recovery(
         pipeline,
