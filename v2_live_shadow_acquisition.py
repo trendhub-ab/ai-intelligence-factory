@@ -82,6 +82,14 @@ def _bounded_timeout(value: Any) -> float:
     return max(MIN_TIMEOUT_SECONDS, min(number, MAX_TIMEOUT_SECONDS))
 
 
+def _bounded_deep_dive_attempts(value: Any) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return 0 if number <= 0 else 1
+
+
 def _check_response(response: Any, *, source: str) -> None:
     try:
         raise_for_status = getattr(response, "raise_for_status", None)
@@ -263,6 +271,7 @@ def run_bounded_live_shadow(
     config: LiveAcquisitionConfig | None = None,
     http_get: Callable[..., Any] = requests.get,
     v1_reference: str | None = None,
+    max_deep_dive_attempts: int = 1,
 ) -> dict[str, Any]:
     """Acquire two public sources and feed them into V2-001 shadow selection.
 
@@ -273,6 +282,7 @@ def run_bounded_live_shadow(
 
     bounded = (config or LiveAcquisitionConfig()).bounded()
     remaining = bounded.total_candidate_limit
+    deep_dive_budget = _bounded_deep_dive_attempts(max_deep_dive_attempts)
 
     def bounded_hn_provider() -> list[dict[str, Any]]:
         nonlocal remaining
@@ -308,7 +318,7 @@ def run_bounded_live_shadow(
         deep_dive=deep_dive,
         config=ShadowConfig(
             max_candidates_per_provider=bounded.total_candidate_limit,
-            max_deep_dive_attempts=1,
+            max_deep_dive_attempts=deep_dive_budget,
         ),
         now=now,
         run_id=run_id,
