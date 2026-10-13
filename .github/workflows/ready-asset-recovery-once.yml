@@ -29,6 +29,7 @@ jobs:
       TARGET_SYNC_ID: ${{ inputs.sync_id }}
       TZ: Asia/Tokyo
       AIIF_EDITORIAL_STYLE: human_narrative
+      AIIF_RUNTIME_STATE_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
       GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
@@ -43,6 +44,8 @@ jobs:
       GEMINI_COUNTER_BRANCH: main
       EYECATCH_GITHUB_BRANCH: runtime-state
       GH_PAT: ${{ secrets.GH_PAT }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
       NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
       NOTION_API_VERSION: '2026-03-11'
@@ -100,7 +103,26 @@ jobs:
       - name: Recover exact article through current Production persistence
         run: |
           set -o pipefail
-          python ready_asset_recovery.py --sync-id "$TARGET_SYNC_ID" | tee "${RUNNER_TEMP}/ready-asset-recovery.json"
+          python - <<'PY' | tee "${RUNNER_TEMP}/ready-asset-recovery.json"
+          import json
+          import os
+          import note_manuscript
+          import pipeline
+          import run179_eyecatch_font_refinement as run179
+          from operational_output_contract import run_exact_ready_asset_recovery
+          from pending_retry_validation import install_current_production_article_stack
+
+          install_current_production_article_stack(pipeline, note_manuscript)
+          run179.ensure_google_font_assets(enabled=True, logger=getattr(pipeline, 'logger', None))
+          run179.require_production_japanese_font()
+          pipeline.reset_article_audit_for_production_run()
+          pipeline.reset_article_style_memory()
+          pipeline.initialize_runtime()
+          result = run_exact_ready_asset_recovery(pipeline, os.environ['TARGET_SYNC_ID'])
+          print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+          if result.get('status') != 'ready_recovered' or result.get('ready') is not True:
+              raise SystemExit(1)
+          PY
 
       - name: Verify Ready before downstream draft fan-out
         env:
