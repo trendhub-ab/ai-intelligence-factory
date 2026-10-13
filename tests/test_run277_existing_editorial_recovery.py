@@ -132,9 +132,14 @@ class ExistingEditorialRecoveryTests(unittest.TestCase):
             "q": ("Not Planned", "Quality Failed"),
         }
         pipeline, calls = _pipeline(rows, statuses)
-        generated, rank = article_revalidation.run_existing_editorial_recovery(
-            pipeline, generated_count=1, next_candidate_rank=7, limit=99
-        )
+        with mock.patch.object(
+            article_revalidation,
+            "automatic_regeneration_decision",
+            return_value=(True, "not_queued"),
+        ):
+            generated, rank = article_revalidation.run_existing_editorial_recovery(
+                pipeline, generated_count=1, next_candidate_rank=7, limit=99
+            )
         self.assertEqual((generated, rank), (2, 8))
         self.assertEqual(len(calls), 1)
         repo, kwargs = calls[0]
@@ -169,9 +174,14 @@ class ExistingEditorialRecoveryTests(unittest.TestCase):
         statuses = {"e": ("Needs Editorial Review", "Deep Dive")}
         pipeline, calls = _pipeline(rows, statuses)
         pipeline.generate_intelligence_report = mock.Mock(return_value=None)
-        generated, rank = article_revalidation.run_existing_editorial_recovery(
-            pipeline, generated_count=0, next_candidate_rank=0
-        )
+        with mock.patch.object(
+            article_revalidation,
+            "automatic_regeneration_decision",
+            return_value=(True, "not_queued"),
+        ):
+            generated, rank = article_revalidation.run_existing_editorial_recovery(
+                pipeline, generated_count=0, next_candidate_rank=0
+            )
         self.assertEqual((generated, rank), (0, 1))
         pipeline.generate_intelligence_report.assert_called_once()
 
