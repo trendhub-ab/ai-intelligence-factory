@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pending_retry_validation as prv
 
@@ -51,6 +52,17 @@ def _result(*, attempted=0, passed=0, failed=0, not_generated=0, unverified=0):
     }
 
 
+def _run_prepublication(pipeline, items, **kwargs):
+    # These tests exercise one-article accounting/outcomes, not delivery terminality.
+    # Make their historical premise explicit under the fail-closed terminal contract.
+    with patch.object(
+        prv,
+        "automatic_regeneration_decision",
+        return_value=(True, "not_queued"),
+    ):
+        return prv.run_pending_retry_lane(pipeline, items, **kwargs)
+
+
 def test_failed_first_article_never_advances_to_second_candidate():
     calls = []
 
@@ -58,7 +70,7 @@ def test_failed_first_article_never_advances_to_second_candidate():
         calls.append(repo["nameWithOwner"])
         return None
 
-    result = prv.run_pending_retry_lane(_pipeline(generate), _items())
+    result = _run_prepublication(_pipeline(generate), _items())
 
     assert result == _result(attempted=1, not_generated=1)
     assert calls == ["first/high-score"]
@@ -71,7 +83,7 @@ def test_accepted_first_article_stops_after_single_candidate():
         calls.append(repo["nameWithOwner"])
         return ("generated manuscript", "accepted")
 
-    result = prv.run_pending_retry_lane(_pipeline(generate), _items())
+    result = _run_prepublication(_pipeline(generate), _items())
 
     assert result == _result(attempted=1, passed=1)
     assert calls == ["first/high-score"]
@@ -84,7 +96,7 @@ def test_rejected_truthy_manuscript_is_failure_and_never_advances():
         calls.append(repo["nameWithOwner"])
         return ("diagnostic rejected manuscript", "rejected")
 
-    result = prv.run_pending_retry_lane(_pipeline(generate), _items())
+    result = _run_prepublication(_pipeline(generate), _items())
 
     assert result == _result(attempted=1, failed=1)
     assert calls == ["first/high-score"]
@@ -97,7 +109,7 @@ def test_legacy_truthy_shape_is_unverified_not_success():
         calls.append(repo["nameWithOwner"])
         return {"note_draft": "generated"}
 
-    result = prv.run_pending_retry_lane(_pipeline(generate), _items())
+    result = _run_prepublication(_pipeline(generate), _items())
 
     assert result == _result(attempted=1, unverified=1)
     assert calls == ["first/high-score"]
@@ -110,7 +122,7 @@ def test_default_article_limit_is_one_even_when_success_target_is_larger():
         calls.append(repo["nameWithOwner"])
         return ("generated manuscript", "accepted")
 
-    result = prv.run_pending_retry_lane(_pipeline(generate), _items(), success_target=2)
+    result = _run_prepublication(_pipeline(generate), _items(), success_target=2)
 
     assert result == _result(attempted=1, passed=1)
     assert calls == ["first/high-score"]

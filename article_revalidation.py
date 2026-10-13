@@ -18,6 +18,7 @@ Pending Retry keeps its dedicated operational lane.
 from __future__ import annotations
 
 from pending_retry_validation import classify_nonpersistent_report
+from operational_output_contract import automatic_regeneration_decision
 
 import os
 import re
@@ -63,43 +64,14 @@ def _read_current_statuses(pipeline, page_id: str) -> tuple[str, str] | None:
 
 
 def _automatic_existing_recovery_allowed(pipeline, page_id: str) -> bool:
-    """Prevent automatic write-enabled recovery after note delivery has started.
-
-    Read-only/manual article_validation remains able to inspect existing rows. This guard is
-    only for the write-enabled normal/full Production recovery lane and applies uniformly to
-    Editorial Review and stale Ready candidates. note_ready_sync is imported lazily so
-    lightweight validation/import surfaces do not acquire its requests dependency.
-
-    Only rows that are not queued yet, or are still merely waiting in the note queue, may
-    consume article-provider budget. 投稿準備中 / 投稿済み and every blocked/invalid state
-    are terminal for automatic Daily recovery. If delivery state cannot be read, fail closed.
-    """
-    try:
-        import note_ready_sync as ready_sync
-    except Exception as exc:
-        pipeline.logger.warning(
-            "[EXISTING ARTICLE RECOVERY SKIP: DELIVERY MODULE UNAVAILABLE] page=%s error=%s",
-            page_id,
-            exc,
-        )
-        return False
-    if not (ready_sync.DEST_DATA_SOURCE_ID or ready_sync.DEST_DATABASE_ID):
-        return True
-    try:
-        delivery_state = ready_sync.classify_exact_delivery_state(page_id)
-    except Exception as exc:
-        pipeline.logger.warning(
-            "[EXISTING ARTICLE RECOVERY SKIP: DELIVERY STATE UNAVAILABLE] page=%s error=%s",
-            page_id,
-            exc,
-        )
-        return False
-    if delivery_state in {"not_queued", "waiting"}:
+    """Admit write-enabled recovery only when delivery proves pre-publication state."""
+    allowed, reason = automatic_regeneration_decision(page_id)
+    if allowed:
         return True
     pipeline.logger.info(
-        "[EXISTING ARTICLE RECOVERY SKIP: DELIVERY] page=%s state=%s",
+        "[EXISTING ARTICLE RECOVERY SKIP: DELIVERY] page=%s reason=%s",
         page_id,
-        delivery_state,
+        reason,
     )
     return False
 
@@ -429,11 +401,9 @@ def run_existing_editorial_recovery(
             break
         is_stale_ready = bool(item.get("revalidation_stale_ready"))
         page_id = str(item.get("notion_page_id") or "")
-        # Run208 regression: every write-enabled existing-article recovery candidate must
-        # prove that automatic note delivery has not already started. This check happens
-        # before rank increment, source hydration, legal checks, and—critically—before any
-        # provider request, so an already-delivered article cannot consume Daily Ready or
-        # Gemini budget merely because its editorial lifecycle is non-terminal.
+        # Every write-enabled existing-article recovery candidate must prove that
+        # automatic delivery has not started. Unknown/unavailable authority fails closed
+        # before rank increment, hydration, legal checks, and provider requests.
         if not _automatic_existing_recovery_allowed(pipeline, page_id):
             continue
         repo = rehydrate_recovery_repo(pipeline, item)

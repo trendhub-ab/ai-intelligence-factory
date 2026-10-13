@@ -48,6 +48,8 @@ from __future__ import annotations
 import os
 from typing import Any, MutableMapping
 
+from operational_output_contract import automatic_regeneration_decision
+
 FAST_LANE_INITIAL_GENERATION_SEND_CEILING = 3
 FAST_LANE_POST_GENERATION_REPAIR_RESERVE = 1
 FAST_LANE_PENDING_RETRY_REQUEST_BUDGET = (
@@ -135,6 +137,19 @@ def run_pending_retry_lane(
     for rank, item in enumerate(prioritize_pending_items(items), start=1):
         if result["quality_passed"] >= success_target or result["attempted"] >= article_attempt_limit:
             break
+
+        page_id = str(item.get("notion_page_id") or "").strip()
+        allowed, reason = automatic_regeneration_decision(page_id)
+        if not allowed:
+            logger = getattr(pipeline_module, "logger", None)
+            if logger is not None:
+                logger.info(
+                    "[PENDING RETRY SKIP: DELIVERY] page=%s reason=%s",
+                    page_id,
+                    reason,
+                )
+            continue
+
         pending_budget = getattr(pipeline_module, "PENDING_RETRY_REQUEST_BUDGET")
         deep_budget = getattr(pipeline_module, "DEEP_DIVE_MODEL_BUDGET")
         run_budget = getattr(pipeline_module, "GEMINI_BUDGET")
