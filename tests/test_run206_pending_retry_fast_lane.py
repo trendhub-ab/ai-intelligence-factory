@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pending_retry_validation as fast_lane
 
@@ -16,6 +16,15 @@ class _Budget:
 
 
 class Run206PendingRetryFastLaneTests(unittest.TestCase):
+    def setUp(self):
+        self.terminal = patch.object(
+            fast_lane,
+            "automatic_regeneration_decision",
+            return_value=(True, "not_queued"),
+        )
+        self.terminal.start()
+        self.addCleanup(self.terminal.stop)
+
     def _pipeline(self, reports):
         generate = Mock(side_effect=list(reports))
         return SimpleNamespace(
@@ -36,6 +45,13 @@ class Run206PendingRetryFastLaneTests(unittest.TestCase):
             "quality_failed": failed,
             "not_generated": not_generated,
             "unverified": unverified,
+        }
+
+    def _item(self, score=90, name="A", page_id="p1"):
+        return {
+            "notion_page_id": page_id,
+            "screening_score": score,
+            "repo": {"nameWithOwner": name},
         }
 
     def test_fast_lane_cost_ceiling_is_four_requests_with_one_repair_reserved(self):
@@ -87,10 +103,7 @@ class Run206PendingRetryFastLaneTests(unittest.TestCase):
 
     def test_rejected_manuscript_is_not_counted_as_success(self):
         pipeline = self._pipeline([("diagnostic manuscript", "rejected")])
-        result = fast_lane.run_pending_retry_lane(
-            pipeline,
-            [{"screening_score": 90, "repo": {"nameWithOwner": "A"}}],
-        )
+        result = fast_lane.run_pending_retry_lane(pipeline, [self._item()])
         self.assertEqual(result, self._result(attempted=1, failed=1))
         self.assertEqual(pipeline.generate_intelligence_report.call_count, 1)
 
@@ -110,29 +123,20 @@ class Run206PendingRetryFastLaneTests(unittest.TestCase):
 
     def test_unknown_truthy_return_is_unverified_not_success(self):
         pipeline = self._pipeline([{"article": "legacy truthy return"}])
-        result = fast_lane.run_pending_retry_lane(
-            pipeline,
-            [{"screening_score": 90, "repo": {"nameWithOwner": "A"}}],
-        )
+        result = fast_lane.run_pending_retry_lane(pipeline, [self._item()])
         self.assertEqual(result, self._result(attempted=1, unverified=1))
 
     def test_dedicated_pending_budget_blocks_provider_call(self):
         pipeline = self._pipeline([("unexpected", "accepted")])
         pipeline.PENDING_RETRY_REQUEST_BUDGET = _Budget(False)
-        result = fast_lane.run_pending_retry_lane(
-            pipeline,
-            [{"screening_score": 99, "repo": {"nameWithOwner": "A"}}],
-        )
+        result = fast_lane.run_pending_retry_lane(pipeline, [self._item(score=99)])
         self.assertEqual(result, self._result())
         pipeline.generate_intelligence_report.assert_not_called()
 
     def test_no_available_model_blocks_provider_call(self):
         pipeline = self._pipeline([("unexpected", "accepted")])
         pipeline._model_pool_has_session_candidate = lambda pool: False
-        result = fast_lane.run_pending_retry_lane(
-            pipeline,
-            [{"screening_score": 99, "repo": {"nameWithOwner": "A"}}],
-        )
+        result = fast_lane.run_pending_retry_lane(pipeline, [self._item(score=99)])
         self.assertEqual(result, self._result())
         pipeline.generate_intelligence_report.assert_not_called()
 
