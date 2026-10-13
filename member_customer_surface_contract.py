@@ -250,6 +250,7 @@ NON_MEMBER_MODULES = frozenset((
     "regression_suite.py",
     "repository_falsification_guard.py",
     "specification_freshness_guard.py",  # canonical spec CI governance, not member/customer copy
+    "v2_shadow_selection.py",  # V2-001 shadow-only selector, not member/customer copy
     "run156_decision_review_import.py",
     "run164_ai_relevance_calibration.py",
     "run172_production_reliability.py",
