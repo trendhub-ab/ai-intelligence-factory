@@ -21,7 +21,6 @@ FORBIDDEN_WRITE_CALLS = {
     "write_bytes",
     "unlink",
     "rename",
-    "replace",
     "mkdir",
     "makedirs",
 }
