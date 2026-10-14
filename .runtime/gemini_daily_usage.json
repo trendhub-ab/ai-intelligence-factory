@@ -2,36 +2,20 @@
   "counter_scopes": {
     "3fc8d8746c93f55a": {
       "models": {
-        "gemini-3-flash-preview": {
-          "budget": 18,
+        "gemini-3.5-flash-lite": {
+          "budget": 450,
           "by_kind": {
-            "deep_dive": 1
+            "screening_batch": 1
           },
           "exhausted": false,
           "used": 1
-        },
-        "gemini-3.5-flash": {
-          "budget": 18,
-          "by_kind": {
-            "eyecatch_layout": 3
-          },
-          "exhausted": false,
-          "used": 3
-        },
-        "gemini-3.6-flash": {
-          "budget": 18,
-          "by_kind": {
-            "eyecatch_layout": 3
-          },
-          "exhausted": false,
-          "used": 3
         }
       }
     }
   },
   "provider_project_fingerprint": "8feffa4385ed3d61",
-  "quota_date": "2026-10-13",
+  "quota_date": "2026-10-14",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-10-13T11:58:33.569698+00:00"
+  "updated_at": "2026-10-14T09:04:10.421501+00:00"
 }
