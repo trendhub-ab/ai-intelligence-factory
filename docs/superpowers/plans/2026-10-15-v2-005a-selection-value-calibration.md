@@ -19,7 +19,8 @@
 - Added network calls = `0`.
 - Added model calls = `0`.
 - Added hard gates = `0`.
-- HN + arXiv acquisition remains unchanged.
+- HN + arXiv acquisition remains unchanged **within V2-005A only**; source expansion is a separate V2-005B slice.
+- Target V2 source portfolio after V2-005B is OfficialVendor + GitHub + Hacker News + ArXiv; X remains discovery-only and Product Hunt remains retired.
 - Rank #1 remains the only candidate eligible for Evidence Deep Dive.
 - Gemini Evidence model remains exactly `gemini-3.6-flash` downstream.
 - Provider Evidence request budget remains at most `1`; retry = `0`; model fallback = `0`; rank fallback = `0`.
@@ -29,14 +30,15 @@
 - If AI relevance is absent, the Selection Value score is `0`; business/change/applied terms alone do not score.
 - Each dimension scores at most once regardless of repeated matching terms.
 - Matching is case-insensitive and token/phrase-aware; substrings such as `ai` inside `email` must not count as AI relevance.
+- Bare `model` is not an AI-relevance term. Only contextual phrases such as `AI model`, `language model`, `large language model`, and `foundation model` may match the model concept.
 
 ## Review Focus
 
 1. **Substring false positives:** `email`, `retail`, or similar text must not trigger the `AI` token; add an explicit word-boundary test in Task 1.
-2. **Business-only false positives:** pricing/enterprise/launch text without AI relevance must remain score `0`; add a focused test in Task 1.
-3. **Keyword repetition inflation:** repeated `AI`, `API`, or `launch` occurrences must not score a dimension more than once; add a focused test in Task 1.
-4. **Eligibility drift:** adding Selection Value must not change the existing `screening_score` or threshold behavior; add a regression assertion in Task 2.
-5. **Tie determinism:** equal Selection Value candidates must fall back to `screening_score`, then stable identity; add ranking tests in Task 2.
+2. **Context false positives:** `business model`, `pricing model`, or similar bare-model usage must not trigger AI relevance; add a focused test in Task 1.
+3. **Business-only false positives:** pricing/enterprise/launch text without AI relevance must remain score `0`; add a focused test in Task 1.
+4. **Keyword repetition inflation:** repeated `AI`, `API`, or `launch` occurrences must not score a dimension more than once; add a focused test in Task 1.
+5. **Eligibility/tie drift:** adding Selection Value must not change the existing `screening_score`/threshold; equal value candidates must fall back to screening score then identity; add regression assertions in Task 2.
 
 ---
 
@@ -74,6 +76,7 @@ Also add:
 
 - `test_selection_value_requires_ai_relevance_for_other_dimensions()` → non-AI pricing/enterprise/launch text returns `(0, [])`.
 - `test_selection_value_uses_word_boundaries_for_ai_token()` → text such as `email retail launch pricing` returns `(0, [])`.
+- `test_selection_value_does_not_treat_bare_model_as_ai()` → `new enterprise business model and pricing model launch` returns `(0, [])`.
 - `test_selection_value_does_not_inflate_repeated_keywords()` → repeated terms still cap at `60` and exactly four reasons.
 - `test_selection_value_is_case_insensitive_and_deterministic()` → repeated calls with mixed-case text return identical output.
 - `test_selection_value_applied_research_can_score_high()` → an AI/inference research candidate mentioning cost reduction, release/result improvement, implementation/deployment reaches at least `45`.
@@ -107,7 +110,7 @@ Implementation contract:
   - `decision_value`
   - `change_novelty`
   - `applied_reader_value`
-- AI relevance terms include a compact explicit set covering at least: `AI`, `artificial intelligence`, `LLM`, `large language model`, `model`, `agent`, `inference`, `robotics`, `multimodal`, `reasoning`, `neural network`.
+- AI relevance terms include a compact explicit set covering at least: `AI`, `artificial intelligence`, `LLM`, `large language model`, `language model`, `foundation model`, `AI model`, `agent`, `inference`, `robotics`, `multimodal`, `reasoning`, `neural network`. Bare `model` must not match.
 - Decision terms include at least: `API`, `pricing`, `price`, `cost`, `enterprise`, `security`, `privacy`, `regulation`, `policy`, `deployment`, `availability`.
 - Change terms include at least: `launch`, `release`, `released`, `update`, `new`, `introduces`, `introduced`, `acquisition`, `partnership`, `benchmark`, `improves`, `improvement`.
 - Applied terms include at least: `workflow`, `productivity`, `coding`, `automation`, `integration`, `tool use`, `implementation`, `business use`, `customer`, `user`, `deploy`, `deployment`.
@@ -321,6 +324,7 @@ Confirm the implementation changes are limited to:
 - this approved design/plan documentation
 - a canonical freshness/fingerprint file only if an existing guard requires it
 
+Confirm no acquisition adapter is changed in V2-005A; OfficialVendor/GitHub expansion belongs to V2-005B.
 Confirm no Notion/note/Ready/delivery/subscriber/economic/publication/Production-authority code changed.
 
 - [ ] **Step 5: Reconcile with current `main` if it advanced**
@@ -337,6 +341,7 @@ PR body must state:
 - Existing Evidence eligibility threshold: unchanged at `40`.
 - V1 Production authority: unchanged.
 - Rank #1 / one Evidence request / retry 0 / fallback 0: unchanged.
+- V2-005A intentionally does not expand sources; V2-005B will add OfficialVendor + GitHub before the representative 4-source Live Proof.
 - Exact fresh verification results.
 
 Stop before merge. Merge requires separate explicit `MERGE GO`.
