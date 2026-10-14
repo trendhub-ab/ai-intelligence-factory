@@ -997,7 +997,7 @@ Production surfaceが変わるPRでは、**本書の同期をmerge条件**とす
 - 本書の意味内容自体を変えた場合は `仕様最終変更日` も更新
 - `実装監査基準SHA` は人間が横断照合したmain基準点を記録
 
-「本文変更不要」と判断した内部修正でも、Production bytesが変われば照合日とFingerprintを更新し、現行仕様と矛盾なしを明示する。逆にtests/docsだけの変更ではこの更新を要求しない。
+「本文変更不要」と判断した内部修正でも、Production bytesが変われば照合日とFingerprintを更新し、仕様との矛盾なしを明示する。逆にtests/docsだけの変更ではこの更新を要求しない。
 
 この契約は注意書きではなく **CI fail-closed contract** とする。日付だけを新しくして古いFingerprintを残す、またはFingerprintだけ更新して古い照合日を残す状態もGREENにしない。
 
