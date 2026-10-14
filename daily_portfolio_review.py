@@ -293,6 +293,41 @@ def _timeout_text(value: Any) -> str:
     return str(value)
 
 
+def subscriber_change_count(context: dict[str, Any] | None) -> int:
+    """Count authoritative member-facing subscriber mutations from this pass.
+
+    The subscriber sync receipt already records canonical row creates, updates and
+    archives. ``subscriber_updated`` records Context-First patches applied to the
+    member-facing database. We only need a stable >0 signal for downstream fan-out;
+    summing the receipts avoids any extra Notion scan or model call.
+    """
+    if not isinstance(context, dict):
+        return 0
+    sync = context.get("subscriber_sync")
+    if not isinstance(sync, dict):
+        sync = {}
+    values = (
+        sync.get("created"),
+        sync.get("updated"),
+        sync.get("archived"),
+        context.get("subscriber_updated"),
+    )
+    return sum(value for value in values if type(value) is int and value > 0)
+
+
+def _write_subscriber_change_outputs(result: dict[str, Any]) -> None:
+    count = subscriber_change_count(result.get("context_first"))
+    detected = count > 0
+    result["subscriber_change_count"] = count
+    result["subscriber_changes_detected"] = detected
+    output_path = str(os.environ.get("GITHUB_OUTPUT") or "").strip()
+    if not output_path:
+        return
+    with open(output_path, "a", encoding="utf-8") as handle:
+        handle.write(f"subscriber_change_count={count}\n")
+        handle.write(f"subscriber_changes_detected={'true' if detected else 'false'}\n")
+
+
 class ProductReviewFailure(RuntimeError):
     """Fixed public category with a safe receipt; no child payload in exception text."""
     def __init__(self, category, receipt=None):
@@ -448,6 +483,7 @@ def main() -> int:
     if isinstance(context, dict):
         for key in ("internal_updated", "subscriber_updated", "subscriber_preserved", "eligible_records"):
             result[key] = context.get(key)
+    _write_subscriber_change_outputs(result)
     print(json.dumps(safe_operational_projection(result), sort_keys=True))
     return code
 
