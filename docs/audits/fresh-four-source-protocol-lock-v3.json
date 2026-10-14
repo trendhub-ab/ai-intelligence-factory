@@ -27,7 +27,7 @@
     "run248_first_real_publish_quality_calibration.py": "07f61c65dd77133e2856214486934b9ed0f97cc2",
     "run249_final_publication_surface_gate.py": "47a12ae0ebeafc701a038e3e0b19bca2f02c7511",
     "run194_publication_contract.py": "631e026307e5bbd0d312ab3c31b3fa8d00a7c499",
-    ".github/workflows/daily-one-shot.yml": "88d28d24b3b60d095806d15ea54b094bdb19ddab",
+    ".github/workflows/daily-one-shot.yml": "5942ff568c9cf7c4ddd6430f187808e742f02fc8",
     "fresh_protocol_quota_lock.py": "c8acf920fb417fcad8528f50a16b3866a3f99237",
     "fresh_model_fallback_budget.py": "ed495c7b4835a6e233414c89904b721f50713910",
     "gemini_provider_resilience.py": "76a20936fe39544f8c34ba0bd9d0ef2a44e7848b",
@@ -64,7 +64,8 @@
     "2026-10-04 P0-B branch amendment re-fingerprints daily-one-shot.yml after the explicit Ready-only full-mode control and approved non-Lite model routing. Source membership, workflow limits, provider-send caps, quality retries, and Gates are unchanged; this amendment does not itself count as a new Fresh observation.",
     "2026-10-08 cost-routing amendment re-fingerprints daily-one-shot.yml for Screening-only gemini-3.1-flash-lite first-choice routing and its run-scoped exclusion allowlist. Deep Dive and public Writer remain full-Flash-only; source membership, workflow limits, provider-send caps, quality retries, Evidence/Fact/Publication Gates, and article-generation routing are unchanged. This amendment does not itself count as a new Fresh observation.",
     "2026-10-11 lane-isolation amendment re-fingerprints pipeline.py, run260_gemini_model_routing.py, and daily-one-shot.yml for the approved Screening/Global Calibration Lite-only lane (gemini-3.5-flash-lite then gemini-3.1-flash-lite), while Deep Dive/article/quality-repair routing remains full-Flash-only and provider-health ranking is constrained within each lane. Source membership, workflow limits, provider-send caps, quality retries, Evidence/Fact/Publication Gates, and Fresh observation counting are unchanged; this amendment does not itself count as a new Fresh observation.",
-    "2026-10-13 single-canonical Notion persistence amendment re-fingerprints run194_publication_contract.py after TDD-proven Ready manuscript reconciliation. The change affects post-generation Notion persistence only: source membership, Writer/Canonicalizer behavior, model routing, provider-send budgets, quality retries, Evidence/Fact/Publication Gate thresholds, and Fresh observation counting are unchanged. This amendment does not itself count as a new Fresh observation."
+    "2026-10-13 single-canonical Notion persistence amendment re-fingerprints run194_publication_contract.py after TDD-proven Ready manuscript reconciliation. The change affects post-generation Notion persistence only: source membership, Writer/Canonicalizer behavior, model routing, provider-send budgets, quality retries, Evidence/Fact/Publication Gate thresholds, and Fresh observation counting are unchanged. This amendment does not itself count as a new Fresh observation.",
+    "2026-10-14 conditional member fan-out amendment re-fingerprints daily-one-shot.yml after Subscriber Decision Brief dispatch became conditional on an existing member-facing mutation receipt. Fresh source membership, acquisition limits, Screening/Deep Dive routing, provider-send budgets, quality retries, Evidence/Fact/Publication Gates, and Fresh observation counting are unchanged; this amendment does not itself count as a new Fresh observation."
   ],
   "max_article_candidates_after_send": 1,
   "max_provider_send_slots": {
