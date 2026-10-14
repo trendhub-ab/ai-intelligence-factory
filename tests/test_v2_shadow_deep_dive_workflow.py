@@ -69,9 +69,23 @@ def test_v2_workflow_receives_only_model_secret_and_writes_diagnostic_artifact()
         "pipeline.py",
     ):
         assert forbidden not in text
-    assert "v2_shadow_observation.py" in text
-    assert "--mode provider_backed_one_shot" in text
+    assert "v2_005_live_proof.py" in text
+    assert "v2_shadow_observation.py" not in text
+    assert "--mode provider_backed_one_shot" not in text
     assert "article_audit/v2_shadow_deep_dive.json" in text
+
+
+def test_v2_workflow_runs_reviewed_v2_005_safety_suite():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    for required_test in (
+        "tests/test_v2_005_live_proof.py",
+        "tests/test_v2_live_shadow_acquisition_budget.py",
+        "tests/test_v2_shadow_deep_dive.py",
+        "tests/test_v2_shadow_provider_diagnostics.py",
+        "tests/test_v2_shadow_provider_http_diagnostics.py",
+        "tests/test_v2_shadow_deep_dive_workflow.py",
+    ):
+        assert required_test in text
 
 
 def test_chatops_bridge_dispatches_exact_reviewed_v2_workflow_payload():
