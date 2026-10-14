@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from itertools import islice
+import re
 from typing import Any, Callable, Iterable, Mapping
 
 from candidate_identity import canonicalize_url
@@ -134,6 +135,104 @@ def deduplicate_candidates(candidates: Iterable[Mapping[str, Any]]) -> list[dict
         seen.add(identity)
         deduplicated.append(dict(candidate))
     return deduplicated
+
+
+def _selection_text(candidate: Mapping[str, Any]) -> str:
+    title = str(candidate.get("title") or "")
+    description = str(candidate.get("description") or "")
+    return " ".join(f"{title} {description}".lower().split())
+
+
+def _matches_selection_term(text: str, term: str) -> bool:
+    return re.search(rf"(?<!\w){re.escape(term)}(?!\w)", text) is not None
+
+
+def _matches_any_selection_term(text: str, terms: tuple[str, ...]) -> bool:
+    return any(_matches_selection_term(text, term) for term in terms)
+
+
+def score_selection_value(candidate: Mapping[str, Any]) -> tuple[int, list[str]]:
+    """Score deterministic AIIF reader/decision value without I/O or model calls."""
+
+    text = _selection_text(candidate)
+    ai_terms = (
+        "ai",
+        "artificial intelligence",
+        "llm",
+        "large language model",
+        "language model",
+        "foundation model",
+        "ai model",
+        "agent",
+        "inference",
+        "robotics",
+        "multimodal",
+        "reasoning",
+        "neural network",
+    )
+    if not _matches_any_selection_term(text, ai_terms):
+        return 0, []
+
+    dimensions = (
+        ("ai_relevance", ai_terms),
+        (
+            "decision_value",
+            (
+                "api",
+                "pricing",
+                "price",
+                "cost",
+                "enterprise",
+                "security",
+                "privacy",
+                "regulation",
+                "policy",
+                "deployment",
+                "availability",
+            ),
+        ),
+        (
+            "change_novelty",
+            (
+                "launch",
+                "release",
+                "released",
+                "update",
+                "new",
+                "introduces",
+                "introduced",
+                "acquisition",
+                "partnership",
+                "benchmark",
+                "improves",
+                "improvement",
+            ),
+        ),
+        (
+            "applied_reader_value",
+            (
+                "workflow",
+                "productivity",
+                "coding",
+                "automation",
+                "integration",
+                "tool use",
+                "implementation",
+                "business use",
+                "customer",
+                "user",
+                "deploy",
+                "deployment",
+            ),
+        ),
+    )
+
+    reasons = [
+        reason
+        for reason, terms in dimensions
+        if _matches_any_selection_term(text, terms)
+    ]
+    return len(reasons) * 15, reasons
 
 
 def screen_candidate(
