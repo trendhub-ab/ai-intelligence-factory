@@ -23,7 +23,7 @@ CANDIDATE = {
 }
 
 
-def test_provider_request_failure_has_safe_machine_code_without_secret_text():
+def test_provider_timeout_has_safe_machine_code_without_secret_text():
     def http_post(url, **kwargs):
         raise TimeoutError("secret transport detail")
 
@@ -32,7 +32,7 @@ def test_provider_request_failure_has_safe_machine_code_without_secret_text():
     with pytest.raises(GeminiEvidenceError) as excinfo:
         provider(CANDIDATE)
 
-    assert excinfo.value.safe_code == "provider_request_failed"
+    assert excinfo.value.safe_code == "provider_timeout"
     assert "secret transport detail" not in str(excinfo.value)
 
 

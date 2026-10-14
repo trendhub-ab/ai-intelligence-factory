@@ -40,6 +40,14 @@ _REQUIRED_RESULT_KEYS = {
 }
 _SAFE_PROVIDER_ERROR_CODES = {
     "provider_request_failed",
+    "provider_http_400",
+    "provider_http_401_403",
+    "provider_http_404",
+    "provider_http_429",
+    "provider_http_5xx",
+    "provider_timeout",
+    "provider_connection_error",
+    "provider_response_json_invalid",
     "provider_response_shape_invalid",
     "provider_evidence_contract_invalid",
 }
@@ -191,6 +199,20 @@ def build_deep_dive_prompt(candidate: Mapping[str, Any]) -> str:
     )
 
 
+def _classify_provider_http_status(status_code: int) -> str:
+    if status_code == 400:
+        return "provider_http_400"
+    if status_code in {401, 403}:
+        return "provider_http_401_403"
+    if status_code == 404:
+        return "provider_http_404"
+    if status_code == 429:
+        return "provider_http_429"
+    if 500 <= status_code <= 599:
+        return "provider_http_5xx"
+    return "provider_request_failed"
+
+
 class GeminiEvidenceProvider:
     """One-request Gemini adapter with no retry and no model fallback."""
 
@@ -235,8 +257,26 @@ class GeminiEvidenceProvider:
                 json=request_payload,
                 timeout=PROVIDER_TIMEOUT_SECONDS,
             )
+        except (requests.Timeout, TimeoutError):
+            raise GeminiEvidenceError("provider_timeout") from None
+        except (requests.ConnectionError, ConnectionError):
+            raise GeminiEvidenceError("provider_connection_error") from None
+        except Exception:
+            raise GeminiEvidenceError("provider_request_failed") from None
+
+        status_code = getattr(response, "status_code", None)
+        if isinstance(status_code, int) and status_code >= 400:
+            raise GeminiEvidenceError(_classify_provider_http_status(status_code)) from None
+
+        try:
             response.raise_for_status()
+        except Exception:
+            raise GeminiEvidenceError("provider_request_failed") from None
+
+        try:
             body = response.json()
+        except (ValueError, TypeError):
+            raise GeminiEvidenceError("provider_response_json_invalid") from None
         except Exception:
             raise GeminiEvidenceError("provider_request_failed") from None
 
