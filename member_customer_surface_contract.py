@@ -139,7 +139,7 @@ CUSTOMER_ENTRYPOINTS = {
     "run315_member_onboarding_update.py": frozenset(["_field_text","_body_text","_sha256","_is_exact_editor","_open_editor","_membership_add_button","_membership_visible_state","_choose_all_members_if_prompted","_ensure_membership_selected","_verify_editor","_verify_public","update","main"]),
     "run307_use_decision_member_surface.py": frozenset(["_clean","_use_decision_text","_use_update_text","_show_topic","_source_label","_last_reviewed_label","_build_children","_body_matches_use_decision","install_navigation","install_body","contract"]),
     "content_generation_protocol.py": frozenset(["build_monthly_digest_markdown","_source_fact_discipline","_human_editorial_style_rules","_human_narrative_editorial_style_rules","_duo_narrative_editorial_style_rules","editorial_style_rules","_parse_gemini_response","extract_field","field_or_body","_promote_plaintext_section_titles","build_decision_prompt"]),
-    "member_monthly_decision_brief_sync.py": frozenset(["_headers","_request","_rt","_paragraph","_heading","_bullet","_callout","_toggle","_divider",""_page_url","_query_states","_score","select_top","select_changes","_change_direction_text","build_blocks","_children","_append","_delete","_rename","sync_monthly_brief","main"]),
+    "member_monthly_decision_brief_sync.py": frozenset(["_headers","_request","_rt","_paragraph","_heading","_bullet","_callout","_toggle","_divider","_page_url","_query_states","_score","select_top","select_changes","_change_direction_text","build_blocks","_children","_append","_delete","_rename","sync_monthly_brief","main"]),
 }
 # Other existing modules are explicitly classified as infrastructure/compatibility.
 # A new Python module must be classified before it can introduce a new surface.
@@ -434,7 +434,7 @@ HOME_CONTENT = """<callout icon="🧭" color="blue_bg">
 ## 判断が変わったものだけ確認したいとき
 変化そのものより、**その変化で自分の使い方を変える必要があるか**を見ます。
 
-[判断が大きく変わったものを見る](https://app.notion.com/p/b2787ee05b584ca7b4eb774f60237f1f?v=3d0479ffdca981ec92ef-000c7a503fb6)
+[判断が大きく変わったものを見る](https://app.notion.com/p/b2787ee05b584ca7b4eb774f60237f1f?v=3d0479ffdca981ec92ef000c7a503fb6)
 <callout icon="💡" color="gray_bg">
 	大きな変化がなければ、無理に判断を変えません。**変わっていないことも、立派な判断材料です。**
 </callout>
