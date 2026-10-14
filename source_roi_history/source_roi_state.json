@@ -508,8 +508,8 @@
       }
     },
     {
-      "run_id": "20261013T043440Z",
-      "recorded_at": "2026-10-13T04:34:40.028198+00:00",
+      "run_id": "20261014T091246Z",
+      "recorded_at": "2026-10-14T09:12:46.839272+00:00",
       "sources": {
         "GitHub": {
           "screened": 0,
@@ -522,19 +522,19 @@
           "pending_retry": 0
         },
         "HackerNews": {
-          "screened": 20,
-          "stock_saved": 4,
-          "deep_dive_attempted": 2,
-          "generation_requests": 2,
-          "ready": 1,
+          "screened": 36,
+          "stock_saved": 16,
+          "deep_dive_attempted": 1,
+          "generation_requests": 0,
+          "ready": 0,
           "review": 0,
           "quality_failed": 0,
-          "pending_retry": 0
+          "pending_retry": 1
         },
         "ArXiv": {
-          "screened": 25,
-          "stock_saved": 2,
-          "deep_dive_attempted": 2,
+          "screened": 47,
+          "stock_saved": 22,
+          "deep_dive_attempted": 1,
           "generation_requests": 3,
           "ready": 0,
           "review": 0,
@@ -542,14 +542,14 @@
           "pending_retry": 0
         },
         "OfficialVendor": {
-          "screened": 0,
-          "stock_saved": 0,
-          "deep_dive_attempted": 1,
-          "generation_requests": 1,
+          "screened": 3,
+          "stock_saved": 3,
+          "deep_dive_attempted": 2,
+          "generation_requests": 2,
           "ready": 0,
           "review": 1,
-          "quality_failed": 0,
-          "pending_retry": 0
+          "quality_failed": 1,
+          "pending_retry": 1
         }
       }
     }
@@ -571,47 +571,47 @@
       "learning_active": true
     },
     "HackerNews": {
-      "screened": 293.4692405267573,
-      "stock_saved": 89.05130904468533,
-      "deep_dive_attempted": 34.10453788691957,
-      "generation_requests": 43.2879993370837,
-      "ready": 7.889716991659642,
+      "screened": 309.4692405267573,
+      "stock_saved": 101.05130904468533,
+      "deep_dive_attempted": 33.10453788691957,
+      "generation_requests": 41.2879993370837,
+      "ready": 6.889716991659642,
       "review": 4.0070355527490005,
-      "stock_yield": 0.3064,
-      "ready_yield": 0.2341,
-      "generation_efficiency": 0.182,
-      "roi_score": 24.9,
-      "allocation_weight": 0.268882,
+      "stock_yield": 0.328,
+      "ready_yield": 0.2145,
+      "generation_efficiency": 0.1685,
+      "roi_score": 24.5,
+      "allocation_weight": 0.264225,
       "mature": true,
       "learning_active": true
     },
     "ArXiv": {
-      "screened": 241.07752698395518,
-      "stock_saved": 115.2913841813149,
-      "deep_dive_attempted": 7.958489303964141,
+      "screened": 263.0775269839552,
+      "stock_saved": 135.29138418131492,
+      "deep_dive_attempted": 6.958489303964141,
       "generation_requests": 12.815232368020713,
       "ready": 0.6017008706075703,
       "review": 2.3360578706075703,
-      "stock_yield": 0.4684,
-      "ready_yield": 0.1506,
+      "stock_yield": 0.5027,
+      "ready_yield": 0.1622,
       "generation_efficiency": 0.0894,
-      "roi_score": 24.96,
-      "allocation_weight": 0.274308,
+      "roi_score": 26.68,
+      "allocation_weight": 0.286717,
       "mature": true,
       "learning_active": true
     },
     "OfficialVendor": {
-      "screened": 0.0,
-      "stock_saved": 0.0,
-      "deep_dive_attempted": 1.0,
-      "generation_requests": 1.0,
+      "screened": 3.0,
+      "stock_saved": 3.0,
+      "deep_dive_attempted": 2.0,
+      "generation_requests": 2.0,
       "ready": 0.0,
       "review": 1.0,
-      "stock_yield": 0.35,
-      "ready_yield": 0.2143,
-      "generation_efficiency": 0.1543,
-      "roi_score": 24.98,
-      "allocation_weight": 0.362318,
+      "stock_yield": 0.4348,
+      "ready_yield": 0.1875,
+      "generation_efficiency": 0.135,
+      "roi_score": 26.35,
+      "allocation_weight": 0.369709,
       "mature": false,
       "learning_active": true
     }
