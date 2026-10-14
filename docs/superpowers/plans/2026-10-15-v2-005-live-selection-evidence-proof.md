@@ -26,8 +26,9 @@
 - Model fallback remains 0.
 - Rank fallback remains 0; an insufficient/failed rank-1 result is a valid no-winner result.
 - Preserve the current provider timeout contract (`PROVIDER_TIMEOUT_SECONDS = 120.0`) unless a separate approved design changes it.
-- Do not persist API keys, request headers, prompts, candidate description/abstract, raw provider response bodies, raw transport exception text, or arbitrary provider payloads.
-- The safe live-proof artifact may persist only the bounded candidate review fields listed in Task 2 plus existing V2 diagnostic fields.
+- Do not add a raw candidate `description`/abstract field to the V2-005 measurement object. Existing validated Evidence points may remain because they are the intended V2-004 output; the measurement layer must not add raw prompt/request/provider payload persistence.
+- Do not persist API keys, request headers, prompts, raw provider response bodies, raw transport exception text, or arbitrary provider payloads.
+- The safe live-proof measurement object may persist only the bounded candidate review fields listed in Task 2 plus numeric provider usage metadata. Existing V2 diagnostic fields remain governed by their current contracts.
 - Gemini usage metadata is observational only. Missing or malformed usage metadata must not convert an otherwise valid Evidence result into failure.
 - Do not hard-code currency cost/pricing in V2-005. Persist request/token counts only; calculate current monetary cost during human review using then-current official pricing.
 - V2-005 requires 3–5 independent live proof runs before an evidence pack may be considered reviewable.
@@ -49,10 +50,10 @@
 ## Review Focus
 
 1. **Provider success with absent/malformed `usageMetadata`:** Evidence success/failure semantics must remain unchanged; persisted usage becomes `null`, never a provider failure. Task 2 owns this test.
-2. **Sensitive-data leakage through measurement:** candidate `description`, request prompt, API key/header, raw provider response, and secret-bearing exception text must never enter the V2-005 measurement artifact. Task 2 owns this test.
+2. **Sensitive-data leakage through measurement:** the measurement object's evaluated-candidate shape must exclude raw `description`; request prompt, API key/header, raw provider body, and secret-bearing transport text must not be newly persisted. Existing validated `provider_result.evidence_points` remain permitted V2-004 output. Task 2 owns this test.
 3. **Invalid evidence-pack cardinality/identity:** fewer than 3 runs, more than 5 runs, or duplicate `run_id` values must fail closed rather than producing a review pack. Task 4 owns this test.
-4. **Unsafe/non-shadow run mixed into pack:** any input that does not prove `production_authority == "v1"`, `diagnostic_only is True`, provider request budget <= 1, and `promotion_decision == "human_review_required"` must fail closed. Task 4 owns this test.
-5. **Human review mismatch:** unknown run IDs, invalid verdict enums, non-string/overlong rationale, or duplicated review entries must fail closed; missing review is allowed but reported as not reviewed. Task 4 owns this test.
+4. **Unsafe/non-shadow run mixed into pack:** any input that does not prove `production_authority == "v1"`, `diagnostic_only is True`, `request_budget == 1`, actual Deep Dive/provider requests <= 1, and `promotion_decision == "human_review_required"` must fail closed. Task 4 owns this test.
+5. **Human review mismatch:** unknown run IDs, invalid verdict enums, non-string/overlong rationale, or malformed review entries must fail closed; missing review is allowed but reported as not reviewed. Task 4 owns this test.
 
 ---
 
@@ -73,7 +74,7 @@
 Test name: `test_live_proof_records_safe_rank1_measurement_with_one_provider_request`.
 
 Assertions must pin:
-- exactly one POST call;
+- exactly one actual HTTP POST call;
 - existing model remains `gemini-3.6-flash`;
 - existing Evidence request timeout remains `120.0`;
 - V2-selected identity equals the measured candidate identity when Evidence is sufficient;
@@ -81,7 +82,7 @@ Assertions must pin:
 - `production_mutation_authorized is False`;
 - `promotion_decision == "human_review_required"`;
 - safe evaluated-candidate fields are exactly `candidate_identity`, `provider`, `title`, `source_timestamp`, `screening_score`, `screening_reasons`;
-- provider request count is exactly 1.
+- measured `provider_request_count` is exactly 1.
 
 - [ ] **Step 2: Add RED tests for Gemini usage metadata**
 
@@ -105,12 +106,16 @@ Missing/malformed usage must persist as `None` and must not change the Evidence 
 - [ ] **Step 3: Add RED non-leakage and fail-closed tests**
 
 Test names:
-- `test_live_proof_does_not_persist_description_prompt_key_headers_or_raw_provider_body`
+- `test_live_proof_measurement_excludes_raw_description_prompt_key_headers_and_raw_provider_body`
 - `test_live_proof_preserves_safe_provider_failure_classification_without_retry`
 - `test_live_proof_insufficient_rank1_never_rescues_rank2`
 - `test_live_proof_keeps_v1_authority_and_diagnostic_only_boundary`
 
-Use sentinel strings such as `SECRET_DESCRIPTION`, `SECRET_KEY`, `SECRET_PROVIDER_BODY`, and `SECRET_TRANSPORT_DETAIL`, then assert none occur in `json.dumps(report, ensure_ascii=False)`.
+For the first test:
+- assert `set(report["v2_005_measurement"]["evaluated_candidate"])` is exactly the six approved fields;
+- assert there is no `description` key in the measurement candidate;
+- use sentinel strings for API key, request/header secret, raw response-body-only text, and transport exception detail, and assert those sentinel strings do not occur in serialized output;
+- do not assert that validated `provider_result.evidence_points` can never contain words also present in candidate metadata, because Evidence points are intentionally grounded in that metadata.
 
 - [ ] **Step 4: Run the focused tests and prove RED**
 
@@ -162,12 +167,14 @@ Accept only non-boolean integers >= 0 from Gemini `usageMetadata` keys `promptTo
 - [ ] **Step 2: Implement an in-memory `http_post` recorder without a second provider request**
 
 Add an internal callable wrapper that:
-- delegates exactly once to the injected/default `http_post`;
-- reads `response.json()` only to extract numeric `usageMetadata`;
+- increments an actual POST-attempt counter immediately before delegating to the injected/default `http_post`;
+- delegates exactly once per provider invocation;
+- after a response returns, reads `response.json()` only to extract numeric `usageMetadata`;
+- if this observation read cannot parse JSON, records usage as `None` and returns the original response unchanged so the existing provider performs the authoritative parse/failure classification;
 - stores only the normalized numeric usage object or `None`;
 - returns the original response unchanged so the existing `GeminiEvidenceProvider` performs its existing strict parsing and failure classification.
 
-The recorder must not catch/replace provider transport failures; the existing provider remains the authority for safe error classification.
+The recorder must not catch/replace transport failures for provider semantics; the existing provider remains the authority for safe error classification. The POST-attempt counter still records the attempted request even if transport fails.
 
 - [ ] **Step 3: Implement `build_live_proof` by injecting a recording Deep Dive**
 
@@ -188,13 +195,13 @@ Append exactly one new top-level object:
     "proof_version": "V2-005",
     "evaluated_candidate": safe_candidate_or_none,
     "provider_usage": normalized_usage_or_none,
-    "provider_request_count": actual_deep_dive_count,
+    "provider_request_count": actual_http_post_attempt_count,
     "production_mutation_authorized": False,
     "promotion_decision": "human_review_required",
 }
 ```
 
-Derive `provider_request_count` from the report's existing `actual_calls.deep_dive`, not from an assumed constant.
+Keep the report's existing `actual_calls.deep_dive` unchanged as the selection-layer attempt count. The new `provider_request_count` is specifically the observed HTTP POST-attempt count so later cost analysis does not confuse Deep Dive invocation with provider transport.
 
 - [ ] **Step 4: Implement deterministic writer and CLI**
 
@@ -267,11 +274,13 @@ Parameterize invalid inputs for:
 - observation mode not `provider_backed_one_shot`;
 - `production_authority != "v1"`;
 - `diagnostic_only is not True`;
-- request budget > 1;
+- observation `request_budget != 1`;
 - `actual_calls.deep_dive > 1`;
 - `v2_005_measurement.provider_request_count > 1`;
 - `production_mutation_authorized is not False`;
 - `promotion_decision != "human_review_required"`.
+
+Actual call/request counts may be 0 when no candidate is eligible; the configured budget itself must remain exactly 1.
 
 - [ ] **Step 3: Add RED aggregation tests**
 
@@ -284,7 +293,7 @@ Pin output fields:
 - `evidence_sufficient_count`;
 - `evidence_insufficient_count`;
 - `provider_failure_count`;
-- `provider_request_count_total`;
+- `provider_request_count_total` from the V2-005 HTTP-attempt measurement;
 - token totals only from valid numeric usage records;
 - `provider_usage_observed_run_count`;
 - safe provider error-code counts;
@@ -300,12 +309,14 @@ Human-review input schema per run:
 ```json
 {
   "<run_id>": {
-    "v1_candidate_identity": "https://example.com/or-null",
-    "verdict": "v2_better | equivalent | v1_better | not_comparable",
+    "v1_candidate_identity": null,
+    "verdict": "not_comparable",
     "rationale": "short human review"
   }
 }
 ```
+
+`v1_candidate_identity` may instead be a non-empty string when a comparable V1 candidate is available.
 
 Test names:
 - `test_evidence_pack_accepts_optional_valid_human_v1_comparison`
@@ -357,7 +368,7 @@ git commit -m "test: define V2-005 evidence pack contract"
 
 - [ ] **Step 1: Implement strict run validation**
 
-Validate cardinality before aggregation. Extract `run_id` from each report's existing run metadata and reject missing/blank/duplicate IDs. Validate every shadow-safety invariant pinned in Task 3 before calculating any summary.
+Validate cardinality before aggregation. Extract `run_id` from each report's existing top-level run metadata and reject missing/blank/duplicate IDs. Validate every shadow-safety invariant pinned in Task 3 before calculating any summary, including exact configured `request_budget == 1` and observed Deep Dive/provider-request counts in the inclusive range 0–1.
 
 Use a dedicated `EvidencePackContractError(ValueError)` so malformed inputs fail closed with a local deterministic error, not partial output.
 
@@ -482,7 +493,7 @@ git commit -m "ci: route V2 shadow deep dive through V2-005 proof"
 ### Task 6: Offline Integration, Production-Isolation, and Canonical Contract Verification
 
 **Files:**
-- Potentially modify: `AI_Intelligence_Factory_最終仕様書.md` only if the existing canonical freshness guard reports a new required fingerprint.
+- Potentially modify: `AI_Intelligence_Factory_最終仕様書.md` only if the existing canonical freshness/fingerprint guard reports a new required fingerprint.
 - No other scope expansion is permitted in this task.
 
 **Interfaces:**
@@ -611,8 +622,8 @@ Use the existing exact command/workflow contract. One run may perform at most on
 Verify:
 - V1 authority;
 - diagnostic-only state;
-- request count <= 1;
-- no sensitive fields;
+- configured request budget exactly 1 and observed request count <= 1;
+- no newly persisted secret/raw payload fields;
 - safe candidate context present when a rank-1 candidate was evaluated;
 - provider usage either safe numeric metadata or `null`;
 - no unexpected Production mutation evidence.
@@ -644,7 +655,7 @@ Review:
 - Evidence sufficiency and the metadata-only limitation;
 - primary-source traceability by manual inspection;
 - V1 comparison verdicts;
-- request count and observed token usage;
+- actual provider request count and observed token usage;
 - safe failure patterns;
 - whether one request/run is sufficient.
 
