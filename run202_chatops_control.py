@@ -40,6 +40,7 @@ COMMAND_TO_MODE = {
     "/aiif run x_discovery_stage2": "x_discovery_stage2",
     "/aiif run stale_ready_portfolio_audit": "stale_ready_portfolio_audit",
     "/aiif run v2_shadow_observation": "v2_shadow_observation",
+    "/aiif run v2_shadow_deep_dive": "v2_shadow_deep_dive",
 }
 
 
