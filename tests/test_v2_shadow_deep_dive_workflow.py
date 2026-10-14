@@ -69,7 +69,8 @@ def test_v2_workflow_receives_only_model_secret_and_writes_diagnostic_artifact()
         "pipeline.py",
     ):
         assert forbidden not in text
-    assert "v2_shadow_deep_dive.py" in text
+    assert "v2_shadow_observation.py" in text
+    assert "--mode provider_backed_one_shot" in text
     assert "article_audit/v2_shadow_deep_dive.json" in text
 
 
