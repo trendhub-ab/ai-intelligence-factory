@@ -8,6 +8,7 @@ from v2_005_evidence_pack import (
     EvidencePackContractError,
     build_evidence_pack,
     render_evidence_pack_markdown,
+    write_evidence_pack,
 )
 
 
@@ -290,3 +291,28 @@ def test_evidence_pack_markdown_is_deterministic_and_never_authorizes_promotion(
         "Promotion decision: HUMAN REVIEW REQUIRED — "
         "this evidence pack cannot authorize V2-006 automatically."
     )
+
+
+def test_evidence_pack_writer_creates_only_requested_deterministic_files(tmp_path):
+    pack = build_evidence_pack(_three_reports())
+    json_path = tmp_path / "nested" / "evidence-pack.json"
+    markdown_path = tmp_path / "nested" / "evidence-pack.md"
+
+    returned = write_evidence_pack(
+        pack,
+        json_path=json_path,
+        markdown_path=markdown_path,
+    )
+
+    assert returned == (json_path, markdown_path)
+    assert json_path.is_file()
+    assert markdown_path.is_file()
+    files = sorted(
+        path.relative_to(tmp_path).as_posix()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    )
+    assert files == ["nested/evidence-pack.json", "nested/evidence-pack.md"]
+    assert json.loads(json_path.read_text(encoding="utf-8")) == pack
+    assert json_path.read_text(encoding="utf-8").endswith("\n")
+    assert markdown_path.read_text(encoding="utf-8").endswith("\n")
