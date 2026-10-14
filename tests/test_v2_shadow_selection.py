@@ -3,6 +3,7 @@ import inspect
 
 import pytest
 
+import v2_shadow_selection as shadow_selection
 from v2_shadow_selection import (
     ShadowConfig,
     deduplicate_candidates,
@@ -301,3 +302,93 @@ def test_shadow_report_contract_is_machine_readable_and_has_no_write_callbacks()
         "min_screening_score": 40,
     }
     assert report["actual_calls"] == {"provider": 1, "deep_dive": 1}
+
+
+def test_selection_value_scores_four_dimensions_once():
+    candidate = {
+        "title": "AI agent API launch for enterprise automation",
+        "description": "New pricing and deployment support improves business workflow integration.",
+    }
+
+    score, reasons = shadow_selection.score_selection_value(candidate)
+
+    assert score == 60
+    assert reasons == [
+        "ai_relevance",
+        "decision_value",
+        "change_novelty",
+        "applied_reader_value",
+    ]
+
+
+def test_selection_value_requires_ai_relevance_for_other_dimensions():
+    candidate = {
+        "title": "Enterprise pricing launch",
+        "description": "New API pricing and deployment workflow for customers.",
+    }
+
+    assert shadow_selection.score_selection_value(candidate) == (0, [])
+
+
+def test_selection_value_uses_word_boundaries_for_ai_token():
+    candidate = {
+        "title": "Email retail launch pricing",
+        "description": "Enterprise availability update for customer workflow.",
+    }
+
+    assert shadow_selection.score_selection_value(candidate) == (0, [])
+
+
+def test_selection_value_does_not_treat_bare_model_as_ai():
+    candidate = {
+        "title": "New enterprise business model launch",
+        "description": "A pricing model update for customer deployment.",
+    }
+
+    assert shadow_selection.score_selection_value(candidate) == (0, [])
+
+
+def test_selection_value_does_not_inflate_repeated_keywords():
+    candidate = {
+        "title": "AI AI AI API API launch launch automation automation",
+        "description": "Enterprise pricing deployment workflow integration release release.",
+    }
+
+    score, reasons = shadow_selection.score_selection_value(candidate)
+
+    assert score == 60
+    assert reasons == [
+        "ai_relevance",
+        "decision_value",
+        "change_novelty",
+        "applied_reader_value",
+    ]
+
+
+def test_selection_value_is_case_insensitive_and_deterministic():
+    candidate = {
+        "title": "LlM API RELEASE",
+        "description": "ENTERPRISE deployment improves CODING workflow.",
+    }
+
+    first = shadow_selection.score_selection_value(candidate)
+    second = shadow_selection.score_selection_value(candidate)
+
+    assert first == second == (
+        60,
+        ["ai_relevance", "decision_value", "change_novelty", "applied_reader_value"],
+    )
+
+
+def test_selection_value_applied_research_can_score_high():
+    candidate = {
+        "title": "AI inference method reduces deployment cost",
+        "description": "New benchmark improvement with practical implementation for production deployment.",
+    }
+
+    score, reasons = shadow_selection.score_selection_value(candidate)
+
+    assert score >= 45
+    assert "ai_relevance" in reasons
+    assert "decision_value" in reasons
+    assert "applied_reader_value" in reasons
