@@ -33,6 +33,30 @@ class Run202ChatOpsAuthorizationTests(unittest.TestCase):
         self.assertEqual(result["target_sync_id"], sync_id)
         self.assertTrue(result["authorized"])
 
+    def test_v2_shadow_observation_is_authorized(self):
+        result = chatops.authorize_event(event(body="/aiif run v2_shadow_observation"))
+        self.assertEqual(
+            result,
+            {
+                "authorized": True,
+                "mode": "v2_shadow_observation",
+                "target_sync_id": "",
+                "reason": "authorized",
+            },
+        )
+
+    def test_v2_shadow_observation_rejects_malformed_variants(self):
+        for body in (
+            "/aiif run v2_shadow_observation ",
+            " /aiif run v2_shadow_observation",
+            "/aiif run v2_shadow_observation\n",
+            "/aiif run V2_shadow_observation",
+            "/aiif run v2-shadow-observation",
+            "/aiif run v2_shadow_observation please",
+        ):
+            with self.subTest(body=body):
+                self.assertFalse(chatops.authorize_event(event(body=body))["authorized"])
+
     def test_pending_retry_validation_is_authorized(self):
         result = chatops.authorize_event(event(body="/aiif run pending_retry_validation"))
         self.assertTrue(result["authorized"])
