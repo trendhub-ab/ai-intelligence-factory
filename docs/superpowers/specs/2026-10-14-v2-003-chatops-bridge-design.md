@@ -1,6 +1,6 @@
 # V2-003 ChatOps Bridge Design
 
-Status: `AWAITING_USER_REVIEW`
+Status: `APPROVED_BY_USER`
 Date: 2026-10-14
 Base main: `43c5884ed101d845a8bf37248a89dccb9de61b03`
 Branch: `design/v2-003-chatops-bridge`
@@ -105,7 +105,7 @@ The command MUST be accepted only as an exact full-string match.
 The following MUST fail closed:
 
 ```text
-/aiif run v2_shadow_observation 
+/aiif run v2_shadow_observation<SPACE>
  /aiif run v2_shadow_observation
 /aiif run v2_shadow_observation\n
 /aiif run V2_shadow_observation
@@ -113,6 +113,8 @@ The following MUST fail closed:
 /aiif run v2_shadow_observation please
 /aiif run v2_shadow_observation anything
 ```
+
+`<SPACE>` denotes one literal trailing space in the rejected input and is documentation notation only.
 
 No free-form arguments, branch names, refs, paths, model names, URLs, or IDs are accepted for this command.
 
