@@ -408,7 +408,7 @@ HOME_CONTENT = """<callout icon="🧭" color="blue_bg">
 ### 3｜判断メモ
 実際に使う前に、目的・扱うデータ・成功条件・やめる条件を整理します。**「良さそう」で始めず、何を確かめれば次へ進めるかを決めるためのメモ**です。
 
-<mention-page url="https://app.notion.com/p/3d3479ffdca98119b0d8c014b068fe82">AI活用 判断メモ｜使う・試す・待つ・避ける</page>
+<mention-page url="https://app.notion.com/p/3d3479ffdca98119b0d8c014b068fe82">AI活用 判断メモ</mention-page>
 ---
 ## やりたいことから探す
 - **社内文書を探す・FAQや問い合わせ対応を楽にしたい** → [Dify](https://app.notion.com/p/3d0479ffdca981329f5de0043cd43a69) / [AnythingLLM](https://app.notion.com/p/3d0479ffdca981d29539c81d2d7c8a8f)
