@@ -1,10 +1,10 @@
 # AI Intelligence Factory — 現行Production仕様
 
 仕様最終変更日: **2026-10-14**
-Production最終照合日: **2026-10-14**
+Production最終照合日: **2026-10-15**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`3dc20ca1c29aae26c08c7c1c1dbadd5636becac0b53ce91b64441d7e425a8844`**
+Production Contract Fingerprint: **`21736ff3189d8c6080a16d11bc8d8399d438ab77219a34c63ab32eec308ec8c1`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -197,7 +197,6 @@ Xは **任意Discovery origin**。
 ### 3.4 OfficialVendor
 
 OfficialVendorはベンダーごとにSource枠を分裂させない。Vendor / regionはmetadataで識別する。
-
 同一release-note pageが更新される場合、`aif_revision` をContent Event identityとして使用できる。安定したbase URLはEvidence / Technology identity側の情報として保持し、イベント重複判定と混同しない。
 
 ---
@@ -398,7 +397,6 @@ Fact不足をLocal Writerで埋めない。
 - 技術と仕事の距離を縮める表現
 
 禁止:
-
 - 架空の体験談 / 架空の会話をFact扱い
 - Evidenceにない因果
 - 誇張された断定
