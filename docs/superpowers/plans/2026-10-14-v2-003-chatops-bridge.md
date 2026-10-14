@@ -71,13 +71,15 @@ self.assertEqual(
 Add a dedicated test covering at least:
 
 ```text
-/aiif run v2_shadow_observation 
+/aiif run v2_shadow_observation<SPACE>
  /aiif run v2_shadow_observation
 /aiif run v2_shadow_observation\n
 /aiif run V2_shadow_observation
 /aiif run v2-shadow-observation
 /aiif run v2_shadow_observation please
 ```
+
+`<SPACE>` denotes one literal trailing space in the rejected input and is documentation notation only.
 
 Each must return `authorized == False`.
 
