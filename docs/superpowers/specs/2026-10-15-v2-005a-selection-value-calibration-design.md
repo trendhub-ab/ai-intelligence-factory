@@ -37,9 +37,24 @@ Change only the V2 shadow-selection ranking layer.
 - V2 Writer, Ready, Notion, note, delivery, subscriber, economic, publication, or Production mutations.
 - Changes to V1 Production authority.
 
+## Source Portfolio Boundary
+
+V2-005A intentionally leaves the current V2 live-shadow acquisition surface unchanged: **Hacker News + arXiv only**. This is a bounded implementation constraint for this slice, not the target V2 source portfolio.
+
+The target V2 source portfolio remains aligned with the Production Intelligence Source Contract:
+
+1. **OfficialVendor** — vendor primary information
+2. **GitHub** — implementation / OSS movement
+3. **Hacker News** — discovery / developer reaction
+4. **ArXiv** — research / emerging technology
+
+`X` remains optional discovery-only and is not Evidence authority. Product Hunt remains retired from the active Production source portfolio.
+
+After V2-005A is verified, the next bounded slice is **V2-005B Source Portfolio Expansion**, which adds OfficialVendor and GitHub to the V2 shadow acquisition path without changing V1 Production authority. Only after that expansion should the 3–5 run cross-source Live Proof be treated as representative enough to decide whether V2-006 may proceed.
+
 ## Invariants
 
-- HN + arXiv acquisition remains unchanged.
+- HN + arXiv acquisition remains unchanged **within V2-005A only**.
 - `screening_score` remains Evidence-readiness oriented and keeps its current behavior.
 - Default eligibility threshold remains `40`.
 - Rank #1 is still the only candidate eligible for Evidence Deep Dive.
@@ -79,7 +94,8 @@ It must use only already-normalized candidate text fields (`title`, `description
 The score is additive and intentionally small. It represents four independent value dimensions:
 
 1. **AI relevance**
-   - Examples: AI, artificial intelligence, LLM, large language model, model, agent, inference, robotics, multimodal, reasoning.
+   - Examples: AI, artificial intelligence, LLM, large language model, foundation model, language model, AI model, agent, inference, robotics, multimodal, reasoning, neural network.
+   - Bare `model` must **not** count by itself because phrases such as `business model` would create false positives.
 2. **Decision value**
    - Examples: API, pricing, cost, enterprise, security, privacy, regulation, policy, deployment, availability, launch.
 3. **Change / novelty**
@@ -131,7 +147,7 @@ An arXiv candidate describing a material inference-cost reduction, practical imp
 
 ### C. Non-AI business news does not win from business language alone
 
-Business terms such as price, enterprise, partnership, or launch must not be enough to produce a high-value score unless AI relevance is also present.
+Business terms such as price, enterprise, partnership, launch, or `business model` must not be enough to produce a high-value score unless AI relevance is also present.
 
 ### D. Determinism
 
@@ -150,5 +166,7 @@ Expected files:
 
 - Modify `v2_shadow_selection.py`
 - Modify `tests/test_v2_shadow_selection.py`
+
+Do not touch acquisition adapters in V2-005A. OfficialVendor/GitHub expansion belongs to V2-005B as a separate bounded change.
 
 Do not touch downstream writer/delivery modules unless an unrelated pre-existing defect prevents regression verification; in that event, stop and redesign rather than broadening this slice.
