@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-14T09:11:21.781770+00:00",
+  "updated_at": "2026-10-14T09:12:43.514589+00:00",
   "items": [
-    {
-      "key": "https://news.ycombinator.com/item?id=50073633",
-      "deferred_at": "2026-10-14T09:11:21.781494+00:00",
-      "expires_at": "2026-12-13T09:11:21.781494+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Redesigning source control at Anthropic",
-        "originalTitle": "Redesigning source control at Anthropic",
-        "displayName": "Redesigning source control at Anthropic",
-        "sourceLanguage": "en",
-        "url": "https://www.anthropic.com/engineering/redesigning-source-control",
-        "description": "Redesigning source control at Anthropic",
-        "stargazerCount": 757,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-13T15:49:56Z",
-        "sourceContext": "HN points=757 comments=749 matched_query=Anthropic",
-        "primaryUrl": "https://www.anthropic.com/engineering/redesigning-source-control",
-        "sourceDetails": {
-          "hn_id": "50073633",
-          "hn_url": "https://news.ycombinator.com/item?id=50073633",
-          "external_url": "https://www.anthropic.com/engineering/redesigning-source-control",
-          "comments": 749,
-          "matched_query": "Anthropic",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3f9479ff-dca9-8107-90f9-e1479c23d9c7",
-      "score": 85,
-      "reason": "AI時代の開発基盤刷新における重要事例",
-      "commercial_score": 78,
-      "shelf_life_score": 85,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "DEVTOOLS",
-      "deep_dive_priority_score": 82.55
-    },
     {
       "key": "https://developers.googleblog.com/gemini-4-argon-for-robotics",
       "deferred_at": "2026-10-14T09:11:21.781636+00:00",
