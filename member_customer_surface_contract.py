@@ -250,6 +250,7 @@ NON_MEMBER_MODULES = frozenset((
     "regression_suite.py",
     "repository_falsification_guard.py",
     "specification_freshness_guard.py",  # canonical spec CI governance, not member/customer copy
+    "v2_005_evidence_pack.py",  # V2-005 offline review pack, not member/customer copy
     "v2_005_live_proof.py",  # V2-005 measured shadow proof, not member/customer copy
     "v2_live_shadow_acquisition.py",  # V2-002 read-only shadow acquisition, not member/customer copy
     "v2_shadow_observation.py",  # V2-003 manual zero-model observation, not member/customer copy
@@ -407,7 +408,7 @@ HOME_CONTENT = """<callout icon="🧭" color="blue_bg">
 ### 3｜判断メモ
 実際に使う前に、目的・扱うデータ・成功条件・やめる条件を整理します。**「良さそう」で始めず、何を確かめれば次へ進めるかを決めるためのメモ**です。
 
-<mention-page url="https://app.notion.com/p/3d3479ffdca98119b0d8c014b068fe82">AI活用 判断メモ</mention-page>
+<mention-page url="https://app.notion.com/p/3d3479ffdca98119b0d8c014b068fe82">AI活用 判断メモ｜使う・試す・待つ・避ける</page>
 ---
 ## やりたいことから探す
 - **社内文書を探す・FAQや問い合わせ対応を楽にしたい** → [Dify](https://app.notion.com/p/3d0479ffdca981329f5de0043cd43a69) / [AnythingLLM](https://app.notion.com/p/3d0479ffdca981d29539c81d2d7c8a8f)
