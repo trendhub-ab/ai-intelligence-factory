@@ -425,6 +425,7 @@ jobs:
           VERIFICATION_CONTEXT_MAX_CHARS: "180000"
 
       - name: Portfolio-aware Product Review
+        id: product_review
         if: ${{ inputs.mode == 'full' }}
         run: python daily_portfolio_review.py
         env:
@@ -505,6 +506,8 @@ jobs:
           DELIVERY_CREATE_PRIVATE_DRAFT: ${{ steps.delivery.outputs.create_private_draft }}
           DELIVERY_TARGET_SOURCE_URL: ${{ steps.delivery.outputs.target_source_url }}
           DELIVERY_TARGET_SOURCE_URLS_B64: ${{ steps.delivery.outputs.target_source_urls_b64 }}
+          SUBSCRIBER_CHANGES_DETECTED: ${{ steps.product_review.outputs.subscriber_changes_detected }}
+          SUBSCRIBER_CHANGE_COUNT: ${{ steps.product_review.outputs.subscriber_change_count }}
         run: |
           set -u
           if [ "${VALIDATION_MODE:-}" = "pending_retry_validation" ]; then
@@ -664,13 +667,21 @@ jobs:
             failed=1
           fi
 
-          for target in subscriber-decision-brief.yml cross-db-contract-guard.yml; do
-            echo "Dispatching ${target} from successful ONE-SHOT via GH_PAT"
-            if ! gh workflow run "${target}" --ref main; then
-              echo "::error::Failed to dispatch ${target}"
+          if [ "${SUBSCRIBER_CHANGES_DETECTED:-false}" = "true" ]; then
+            echo "Dispatching subscriber-decision-brief.yml: member-facing subscriber data changed (${SUBSCRIBER_CHANGE_COUNT:-0} mutations)."
+            if ! gh workflow run subscriber-decision-brief.yml --ref main; then
+              echo "::error::Failed to dispatch subscriber-decision-brief.yml"
               failed=1
             fi
-          done
+          else
+            echo "Subscriber Decision Brief Sync skipped: no member-facing subscriber data change in this ONE-SHOT."
+          fi
+
+          echo "Dispatching cross-db-contract-guard.yml from successful ONE-SHOT via GH_PAT"
+          if ! gh workflow run cross-db-contract-guard.yml --ref main; then
+            echo "::error::Failed to dispatch cross-db-contract-guard.yml"
+            failed=1
+          fi
           {
             echo "### Run624 post-run fan-out"
             echo "- auth: GH_PAT"
@@ -680,6 +691,8 @@ jobs:
             echo "- private draft requested by causality: ${create_private_draft}"
             echo "- P0-B Ready-only suppression: ${P0B_READY_ONLY:-false}"
             echo "- private draft current-run targets preserved: ${ready_count:-0}"
-            echo "- targets: note-ready-sync.yml, subscriber-decision-brief.yml, cross-db-contract-guard.yml"
+            echo "- subscriber changes detected: ${SUBSCRIBER_CHANGES_DETECTED:-false} (${SUBSCRIBER_CHANGE_COUNT:-0})"
+            echo "- unconditional downstream: note-ready-sync.yml, cross-db-contract-guard.yml"
+            echo "- conditional downstream: subscriber-decision-brief.yml only when member-facing subscriber data changed"
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$failed"
