@@ -38,6 +38,11 @@ _REQUIRED_RESULT_KEYS = {
     "reason_code",
     "evidence_points",
 }
+_SAFE_PROVIDER_ERROR_CODES = {
+    "provider_request_failed",
+    "provider_response_shape_invalid",
+    "provider_evidence_contract_invalid",
+}
 
 
 class EvidenceContractError(ValueError):
@@ -46,6 +51,12 @@ class EvidenceContractError(ValueError):
 
 class GeminiEvidenceError(RuntimeError):
     """Opaque provider-boundary failure safe for structured shadow reporting."""
+
+    def __init__(self, safe_code: str) -> None:
+        if safe_code not in _SAFE_PROVIDER_ERROR_CODES:
+            raise ValueError("unsupported Gemini evidence error code")
+        self.safe_code = safe_code
+        super().__init__(safe_code)
 
 
 def _forbidden_deep_dive(_: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -276,7 +287,9 @@ def build_provider_backed_observation(
             provider_result = _validate_evidence_mapping(raw_result)
             return provider_result
         except Exception as exc:
-            provider_error_category = type(exc).__name__
+            provider_error_category = (
+                exc.safe_code if isinstance(exc, GeminiEvidenceError) else type(exc).__name__
+            )
             raise
 
     report = run_bounded_live_shadow(
