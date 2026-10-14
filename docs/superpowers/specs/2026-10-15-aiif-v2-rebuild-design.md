@@ -223,26 +223,43 @@ Required flow:
 
 `Live Sources → V2 Acquisition → Dedupe → Screening → Rank #1 → Gemini Evidence ×1 → Diagnostic Artifact → V1 Comparison`
 
+Scope for V2-005 is intentionally frozen to the currently implemented bounded live acquisition surface. Do not add a new acquisition provider merely to improve a V2-005 result. In particular, use the existing bounded Hacker News / arXiv live path rather than expanding source breadth in this slice.
+
 Constraints:
 
 - no Notion writes;
 - no note writes;
 - no Ready writes;
 - no Production mutation;
-- one rank-1 provider-backed Evidence request maximum;
+- one rank-1 provider-backed Evidence request maximum per live proof run;
 - retry 0;
 - fallback 0;
-- raw provider data must not leak to persisted diagnostics.
+- raw provider data must not leak to persisted diagnostics;
+- no automatic rank-2 rescue after a failed or insufficient rank-1 Evidence result.
 
 Primary measurements:
 
 1. topic/article value;
 2. evidence quality and primary-source traceability;
-3. whether V2's winner is better, equivalent, or worse than V1's choice;
+3. whether V2's winner is better, equivalent, or worse than V1's choice when a V1 comparison is available;
 4. whether one provider request is sufficient;
 5. provider/API cost per usable winning candidate.
 
-Promotion requirement: repeated live observations show that the selection/Evidence system is useful enough to justify building the Writer lane.
+Live proof protocol:
+
+- perform **3 to 5 independent live proof runs** rather than judging from one lucky run;
+- each run remains manually initiated and shadow-only;
+- persist only safe diagnostic artifacts already allowed by the V2 observation contract;
+- record source call counts, candidate counts, rank-1 identity, Evidence result, safe failure code if any, provider call count, budget/cost data available to the workflow, and V1 comparison state where available;
+- a `v1_reference_unavailable`-type comparison state is observational, not a reason to fabricate a comparison;
+- stop the proof series immediately if any Production mutation, secret/raw-provider leakage, unbounded call behavior, implicit retry, or other P0 invariant violation is observed.
+
+Promotion requirement:
+
+- there is **no automatic numeric promotion** from V2-005 to V2-006;
+- after 3 to 5 runs, produce a compact evidence pack summarizing the measurements above;
+- the owner/user explicitly decides whether topic value and Evidence quality justify building the Writer lane;
+- any P0 invariant violation blocks promotion regardless of apparent content quality.
 
 ### V2-006 — Evidence Contract + Article Brief
 
@@ -355,6 +372,8 @@ V2 receives increasing authority only through promotion gates.
 ### Gate A — Selection / Evidence
 
 Before Writer work is considered complete, live proof must show useful candidate selection and trustworthy Evidence behavior.
+
+Gate A is a human approval gate informed by the V2-005 evidence pack. It is not passed merely because a workflow is GREEN.
 
 ### Gate B — Ready quality
 
