@@ -31,7 +31,7 @@ Run focused test and observe failure because implementation does not yet exist.
 
 ## Task 2 — RED workflow and ChatOps contract tests
 
-Create `tests/test_v2_shadow_deep_dive_workflow.py` and extend `tests/test_run202_chatops_control.py`.
+Create `tests/test_v2_shadow_deep_dive_workflow.py` and test the existing `run202_chatops_control.py` contract through it.
 
 Required RED cases:
 - workflow_dispatch only, exact `RUN_V2_SHADOW_DEEP_DIVE` confirmation;
@@ -46,22 +46,24 @@ Run focused tests and observe RED.
 
 ## Task 3 — Minimal provider-backed implementation
 
-Create `v2_shadow_deep_dive.py`.
+Extend the already classified `v2_shadow_observation.py` runner rather than adding a new unclassified root Python surface. Preserve V2-003 `manual_zero_model` as the default mode and add explicit `provider_backed_one_shot` mode for V2-004.
 
 Interfaces:
 - `parse_evidence_result(text) -> dict`
 - `build_deep_dive_prompt(candidate) -> str`
 - `GeminiEvidenceProvider(...).__call__(candidate) -> Mapping`
 - `build_provider_backed_observation(...) -> dict`
-- `write_observation(report, output) -> Path`
+- existing `write_observation(report, output) -> Path`
 
-The adapter performs one `generate_content` invocation. It does not implement retry/fallback. The strict parser converts every malformed provider response to a controlled exception so V2-001 fails closed.
+The adapter performs one Gemini `generateContent` HTTP POST. It does not implement retry/fallback. The strict parser converts malformed provider response into a controlled failure so V2-001 fails closed. V2-003 zero-model behavior remains physically disabled from Deep Dive by default.
 
 Run Task 1 focused tests to GREEN.
 
 ## Task 4 — Workflow and ChatOps implementation
 
-Create `.github/workflows/v2-shadow-deep-dive.yml`.
+Create `.github/workflows/v2-shadow-deep-dive.yml` and invoke:
+
+`python v2_shadow_observation.py --mode provider_backed_one_shot ...`
 
 Extend:
 - `run202_chatops_control.py`
