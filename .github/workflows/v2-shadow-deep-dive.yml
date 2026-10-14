@@ -55,7 +55,8 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          python v2_shadow_deep_dive.py \
+          python v2_shadow_observation.py \
+            --mode provider_backed_one_shot \
             --output article_audit/v2_shadow_deep_dive.json \
             --run-id "v2-deep-dive-${{ github.run_id }}-${{ github.run_attempt }}"
 
