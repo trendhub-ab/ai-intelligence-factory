@@ -1,10 +1,10 @@
 # AI Intelligence Factory — 現行Production仕様
 
-仕様最終変更日: **2026-10-13**
+仕様最終変更日: **2026-10-14**
 Production最終照合日: **2026-10-14**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`fc0a7841d8a9102da1e1807a340d08ff1a95adcc8fd99b7a29efb20c3b28cd88`**
+Production Contract Fingerprint: **`3dc20ca1c29aae26c08c7c1c1dbadd5636becac0b53ce91b64441d7e425a8844`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -713,9 +713,13 @@ ChatOpsはbare `/aiif note sync` を保持しつつ、`/aiif note sync <32-hex s
 
 成功した通常ONE-SHOTはGH_PATで明示dispatchする。
 
-- `note-ready-sync.yml`
-- `subscriber-decision-brief.yml`
-- `cross-db-contract-guard.yml`
+- `note-ready-sync.yml` はcurrent-run delivery causalityに従ってdispatchする。
+- `cross-db-contract-guard.yml` は成功した通常ONE-SHOTの後段Guardとしてdispatchする。
+- `subscriber-decision-brief.yml` は **member-facing Subscriber / Decision Intelligenceに実質変更があった場合だけ** dispatchする。
+
+Subscriber Decision Briefの変更判定は、同じFull ONE-SHOT内のPortfolio-aware Product Review / Context-First passが既に生成したmutation receiptだけを使う。`subscriber_sync.created` / `updated` / `archived` または `subscriber_updated` が1件以上なら変更あり、すべて0なら同期をSKIPする。判定のために追加のNotion全件scanやGemini callを行わない。
+
+`subscriber-decision-brief.yml` 自体、Inventory Bootstrap `[apply]` からの独立した正規trigger、Member Presentationへの順序契約は維持する。Dailyから不要な全件同期だけを抑止し、会員向けDecision Brief機能そのものは無効化しない。
 
 passive `workflow_run` subscribeによる二重writeを正規経路にしない。
 
@@ -828,6 +832,8 @@ Member PresentationはTechnology / Decision stateから生成するderived surfa
 - presentation都合でDecision/Evidenceを書き換えない
 - legacy DBへ戻さない
 - 不要なGemini callを追加しない
+- Subscriber Decision Briefは会員向けDBの実質変更時だけDailyから更新し、変更0のDailyで全件再走査しない
+- Inventory Bootstrap `[apply]` からの同期と、Subscriber Brief成功後のMember Presentation順序は維持する
 
 ### 12.5 Monthly Decision Brief
 
@@ -879,6 +885,7 @@ Source ROIは過去のscreened / deep dive / stock / Ready効率からfetch配�
 - Gateを通すためのEvidence捏造
 - stale Readyをmanual property変更だけでcurrent扱い
 - published / delivery-started articleを自動再生成
+- member-facing変更0のDailyでSubscriber Decision Brief全件同期を無条件発火
 
 X / ApifyもFull時だけ明示的に有効化し、charge / record上限を持つ。
 
@@ -968,6 +975,7 @@ Eyecatch layout / font / pixel proofの互換性をCIで守る。
 - Product Reviewを記事Deep Dive中へ重複混在
 - Chrome historyをprivate draft identity authorityとして使うこと
 - 複数の旧Markdown manuscriptを1つのReady Content Intelligence pageへ残すこと
+- member-facing変更0のDailyからSubscriber Decision Brief全件同期を無条件発火すること
 
 ---
 
@@ -1022,7 +1030,7 @@ Production surfaceが変わるPRでは、**本書の同期をmerge条件**とす
 
 ---
 
-## 18. Current-state Summary — 2026-10-13
+## 18. Current-state Summary — 2026-10-14
 
 現在のFactoryは次を正式基準とする。
 
@@ -1057,6 +1065,7 @@ Production surfaceが変わるPRでは、**本書の同期をmerge条件**とす
 - **Technology Intelligence:** durable Technology current state。
 - **Decision History:** change history。
 - **Paid Product:** Use-Decision Intelligence / 月額1,980円。
+- **Subscriber Decision Brief:** 機能は維持し、Full Dailyではmember-facing mutationがある場合だけdispatch。変更0ならSKIPし、判定用の追加Notion scan / Gemini callは0。
 - **Monthly Brief:** zero-modelでMember current stateから更新。
 - **Product Review:** Daily内で専用1 pass。
 - **CI:** Falsification / Integration / Notion / Workflow guardsに加え、Canonical Specification Freshness Guardで仕様書の照合日とProduction Fingerprintを機械強制。
