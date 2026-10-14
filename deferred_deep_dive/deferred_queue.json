@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-10-14T09:12:43.514589+00:00",
+  "updated_at": "2026-10-14T12:20:44.855063+00:00",
   "items": [
     {
       "key": "https://developers.googleblog.com/gemini-4-argon-for-robotics",
@@ -730,6 +730,43 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "AGENT",
       "deep_dive_priority_score": 73.25
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=50081868",
+      "deferred_at": "2026-10-14T12:20:44.854580+00:00",
+      "expires_at": "2026-10-28T12:20:44.854580+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Anthropic 2026 AUP Update",
+        "originalTitle": "Anthropic 2026 AUP Update",
+        "displayName": "Anthropic 2026 AUP Update",
+        "sourceLanguage": "en",
+        "url": "https://www.anthropic.com/news/2026-usage-policy-update",
+        "description": "Anthropic 2026 AUP Update",
+        "stargazerCount": 8,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-14T03:00:30Z",
+        "sourceContext": "HN points=8 comments=0 matched_query=Anthropic",
+        "primaryUrl": "https://www.anthropic.com/news/2026-usage-policy-update",
+        "sourceDetails": {
+          "hn_id": "50081868",
+          "hn_url": "https://news.ycombinator.com/item?id=50081868",
+          "external_url": "https://www.anthropic.com/news/2026-usage-policy-update",
+          "comments": 0,
+          "matched_query": "Anthropic",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3f9479ff-dca9-81df-9fbf-f964a6c6c055",
+      "score": 68,
+      "reason": "Anthropicの2026年利用規約の重要な更新。",
+      "commercial_score": 70,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "PRODUCT",
+      "deep_dive_priority_score": 68.7
     }
   ]
 }
