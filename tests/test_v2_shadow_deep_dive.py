@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import pytest
 
 from v2_live_shadow_acquisition import LiveAcquisitionConfig
-from v2_shadow_deep_dive import (
+from v2_shadow_observation import (
     EvidenceContractError,
     GeminiEvidenceProvider,
     build_provider_backed_observation,
