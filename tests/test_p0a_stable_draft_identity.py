@@ -106,7 +106,7 @@ class StableDraftIdentityContractTests(unittest.TestCase):
             result = audit._browser_audit(article, page_auditor=lambda page, title, manuscript: dict(safe_metrics))
 
         account_proof.assert_called_once_with(context.page)
-        list_proof.assert_called_once_with(context.page, private_url)
+        list_proof.assert_called_once_with(context.page, private_url, "Expected title")
         self.assertEqual(context.page.goto_calls, ["https://note.com/", private_url])
         self.assertEqual(result, safe_metrics)
         self.assertNotIn(DRAFT_ID, str(result))
