@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-10-14T12:20:49.372351+00:00",
+  "updated_at": "2026-10-15T10:26:43.816318+00:00",
   "items": [
     {
       "key": "https://developers.googleblog.com/gemini-4-argon-for-robotics",
@@ -75,6 +75,43 @@
       "shelf_life": "TREND",
       "portfolio_topic": "MODEL",
       "deep_dive_priority_score": 80.45
+    },
+    {
+      "key": "https://github.com/AxiomCodeAI/axiomcodegraph",
+      "deferred_at": "2026-10-15T10:26:43.815972+00:00",
+      "expires_at": "2026-10-29T10:26:43.815972+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Show HN: AxiomCode Graph, Reducing coding agent rework with formal methods",
+        "originalTitle": "Show HN: AxiomCode Graph, Reducing coding agent rework with formal methods",
+        "displayName": "Show HN: AxiomCode Graph, Reducing coding agent rework with formal methods",
+        "sourceLanguage": "en",
+        "url": "https://github.com/AxiomCodeAI/axiomcodegraph",
+        "description": "Show HN: AxiomCode Graph, Reducing coding agent rework with formal methods",
+        "stargazerCount": 10,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-14T16:36:36Z",
+        "sourceContext": "HN points=10 comments=8 matched_query=\"coding agent\"",
+        "primaryUrl": "https://github.com/AxiomCodeAI/axiomcodegraph",
+        "sourceDetails": {
+          "hn_id": "50090514",
+          "hn_url": "https://news.ycombinator.com/item?id=50090514",
+          "external_url": "https://github.com/AxiomCodeAI/axiomcodegraph",
+          "comments": 8,
+          "matched_query": "\"coding agent\"",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3fa479ff-dca9-8174-820b-e11bc3295725",
+      "score": 78,
+      "reason": "コーディングエージェントの実用性を高める実用ツール。",
+      "commercial_score": 82,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "DEVTOOLS",
+      "deep_dive_priority_score": 79.4
     },
     {
       "key": "https://airlock.sorrel.systems",
@@ -195,6 +232,80 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "SECURITY",
       "deep_dive_priority_score": 78.6
+    },
+    {
+      "key": "https://arcjet.com/blog/how-we-built-ai-agent-behavior-drift-analysis-with-cloudflare-clef",
+      "deferred_at": "2026-10-15T10:26:43.816130+00:00",
+      "expires_at": "2026-12-14T10:26:43.816130+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "AI agent behavior drift analysis with Cloudflare Clef",
+        "originalTitle": "AI agent behavior drift analysis with Cloudflare Clef",
+        "displayName": "AI agent behavior drift analysis with Cloudflare Clef",
+        "sourceLanguage": "en",
+        "url": "https://arcjet.com/blog/how-we-built-ai-agent-behavior-drift-analysis-with-cloudflare-clef",
+        "description": "AI agent behavior drift analysis with Cloudflare Clef",
+        "stargazerCount": 5,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-14T13:17:14Z",
+        "sourceContext": "HN points=5 comments=0 matched_query=\"AI agent\"",
+        "primaryUrl": "https://arcjet.com/blog/how-we-built-ai-agent-behavior-drift-analysis-with-cloudflare-clef",
+        "sourceDetails": {
+          "hn_id": "50087289",
+          "hn_url": "https://news.ycombinator.com/item?id=50087289",
+          "external_url": "https://arcjet.com/blog/how-we-built-ai-agent-behavior-drift-analysis-with-cloudflare-clef",
+          "comments": 0,
+          "matched_query": "\"AI agent\"",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3fa479ff-dca9-8185-8753-f34a0ac44e93",
+      "score": 80,
+      "reason": "エージェント運用における安全管理の実践知として非常に高い価値。",
+      "commercial_score": 75,
+      "shelf_life_score": 80,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 78.25
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=50085323",
+      "deferred_at": "2026-10-15T10:26:43.816221+00:00",
+      "expires_at": "2026-10-17T10:26:43.816221+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "TV4 postpones show after AI agent erases edited material",
+        "originalTitle": "TV4 postpones show after AI agent erases edited material",
+        "displayName": "TV4 postpones show after AI agent erases edited material",
+        "sourceLanguage": "en",
+        "url": "https://swedenherald.com/article/tv4-postpones-the-challenge-until-2027-after-technical-failure-erases-edited-footage",
+        "description": "TV4 postpones show after AI agent erases edited material",
+        "stargazerCount": 146,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-14T10:28:26Z",
+        "sourceContext": "HN points=146 comments=83 matched_query=\"AI agent\"",
+        "primaryUrl": "https://swedenherald.com/article/tv4-postpones-the-challenge-until-2027-after-technical-failure-erases-edited-footage",
+        "sourceDetails": {
+          "hn_id": "50085323",
+          "hn_url": "https://news.ycombinator.com/item?id=50085323",
+          "external_url": "https://swedenherald.com/article/tv4-postpones-the-challenge-until-2027-after-technical-failure-erases-edited-footage",
+          "comments": 83,
+          "matched_query": "\"AI agent\"",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3fa479ff-dca9-8192-8632-f6667682f8b8",
+      "score": 75,
+      "reason": "実運用における重大なリスクとして参考になる。",
+      "commercial_score": 80,
+      "shelf_life_score": 15,
+      "shelf_life": "FLASH",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 76.75
     },
     {
       "key": "https://fion.ac/jellyfish.pdf",
@@ -391,43 +502,6 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "SECURITY",
       "deep_dive_priority_score": 76.1
-    },
-    {
-      "key": "https://news.ycombinator.com/item?id=50059089",
-      "deferred_at": "2026-10-12T22:42:58.829114+00:00",
-      "expires_at": "2026-10-14T22:42:58.829114+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Hermes vs. OpenClaw: Which AI agent I kept after running both",
-        "originalTitle": "Hermes vs. OpenClaw: Which AI agent I kept after running both",
-        "displayName": "Hermes vs. OpenClaw: Which AI agent I kept after running both",
-        "sourceLanguage": "en",
-        "url": "https://www.dhawalshah.net/article/hermes-vs-openclaw/",
-        "description": "Hermes vs. OpenClaw: Which AI agent I kept after running both",
-        "stargazerCount": 4,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-12T16:46:05Z",
-        "sourceContext": "HN points=4 comments=0 matched_query=\"AI agent\"",
-        "primaryUrl": "https://www.dhawalshah.net/article/hermes-vs-openclaw/",
-        "sourceDetails": {
-          "hn_id": "50059089",
-          "hn_url": "https://news.ycombinator.com/item?id=50059089",
-          "external_url": "https://www.dhawalshah.net/article/hermes-vs-openclaw/",
-          "comments": 0,
-          "matched_query": "\"AI agent\"",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3f7479ff-dca9-8158-9be9-c5848cd4ee0a",
-      "score": 75,
-      "reason": "OSSエージェントの実務的な比較検証",
-      "commercial_score": 78,
-      "shelf_life_score": 30,
-      "shelf_life": "FLASH",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 76.05
     },
     {
       "key": "https://arxiv.org/abs/2609.40324",
@@ -693,80 +767,6 @@
       "shelf_life": "TREND",
       "portfolio_topic": "MODEL",
       "deep_dive_priority_score": 74.1
-    },
-    {
-      "key": "https://arxiv.org/abs/2610.13841",
-      "deferred_at": "2026-10-12T08:45:24.661415+00:00",
-      "expires_at": "2026-12-11T08:45:24.661415+00:00",
-      "repo": {
-        "source": "ArXiv",
-        "nameWithOwner": "Returning to Development States: When Full Sandbox Snapshots Help Coding Agents",
-        "originalTitle": "Returning to Development States: When Full Sandbox Snapshots Help Coding Agents",
-        "displayName": "Returning to Development States: When Full Sandbox Snapshots Help Coding Agents",
-        "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2610.13841v1",
-        "description": "Coding agents often make useful progress before they fail, but retry-from-scratch discards the machine state created along the way. This makes failure recovery an interesting search problem: if intermediate environment states preserve meaningful progress, restoring and branching from them could outperform repeatedly restarting from the initial state. We implement Go-Explore-style search over full Daytona snapshots and find that higher and more efficient solve rates depend mainly on progress that",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-09T16:50:19Z",
-        "sourceContext": "Coding agents often make useful progress before they fail, but retry-from-scratch discards the machine state created along the way. This makes failure recovery an interesting search problem: if intermediate environment states preserve meaningful progress, restoring and branching from them could outperform repeatedly restarting from the initial state. We implement Go-Explore-style search over full Daytona snapshots and find that higher and more efficient solve rates depend mainly on progress that sits outside the repository, such as databases, services, and other runtime state. Our results suggest that full-snapshot search is most effective when long-horizon coding work spans multiple services whose state cannot be reconstructed from a single diff.",
-        "primaryUrl": "https://arxiv.org/abs/2610.13841v1",
-        "sourceDetails": {
-          "authors": [
-            "Daniel Thi Graviet",
-            "Tanmay Shah"
-          ],
-          "categories": [
-            "cs.LG",
-            "cs.SE"
-          ]
-        }
-      },
-      "notion_page_id": "3f7479ff-dca9-81c1-ba45-f257b4f349cf",
-      "score": 75,
-      "reason": "コーディングエージェントの状態管理と失敗回復",
-      "commercial_score": 70,
-      "shelf_life_score": 75,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 73.25
-    },
-    {
-      "key": "https://news.ycombinator.com/item?id=50081868",
-      "deferred_at": "2026-10-14T12:20:44.854580+00:00",
-      "expires_at": "2026-10-28T12:20:44.854580+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Anthropic 2026 AUP Update",
-        "originalTitle": "Anthropic 2026 AUP Update",
-        "displayName": "Anthropic 2026 AUP Update",
-        "sourceLanguage": "en",
-        "url": "https://www.anthropic.com/news/2026-usage-policy-update",
-        "description": "Anthropic 2026 AUP Update",
-        "stargazerCount": 8,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-14T03:00:30Z",
-        "sourceContext": "HN points=8 comments=0 matched_query=Anthropic",
-        "primaryUrl": "https://www.anthropic.com/news/2026-usage-policy-update",
-        "sourceDetails": {
-          "hn_id": "50081868",
-          "hn_url": "https://news.ycombinator.com/item?id=50081868",
-          "external_url": "https://www.anthropic.com/news/2026-usage-policy-update",
-          "comments": 0,
-          "matched_query": "Anthropic",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3f9479ff-dca9-81df-9fbf-f964a6c6c055",
-      "score": 68,
-      "reason": "Anthropicの2026年利用規約の重要な更新。",
-      "commercial_score": 70,
-      "shelf_life_score": 60,
-      "shelf_life": "TREND",
-      "portfolio_topic": "PRODUCT",
-      "deep_dive_priority_score": 68.7
     }
   ]
 }
