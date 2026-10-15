@@ -136,6 +136,110 @@ def deduplicate_candidates(candidates: Iterable[Mapping[str, Any]]) -> list[dict
     return deduplicated
 
 
+def _selection_tokens(candidate: Mapping[str, Any]) -> tuple[str, ...]:
+    title = str(candidate.get("title") or "")
+    description = str(candidate.get("description") or "")
+    text = f"{title} {description}".lower()
+    normalized = "".join(character if character.isalnum() else " " for character in text)
+    return tuple(normalized.split())
+
+
+def _matches_selection_term(tokens: tuple[str, ...], term: str) -> bool:
+    needle = tuple(term.lower().split())
+    width = len(needle)
+    if width == 0 or width > len(tokens):
+        return False
+    return any(tokens[index : index + width] == needle for index in range(len(tokens) - width + 1))
+
+
+def _matches_any_selection_term(tokens: tuple[str, ...], terms: tuple[str, ...]) -> bool:
+    return any(_matches_selection_term(tokens, term) for term in terms)
+
+
+def score_selection_value(candidate: Mapping[str, Any]) -> tuple[int, list[str]]:
+    """Score deterministic AIIF reader/decision value without I/O or model calls."""
+
+    tokens = _selection_tokens(candidate)
+    ai_terms = (
+        "ai",
+        "artificial intelligence",
+        "llm",
+        "large language model",
+        "language model",
+        "foundation model",
+        "ai model",
+        "agent",
+        "inference",
+        "robotics",
+        "multimodal",
+        "reasoning",
+        "neural network",
+    )
+    if not _matches_any_selection_term(tokens, ai_terms):
+        return 0, []
+
+    dimensions = (
+        ("ai_relevance", ai_terms),
+        (
+            "decision_value",
+            (
+                "api",
+                "pricing",
+                "price",
+                "cost",
+                "enterprise",
+                "security",
+                "privacy",
+                "regulation",
+                "policy",
+                "deployment",
+                "availability",
+            ),
+        ),
+        (
+            "change_novelty",
+            (
+                "launch",
+                "release",
+                "released",
+                "update",
+                "new",
+                "introduces",
+                "introduced",
+                "acquisition",
+                "partnership",
+                "benchmark",
+                "improves",
+                "improvement",
+            ),
+        ),
+        (
+            "applied_reader_value",
+            (
+                "workflow",
+                "productivity",
+                "coding",
+                "automation",
+                "integration",
+                "tool use",
+                "implementation",
+                "business use",
+                "customer",
+                "user",
+                "deploy",
+                "deployment",
+            ),
+        ),
+    )
+
+    reasons = [
+        reason
+        for reason, terms in dimensions
+        if _matches_any_selection_term(tokens, terms)
+    ]
+    return len(reasons) * 15, reasons
+
+
 def screen_candidate(
     candidate: Mapping[str, Any],
     *,
@@ -175,8 +279,11 @@ def screen_candidate(
         score += 20
         reasons.append("official_source")
 
+    selection_value_score, selection_value_reasons = score_selection_value(candidate)
     result["screening_score"] = int(score)
     result["screening_reasons"] = reasons
+    result["selection_value_score"] = selection_value_score
+    result["selection_value_reasons"] = selection_value_reasons
     result["eligible"] = score >= DEFAULT_MIN_SCREENING_SCORE
     return result
 
@@ -186,12 +293,13 @@ def rank_candidates(
     *,
     now: datetime,
 ) -> list[dict[str, Any]]:
-    """Screen then rank deterministically by score and stable identity."""
+    """Screen then rank deterministically by selection value, readiness, and identity."""
 
     screened = [screen_candidate(candidate, now=now) for candidate in candidates]
     return sorted(
         screened,
         key=lambda item: (
+            -int(item.get("selection_value_score") or 0),
             -int(item.get("screening_score") or 0),
             str(item.get("candidate_identity") or ""),
         ),
@@ -318,6 +426,8 @@ def run_shadow_selection(
             "provider": candidate["provider"],
             "screening_score": candidate["screening_score"],
             "screening_reasons": list(candidate["screening_reasons"]),
+            "selection_value_score": candidate["selection_value_score"],
+            "selection_value_reasons": list(candidate["selection_value_reasons"]),
             "eligible": bool(candidate["eligible"]),
         }
         for candidate in ranked

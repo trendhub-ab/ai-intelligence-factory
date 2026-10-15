@@ -3,6 +3,7 @@ import inspect
 
 import pytest
 
+import v2_shadow_selection as shadow_selection
 from v2_shadow_selection import (
     ShadowConfig,
     deduplicate_candidates,
@@ -301,3 +302,199 @@ def test_shadow_report_contract_is_machine_readable_and_has_no_write_callbacks()
         "min_screening_score": 40,
     }
     assert report["actual_calls"] == {"provider": 1, "deep_dive": 1}
+
+
+def test_selection_value_scores_four_dimensions_once():
+    candidate = {
+        "title": "AI agent API launch for enterprise automation",
+        "description": "New pricing and deployment support improves business workflow integration.",
+    }
+
+    score, reasons = shadow_selection.score_selection_value(candidate)
+
+    assert score == 60
+    assert reasons == [
+        "ai_relevance",
+        "decision_value",
+        "change_novelty",
+        "applied_reader_value",
+    ]
+
+
+def test_selection_value_requires_ai_relevance_for_other_dimensions():
+    candidate = {
+        "title": "Enterprise pricing launch",
+        "description": "New API pricing and deployment workflow for customers.",
+    }
+
+    assert shadow_selection.score_selection_value(candidate) == (0, [])
+
+
+def test_selection_value_uses_word_boundaries_for_ai_token():
+    candidate = {
+        "title": "Email retail launch pricing",
+        "description": "Enterprise availability update for customer workflow.",
+    }
+
+    assert shadow_selection.score_selection_value(candidate) == (0, [])
+
+
+def test_selection_value_does_not_treat_bare_model_as_ai():
+    candidate = {
+        "title": "New enterprise business model launch",
+        "description": "A pricing model update for customer deployment.",
+    }
+
+    assert shadow_selection.score_selection_value(candidate) == (0, [])
+
+
+def test_selection_value_does_not_inflate_repeated_keywords():
+    candidate = {
+        "title": "AI AI AI API API launch launch automation automation",
+        "description": "Enterprise pricing deployment workflow integration release release.",
+    }
+
+    score, reasons = shadow_selection.score_selection_value(candidate)
+
+    assert score == 60
+    assert reasons == [
+        "ai_relevance",
+        "decision_value",
+        "change_novelty",
+        "applied_reader_value",
+    ]
+
+
+def test_selection_value_is_case_insensitive_and_deterministic():
+    candidate = {
+        "title": "LlM API RELEASE",
+        "description": "ENTERPRISE deployment improves CODING workflow.",
+    }
+
+    first = shadow_selection.score_selection_value(candidate)
+    second = shadow_selection.score_selection_value(candidate)
+
+    assert first == second == (
+        60,
+        ["ai_relevance", "decision_value", "change_novelty", "applied_reader_value"],
+    )
+
+
+def test_selection_value_applied_research_can_score_high():
+    candidate = {
+        "title": "AI inference method reduces deployment cost",
+        "description": "New benchmark improvement with practical implementation for production deployment.",
+    }
+
+    score, reasons = shadow_selection.score_selection_value(candidate)
+
+    assert score >= 45
+    assert "ai_relevance" in reasons
+    assert "decision_value" in reasons
+    assert "applied_reader_value" in reasons
+
+
+def test_rank_prefers_shorter_high_value_ai_change_over_long_specialist_abstract():
+    specialist = normalize_candidate(
+        {
+            "url": "https://example.com/a-specialist-research",
+            "title": "AI diffusion method for lattice field theory",
+            "description": (
+                "We derive a diffusion formulation for lattice field theory with mathematical "
+                "analysis of sampling operators, asymptotic estimators, and theoretical convergence."
+            ),
+            "published_at": "2026-10-13T12:00:00+00:00",
+        },
+        provider="ArXiv",
+        acquired_at=NOW,
+    )
+    product_change = normalize_candidate(
+        {
+            "url": "https://example.com/z-product-change",
+            "title": "AI API launch cuts enterprise pricing",
+            "description": "New release adds deployment workflow integration for customers.",
+            "published_at": "2026-10-13T12:00:00+00:00",
+        },
+        provider="HackerNews",
+        acquired_at=NOW,
+    )
+
+    ranked = rank_candidates([specialist, product_change], now=NOW)
+
+    assert ranked[0]["candidate_identity"] == "https://example.com/z-product-change"
+
+
+def test_rank_allows_applied_arxiv_research_to_beat_generic_ai_news():
+    generic_news = normalize_candidate(
+        {
+            "url": "https://example.com/a-generic-news",
+            "title": "AI update announced",
+            "description": "A new AI update was announced with general information about recent developments.",
+            "published_at": "2026-10-13T12:00:00+00:00",
+        },
+        provider="HackerNews",
+        acquired_at=NOW,
+    )
+    applied_research = normalize_candidate(
+        {
+            "url": "https://example.com/z-applied-research",
+            "title": "AI inference benchmark reduces deployment cost",
+            "description": "New improvement includes practical implementation for production deployment workflow.",
+            "published_at": "2026-10-13T12:00:00+00:00",
+        },
+        provider="ArXiv",
+        acquired_at=NOW,
+    )
+
+    ranked = rank_candidates([generic_news, applied_research], now=NOW)
+
+    assert ranked[0]["candidate_identity"] == "https://example.com/z-applied-research"
+
+
+def test_rank_equal_selection_value_falls_back_to_screening_score():
+    stronger_evidence = normalize_candidate(
+        {
+            "url": "https://example.com/z-stronger-evidence",
+            "title": "AI API launch",
+            "description": "Enterprise automation workflow integration with deployment availability and pricing details.",
+            "published_at": "2026-10-13T12:00:00+00:00",
+        },
+        provider="feed",
+        acquired_at=NOW,
+    )
+    thinner_evidence = normalize_candidate(
+        {
+            "url": "https://example.com/a-thinner-evidence",
+            "title": "AI API launch",
+            "description": "Enterprise automation workflow deployment.",
+            "published_at": "2026-10-13T12:00:00+00:00",
+        },
+        provider="feed",
+        acquired_at=NOW,
+    )
+
+    ranked = rank_candidates([thinner_evidence, stronger_evidence], now=NOW)
+
+    assert shadow_selection.score_selection_value(stronger_evidence) == shadow_selection.score_selection_value(thinner_evidence)
+    assert ranked[0]["candidate_identity"] == "https://example.com/z-stronger-evidence"
+
+
+def test_existing_screening_score_contract_stays_exactly_90():
+    candidate = normalize_candidate(
+        {
+            "url": "https://openai.com/index/example",
+            "title": "Documented model update",
+            "description": (
+                "Official release information describing concrete behavior, availability, "
+                "and implementation details for decision makers."
+            ),
+            "published_at": "2026-10-13T12:00:00+00:00",
+        },
+        provider="OfficialVendor",
+        acquired_at=NOW,
+    )
+
+    result = screen_candidate(candidate, now=NOW)
+
+    assert result["screening_score"] == 90
+    assert result["eligible"] is True
