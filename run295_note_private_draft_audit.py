@@ -24,11 +24,38 @@ import run292_note_rendered_body_audit as base292
 base = base292.base
 
 
+_ACCOUNT_PROOF_SAFE_STAGES: dict[str, str] = {
+    "note authentication is not active for the expected account": "auth_inactive",
+    "note profile settings could not be opened for the expected account": "settings_route_unproven",
+    "expected note creator identity could not be inspected": "creator_selector_unproven",
+    "expected note creator identity could not be proven": "creator_selector_unproven",
+    "persistent note session belongs to an unexpected creator account": "creator_mismatch",
+    "note authentication expired during account ownership proof": "auth_inactive",
+    "expected note account ownership control could not be proven": "profile_ownership_unproven",
+    "persistent note session does not own the expected note profile": "profile_ownership_unproven",
+}
+
+
 class Run295EyecatchProofError(base.PrivateDraftAuditError):
     def __init__(self, code: str, metrics: dict[str, Any]) -> None:
         super().__init__(f"Run295 eyecatch proof failed safely: {code}")
         self.code = str(code)
         self.safe_metrics = dict(metrics)
+
+
+def _safe_account_proof_stage(exc: BaseException) -> str | None:
+    """Read only fixed allow-listed causes; never expose dynamic exception text."""
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    for _ in range(6):
+        if current is None or id(current) in seen:
+            break
+        seen.add(id(current))
+        stage = _ACCOUNT_PROOF_SAFE_STAGES.get(str(current).strip())
+        if stage:
+            return stage
+        current = current.__cause__ or current.__context__
+    return None
 
 
 def _audit_wrapper(original: Callable[..., dict[str, Any]]) -> Callable[..., dict[str, Any]]:
@@ -97,8 +124,12 @@ def main() -> None:
         result = _safe_failure_result(args.sync_id, exc.code, exc.safe_metrics)
         exit_code = 2
     except base.PrivateDraftAuditError as exc:
+        metrics = dict(getattr(exc, "safe_metrics", None) or {})
+        account_stage = _safe_account_proof_stage(exc)
+        if account_stage:
+            metrics["account_proof_stage"] = account_stage
         result = _safe_failure_result(
-            args.sync_id, base292._safe_non_body_guard_code(exc), getattr(exc, "safe_metrics", None)
+            args.sync_id, base292._safe_non_body_guard_code(exc), metrics
         )
         exit_code = 2
 
