@@ -279,8 +279,11 @@ def screen_candidate(
         score += 20
         reasons.append("official_source")
 
+    selection_value_score, selection_value_reasons = score_selection_value(candidate)
     result["screening_score"] = int(score)
     result["screening_reasons"] = reasons
+    result["selection_value_score"] = selection_value_score
+    result["selection_value_reasons"] = selection_value_reasons
     result["eligible"] = score >= DEFAULT_MIN_SCREENING_SCORE
     return result
 
@@ -290,12 +293,13 @@ def rank_candidates(
     *,
     now: datetime,
 ) -> list[dict[str, Any]]:
-    """Screen then rank deterministically by score and stable identity."""
+    """Screen then rank deterministically by selection value, readiness, and identity."""
 
     screened = [screen_candidate(candidate, now=now) for candidate in candidates]
     return sorted(
         screened,
         key=lambda item: (
+            -int(item.get("selection_value_score") or 0),
             -int(item.get("screening_score") or 0),
             str(item.get("candidate_identity") or ""),
         ),
