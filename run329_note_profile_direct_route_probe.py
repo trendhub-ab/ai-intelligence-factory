@@ -4,8 +4,9 @@
 Run328 proved the visible creator-page `設定` control resolves to
 https://note.com/settings/profile but a foreground note modal can intercept pointer events.
 Run329 therefore treats the audited href as the authority, verifies it exactly, then navigates
-directly to that route and inventories the settings surface. It performs zero UI clicks,
-zero input, zero save actions, zero profile/settings/public mutations.
+directly to that route even when the public biography is already current. It records only
+sanitized input structure needed to diagnose the production creator selector: no input values,
+body text, HTML dump, UI click, input, save action, or profile/settings/public mutation.
 """
 from __future__ import annotations
 
@@ -17,7 +18,6 @@ from typing import Any
 import note_draft_automation as base
 import run190_note_persistent_cloud as cloud
 import run311_note_profile_update as run311
-import run328_note_profile_settings_probe as run328
 
 CONFIRM_TOKEN = "PROBE_NOTE_PROFILE_DIRECT_ROUTE_TRENDHUB_BIZ_READONLY"
 PROFILE_SETTINGS_URL = "https://note.com/settings/profile"
@@ -27,6 +27,52 @@ SCREENSHOT_ENV = "NOTE_PROFILE_DIRECT_PROBE_SCREENSHOT_FILE"
 
 def _canon(value: Any) -> str:
     return run311._canon(str(value or ""))
+
+
+def _creator_selector_surface(page: Any) -> dict[str, Any]:
+    selector = cloud.CREATOR_NAME_SELECTOR
+    exact = page.locator(selector)
+    try:
+        creator_selector_count = exact.count()
+    except Exception:
+        creator_selector_count = -1
+
+    creator_visible_count = 0
+    if creator_selector_count > 0:
+        for index in range(min(creator_selector_count, 20)):
+            try:
+                if exact.nth(index).is_visible(timeout=500):
+                    creator_visible_count += 1
+            except Exception:
+                continue
+
+    try:
+        candidate_inputs = page.locator("input").evaluate_all(
+            """
+            els => els.slice(0, 100).map(el => {
+              const r = el.getBoundingClientRect();
+              const s = getComputedStyle(el);
+              const visible = r.width > 0 && r.height > 0 && s.display !== 'none' &&
+                              s.visibility !== 'hidden' && s.opacity !== '0';
+              return {
+                tag: el.tagName.toLowerCase(),
+                name: el.getAttribute('name') || '',
+                ariaLabel: el.getAttribute('aria-label') || '',
+                type: el.getAttribute('type') || '',
+                visible,
+              };
+            })
+            """
+        )
+    except Exception:
+        candidate_inputs = []
+
+    return {
+        "creator_selector": selector,
+        "creator_selector_count": creator_selector_count,
+        "creator_visible_count": creator_visible_count,
+        "candidate_inputs": candidate_inputs if isinstance(candidate_inputs, list) else [],
+    }
 
 
 def probe() -> dict[str, Any]:
@@ -47,16 +93,13 @@ def probe() -> dict[str, Any]:
             page.goto(run311.PUBLIC_PROFILE_URL, wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(1400)
             public_text = _canon(page.locator("body").inner_text(timeout=10000))
-            if _canon(run311.CURRENT_PROFILE) in public_text and "Product Hunt" not in public_text:
-                return {
-                    "status": "already_current_no_probe_needed",
-                    "public_mutation": False,
-                    "settings_mutation": False,
-                    "clicks_performed": 0,
-                    "zero_gemini_calls": True,
-                    "notion_writes": 0,
-                }
-            if "Product Hunt" not in public_text or _canon(run311.LEGACY_PROFILE) not in public_text:
+            current_profile_detected = (
+                _canon(run311.CURRENT_PROFILE) in public_text and "Product Hunt" not in public_text
+            )
+            legacy_profile_detected = (
+                "Product Hunt" in public_text and _canon(run311.LEGACY_PROFILE) in public_text
+            )
+            if not current_profile_detected and not legacy_profile_detected:
                 raise base.NoteDraftError("Run329 refuses a public profile state outside the exact legacy/current contract")
 
             control = run311._settings_control(page)
@@ -64,12 +107,11 @@ def probe() -> dict[str, Any]:
             if href != PROFILE_SETTINGS_URL:
                 raise base.NoteDraftError(f"Run329 refuses unexpected profile settings href: {href!r}")
 
-            pre_surface = run328._surface(page)
             page.goto(PROFILE_SETTINGS_URL, wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(1500)
-            surface_t1 = run328._surface(page)
+            selector_surface_t1 = _creator_selector_surface(page)
             page.wait_for_timeout(1800)
-            surface_t3 = run328._surface(page)
+            selector_surface_t3 = _creator_selector_surface(page)
 
             final_url = str(page.url or "")
             if not final_url.startswith(PROFILE_SETTINGS_URL):
@@ -84,12 +126,13 @@ def probe() -> dict[str, Any]:
             return {
                 "status": "profile_settings_direct_route_probed_no_mutation",
                 "public_profile_url": run311.PUBLIC_PROFILE_URL,
-                "legacy_profile_verified_before_probe": True,
+                "current_profile_detected": current_profile_detected,
+                "legacy_profile_detected": legacy_profile_detected,
+                "legacy_profile_verified_before_probe": legacy_profile_detected,
                 "settings_href_verified": href,
                 "url_after_direct_navigation": final_url,
-                "pre_surface": pre_surface,
-                "surface_t1": surface_t1,
-                "surface_t3": surface_t3,
+                "selector_surface_t1": selector_surface_t1,
+                "selector_surface_t3": selector_surface_t3,
                 "settings_control_clicked": False,
                 "save_control_clicked": False,
                 "field_filled": False,
