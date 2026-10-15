@@ -18,6 +18,7 @@ except ModuleNotFoundError:
     sys.modules["requests"] = requests_stub
 
 import run292_note_rendered_body_audit as audit
+import run295_note_private_draft_audit as final_audit
 
 
 class Run293NonBodyDiagnosticMappingTests(unittest.TestCase):
@@ -40,32 +41,40 @@ class Run293NonBodyDiagnosticMappingTests(unittest.TestCase):
                 exc = audit.base.PrivateDraftAuditError(message)
                 self.assertEqual(audit._safe_non_body_guard_code(exc), expected)
 
-    def test_account_proof_failures_keep_only_safe_categorical_reason(self) -> None:
+    def test_account_proof_cause_chain_maps_to_safe_stage_only(self) -> None:
         cases = {
-            "note authentication is not active for the expected account": "expected_account_auth_inactive",
-            "note profile settings could not be opened for the expected account": "expected_account_route_unproven",
-            "expected note creator identity could not be inspected": "expected_account_creator_selector_unproven",
-            "expected note creator identity could not be proven": "expected_account_creator_selector_unproven",
-            "persistent note session belongs to an unexpected creator account": "expected_account_creator_mismatch",
-            "note authentication expired during account ownership proof": "expected_account_auth_inactive",
-            "expected note account ownership control could not be proven": "expected_account_profile_ownership_unproven",
-            "persistent note session does not own the expected note profile": "expected_account_profile_ownership_unproven",
+            "note authentication is not active for the expected account": "auth_inactive",
+            "note profile settings could not be opened for the expected account": "settings_route_unproven",
+            "expected note creator identity could not be inspected": "creator_selector_unproven",
+            "expected note creator identity could not be proven": "creator_selector_unproven",
+            "persistent note session belongs to an unexpected creator account": "creator_mismatch",
+            "note authentication expired during account ownership proof": "auth_inactive",
+            "expected note account ownership control could not be proven": "profile_ownership_unproven",
+            "persistent note session does not own the expected note profile": "profile_ownership_unproven",
         }
-        for source_message, expected_code in cases.items():
+        for source_message, expected_stage in cases.items():
             with self.subTest(source_message=source_message):
                 source_exc = audit.base.note_base.NoteDraftError(source_message)
-                safe_exc = audit.base._safe_account_proof_error(source_exc)
-                self.assertEqual(audit._safe_non_body_guard_code(safe_exc), expected_code)
-                self.assertNotIn("trendhub_biz", str(safe_exc))
-                self.assertNotIn("AI Intelligence Factory", str(safe_exc))
+                outer = audit.base.PrivateDraftAuditError(
+                    "Expected note account ownership could not be proven"
+                )
+                outer.__cause__ = source_exc
+                self.assertEqual(final_audit._safe_account_proof_stage(outer), expected_stage)
 
-    def test_browser_audit_preserves_safe_account_failure_category(self) -> None:
-        source = inspect.getsource(audit.base._browser_audit)
-        self.assertIn("_safe_account_proof_error", source)
-        self.assertNotIn(
-            'raise PrivateDraftAuditError("Expected note account ownership could not be proven") from exc',
-            source,
+    def test_unknown_account_cause_emits_no_dynamic_stage(self) -> None:
+        secret = "private account detail that must never escape"
+        source_exc = audit.base.note_base.NoteDraftError(secret)
+        outer = audit.base.PrivateDraftAuditError(
+            "Expected note account ownership could not be proven"
         )
+        outer.__cause__ = source_exc
+        self.assertIsNone(final_audit._safe_account_proof_stage(outer))
+
+    def test_final_result_layer_adds_only_allowlisted_account_stage(self) -> None:
+        source = inspect.getsource(final_audit.main)
+        self.assertIn("_safe_account_proof_stage", source)
+        self.assertIn('metrics["account_proof_stage"] = account_stage', source)
+        self.assertNotIn("str(exc.__cause__)", source)
 
     def test_confirmation_error_maps_without_copying_dynamic_exception_text(self) -> None:
         exc = audit.base.PrivateDraftAuditError(
@@ -92,7 +101,6 @@ class Run293NonBodyDiagnosticMappingTests(unittest.TestCase):
                 self.assertNotIn("https://", code)
                 self.assertNotIn("/", code)
                 self.assertNotIn("\\", code)
-                # Fixed error strings may describe a guard, but must never carry a private route.
                 self.assertNotIn("/notes/", message)
 
     def test_run293_diagnostics_do_not_add_mutation_screenshot_or_model_surface(self) -> None:
