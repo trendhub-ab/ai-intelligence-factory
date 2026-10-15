@@ -40,6 +40,33 @@ class Run293NonBodyDiagnosticMappingTests(unittest.TestCase):
                 exc = audit.base.PrivateDraftAuditError(message)
                 self.assertEqual(audit._safe_non_body_guard_code(exc), expected)
 
+    def test_account_proof_failures_keep_only_safe_categorical_reason(self) -> None:
+        cases = {
+            "note authentication is not active for the expected account": "expected_account_auth_inactive",
+            "note profile settings could not be opened for the expected account": "expected_account_route_unproven",
+            "expected note creator identity could not be inspected": "expected_account_creator_selector_unproven",
+            "expected note creator identity could not be proven": "expected_account_creator_selector_unproven",
+            "persistent note session belongs to an unexpected creator account": "expected_account_creator_mismatch",
+            "note authentication expired during account ownership proof": "expected_account_auth_inactive",
+            "expected note account ownership control could not be proven": "expected_account_profile_ownership_unproven",
+            "persistent note session does not own the expected note profile": "expected_account_profile_ownership_unproven",
+        }
+        for source_message, expected_code in cases.items():
+            with self.subTest(source_message=source_message):
+                source_exc = audit.base.note_base.NoteDraftError(source_message)
+                safe_exc = audit.base._safe_account_proof_error(source_exc)
+                self.assertEqual(audit._safe_non_body_guard_code(safe_exc), expected_code)
+                self.assertNotIn("trendhub_biz", str(safe_exc))
+                self.assertNotIn("AI Intelligence Factory", str(safe_exc))
+
+    def test_browser_audit_preserves_safe_account_failure_category(self) -> None:
+        source = inspect.getsource(audit.base._browser_audit)
+        self.assertIn("_safe_account_proof_error", source)
+        self.assertNotIn(
+            'raise PrivateDraftAuditError("Expected note account ownership could not be proven") from exc',
+            source,
+        )
+
     def test_confirmation_error_maps_without_copying_dynamic_exception_text(self) -> None:
         exc = audit.base.PrivateDraftAuditError(
             f"Confirmation must equal {audit.base.CONFIRM_TOKEN}"
