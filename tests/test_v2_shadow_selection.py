@@ -392,3 +392,109 @@ def test_selection_value_applied_research_can_score_high():
     assert "ai_relevance" in reasons
     assert "decision_value" in reasons
     assert "applied_reader_value" in reasons
+
+
+def test_rank_prefers_shorter_high_value_ai_change_over_long_specialist_abstract():
+    specialist = normalize_candidate(
+        {
+            "url": "https://example.com/a-specialist-research",
+            "title": "AI diffusion method for lattice field theory",
+            "description": (
+                "We derive a diffusion formulation for lattice field theory with mathematical "
+                "analysis of sampling operators, asymptotic estimators, and theoretical convergence."
+            ),
+            "published_at": "2026-10-13T12:00:00+00:00",
+        },
+        provider="ArXiv",
+        acquired_at=NOW,
+    )
+    product_change = normalize_candidate(
+        {
+            "url": "https://example.com/z-product-change",
+            "title": "AI API launch cuts enterprise pricing",
+            "description": "New release adds deployment workflow integration for customers.",
+            "published_at": "2026-10-13T12:00:00+00:00",
+        },
+        provider="HackerNews",
+        acquired_at=NOW,
+    )
+
+    ranked = rank_candidates([specialist, product_change], now=NOW)
+
+    assert ranked[0]["candidate_identity"] == "https://example.com/z-product-change"
+
+
+def test_rank_allows_applied_arxiv_research_to_beat_generic_ai_news():
+    generic_news = normalize_candidate(
+        {
+            "url": "https://example.com/a-generic-news",
+            "title": "AI update announced",
+            "description": "A new AI update was announced with general information about recent developments.",
+            "published_at": "2026-10-13T12:00:00+00:00",
+        },
+        provider="HackerNews",
+        acquired_at=NOW,
+    )
+    applied_research = normalize_candidate(
+        {
+            "url": "https://example.com/z-applied-research",
+            "title": "AI inference benchmark reduces deployment cost",
+            "description": "New improvement includes practical implementation for production deployment workflow.",
+            "published_at": "2026-10-13T12:00:00+00:00",
+        },
+        provider="ArXiv",
+        acquired_at=NOW,
+    )
+
+    ranked = rank_candidates([generic_news, applied_research], now=NOW)
+
+    assert ranked[0]["candidate_identity"] == "https://example.com/z-applied-research"
+
+
+def test_rank_equal_selection_value_falls_back_to_screening_score():
+    stronger_evidence = normalize_candidate(
+        {
+            "url": "https://example.com/z-stronger-evidence",
+            "title": "AI API launch",
+            "description": "Enterprise automation workflow integration with deployment availability and pricing details.",
+            "published_at": "2026-10-13T12:00:00+00:00",
+        },
+        provider="feed",
+        acquired_at=NOW,
+    )
+    thinner_evidence = normalize_candidate(
+        {
+            "url": "https://example.com/a-thinner-evidence",
+            "title": "AI API launch",
+            "description": "Enterprise automation workflow deployment.",
+            "published_at": "2026-10-13T12:00:00+00:00",
+        },
+        provider="feed",
+        acquired_at=NOW,
+    )
+
+    ranked = rank_candidates([thinner_evidence, stronger_evidence], now=NOW)
+
+    assert shadow_selection.score_selection_value(stronger_evidence) == shadow_selection.score_selection_value(thinner_evidence)
+    assert ranked[0]["candidate_identity"] == "https://example.com/z-stronger-evidence"
+
+
+def test_existing_screening_score_contract_stays_exactly_90():
+    candidate = normalize_candidate(
+        {
+            "url": "https://openai.com/index/example",
+            "title": "Documented model update",
+            "description": (
+                "Official release information describing concrete behavior, availability, "
+                "and implementation details for decision makers."
+            ),
+            "published_at": "2026-10-13T12:00:00+00:00",
+        },
+        provider="OfficialVendor",
+        acquired_at=NOW,
+    )
+
+    result = screen_candidate(candidate, now=NOW)
+
+    assert result["screening_score"] == 90
+    assert result["eligible"] is True
