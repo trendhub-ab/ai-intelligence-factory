@@ -59,6 +59,23 @@ class Run190PersistentCloudTests(unittest.TestCase):
         source = inspect.getsource(run190._create_browser_draft)
         self.assertIn("on_stable_draft_url=on_stable_draft_url", source)
 
+    def test_creation_requires_expected_note_account_before_any_draft_mutation(self) -> None:
+        source = inspect.getsource(run190._create_browser_draft)
+        self.assertIn("_assert_expected_note_account(page)", source)
+        self.assertLess(
+            source.index("_assert_expected_note_account(page)"),
+            source.index("base._upload_header_image"),
+        )
+
+    def test_creation_requires_official_article_list_proof_before_returning_success(self) -> None:
+        source = inspect.getsource(run190._create_browser_draft)
+        self.assertIn("draft_url = base._save_draft_and_verify", source)
+        self.assertIn("_verify_draft_in_article_list(page, draft_url)", source)
+        self.assertLess(
+            source.index("_verify_draft_in_article_list(page, draft_url)"),
+            source.index("return draft_url"),
+        )
+
     def test_run190_installs_latest_official_header_upload_overlay(self) -> None:
         source = inspect.getsource(run190.install)
         self.assertIn("run193.install()", source)

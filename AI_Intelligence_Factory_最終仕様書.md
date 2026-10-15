@@ -1,10 +1,10 @@
 # AI Intelligence Factory — 現行Production仕様
 
-仕様最終変更日: **2026-10-14**
+仕様最終変更日: **2026-10-15**
 Production最終照合日: **2026-10-15**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`3233bc7c05d43b156ecbc9db745ac49f761549dcd4bb42bda3417c952657ef86`**
+Production Contract Fingerprint: **`e891e323ea646cafbd9b77e13310d65085df71fac05970be95c9f12f919b1cc9`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -733,6 +733,17 @@ note automationの自動到達点は **private draft**。Public releaseは人間
 
 公開本文へ内部生成制御ラベルを出さない。parser / note normalizationは旧出力互換として既知の内部制御ラベルをdeterministicに除去し、Final Publication Surfaceで内部マーカーが1件でも残ればFail-Closed。内部マーカー除去を理由にFact / Evidence / Decision本文を削除しない。
 
+新規private draft配送は、本文・画像・タイトル等のmutation前にpersistent Chrome sessionがexact `trendhub_biz` accountを所有していることをread-onlyで証明する。
+
+- `https://note.com/settings/profile` へ認証済みで到達できること
+- creator nameがexact `AI Intelligence Factory` であること
+- `https://note.com/trendhub_biz` のexact `設定` controlが `https://note.com/settings/profile` を指し、同一sessionが当該profileを所有していること
+- logged-out時のbootstrapはnote.com stateだけを1回使用し、別accountを成功扱いしないこと
+- stable edit route保存・reload後のtitle / body / eyecatch確認だけでは配送成功にしないこと
+- 同じopaque `note下書きID` が認証済みsessionの公式 `https://note.com/notes` 一覧に存在することをread-onlyで確認して初めてdelivery verificationを完了すること
+- account ownershipまたはarticle-list proofが曖昧・不成立ならFail-Closedし、`queue_confirmed`へ進めないこと
+- このproof自体はpublic release、追加Gemini call、追加Notion writeを行わないこと
+
 ### 11.2 Existing draft repair / exact regeneration
 
 汎用exact repair lanes:
@@ -1030,7 +1041,7 @@ Production surfaceが変わるPRでは、**本書の同期をmerge条件**とす
 
 ---
 
-## 18. Current-state Summary — 2026-10-14
+## 18. Current-state Summary — 2026-10-15
 
 現在のFactoryは次を正式基準とする。
 
@@ -1054,6 +1065,7 @@ Production surfaceが変わるPRでは、**本書の同期をmerge条件**とす
 - **Eyecatch V2:** 承認済み白背景＋右側青ガラスAIコア、zero-provider overlay、動的badge、hook、title、footer。
 - **Eyecatch integrity:** 1280×670、PNG pixel proof、ellipsis禁止、語中改行禁止、不完全文節終端禁止、Run248もpolicy hash対象。
 - **Stable note draft identity:** persisted `note下書きID` をauthorityとし、note.com / editor.note.comのhost差よりopaque draft path一致を優先。
+- **New private draft proof:** mutation前にexact `trendhub_biz` / `AI Intelligence Factory` ownershipを証明し、保存後は同じopaque draft IDが公式 `/notes` 一覧に存在することまで成功条件とする。
 - **Subscription Attribution:** GitHub GET/PUTは同じ `EYECATCH_GITHUB_BRANCH` を使用し、既存更新はbranch上current SHAをPUTへ渡す。
 - **Note delivery:** current-run Ready全件をexact target判定へ送る。`reconcile_existing` はdurable-ledger reconciliationとしてVM fan-out可能。
 - **Exact note sync:** bare syncに加え32-hex target指定のChatOps再同期を持つ。
