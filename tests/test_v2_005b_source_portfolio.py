@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 import v2_shadow_selection as shadow_selection
 from v2_shadow_selection import ShadowConfig, normalize_candidate, run_shadow_selection
+from v2_source_portfolio import SourcePortfolioConfig, run_four_source_shadow
 
 
 NOW = datetime(2026, 10, 15, 3, 0, tzinfo=timezone.utc)
@@ -98,26 +99,34 @@ def test_discovery_only_and_retired_sources_fail_closed_when_normalized_directly
 
 def test_four_source_run_has_explicit_total_candidate_budget():
     providers = {
-        "OfficialVendor": lambda: [_candidate("official_vendor", "1"), _candidate("official_vendor", "2")],
-        "GitHub": lambda: [_candidate("github", "1"), _candidate("github", "2")],
-        "HackerNews": lambda: [_candidate("hacker_news", "1"), _candidate("hacker_news", "2")],
-        "ArXiv": lambda: [_candidate("arxiv", "1"), _candidate("arxiv", "2")],
+        "official_vendor": lambda: [_candidate("official_vendor", "1"), _candidate("official_vendor", "2")],
+        "github": lambda: [_candidate("github", "1"), _candidate("github", "2")],
+        "hacker_news": lambda: [_candidate("hacker_news", "1"), _candidate("hacker_news", "2")],
+        "arxiv": lambda: [_candidate("arxiv", "1"), _candidate("arxiv", "2")],
     }
 
-    report = run_shadow_selection(
+    report = run_four_source_shadow(
         providers=providers,
         deep_dive=lambda _candidate: {"evidence_sufficient": True},
-        config=ShadowConfig(max_candidates_per_provider=2, max_total_candidates=3),
+        shadow_config=ShadowConfig(max_candidates_per_provider=2),
+        portfolio_config=SourcePortfolioConfig(max_total_candidates=3),
         now=NOW,
         run_id="v2-005b-total-budget",
     )
 
     assert report["budgets"]["max_total_candidates"] == 3
+    assert report["budgets"]["source_families"] == [
+        "official_vendor",
+        "github",
+        "hacker_news",
+        "arxiv",
+    ]
     assert report["acquired_candidate_count"] == 3
     assert report["normalized_candidate_count"] == 3
-    assert sum(
-        status["accepted_count"] for status in report["provider_statuses"].values()
-    ) == 3
+    assert report["provider_statuses"]["OfficialVendor"]["accepted_count"] == 2
+    assert report["provider_statuses"]["GitHub"]["accepted_count"] == 1
+    assert report["provider_statuses"]["HackerNews"]["accepted_count"] == 0
+    assert report["provider_statuses"]["ArXiv"]["accepted_count"] == 0
     assert report["actual_calls"]["deep_dive"] == 1
 
 
@@ -126,16 +135,17 @@ def test_source_failure_does_not_consume_other_sources_candidate_budget():
         raise RuntimeError("synthetic source failure")
 
     providers = {
-        "OfficialVendor": fail_official_vendor,
-        "GitHub": lambda: [_candidate("github")],
-        "HackerNews": lambda: [_candidate("hacker_news")],
-        "ArXiv": lambda: [_candidate("arxiv")],
+        "official_vendor": fail_official_vendor,
+        "github": lambda: [_candidate("github")],
+        "hacker_news": lambda: [_candidate("hacker_news")],
+        "arxiv": lambda: [_candidate("arxiv")],
     }
 
-    report = run_shadow_selection(
+    report = run_four_source_shadow(
         providers=providers,
         deep_dive=lambda _candidate: {"evidence_sufficient": True},
-        config=ShadowConfig(max_candidates_per_provider=1, max_total_candidates=4),
+        shadow_config=ShadowConfig(max_candidates_per_provider=1),
+        portfolio_config=SourcePortfolioConfig(max_total_candidates=4),
         now=NOW,
         run_id="v2-005b-source-failure-isolation",
     )
@@ -148,3 +158,44 @@ def test_source_failure_does_not_consume_other_sources_candidate_budget():
     assert report["normalized_candidate_count"] == 3
     assert report["actual_calls"]["provider"] == 4
     assert report["actual_calls"]["deep_dive"] == 1
+
+
+def test_four_source_portfolio_rejects_missing_or_unapproved_source_family():
+    complete = {
+        "official_vendor": lambda: [],
+        "github": lambda: [],
+        "hacker_news": lambda: [],
+        "arxiv": lambda: [],
+    }
+
+    missing = dict(complete)
+    missing.pop("arxiv")
+    try:
+        run_four_source_shadow(
+            providers=missing,
+            deep_dive=lambda _candidate: {"evidence_sufficient": True},
+            shadow_config=ShadowConfig(),
+            portfolio_config=SourcePortfolioConfig(),
+            now=NOW,
+            run_id="v2-005b-missing-source",
+        )
+    except ValueError as exc:
+        assert "four-source" in str(exc).lower()
+    else:
+        raise AssertionError("missing source family must fail closed")
+
+    extra = dict(complete)
+    extra["x"] = lambda: []
+    try:
+        run_four_source_shadow(
+            providers=extra,
+            deep_dive=lambda _candidate: {"evidence_sufficient": True},
+            shadow_config=ShadowConfig(),
+            portfolio_config=SourcePortfolioConfig(),
+            now=NOW,
+            run_id="v2-005b-unapproved-source",
+        )
+    except ValueError as exc:
+        assert "four-source" in str(exc).lower()
+    else:
+        raise AssertionError("discovery-only source must fail closed")
