@@ -51,8 +51,9 @@ jobs:
           python-version: '3.11'
       - name: Install read-only browser dependency
         run: pip install playwright requests
-      - name: Prove expected profile ownership without mutation
+      - name: Probe persistent and bootstrap sessions without mutation
         env:
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
           NOTE_CHROME_CHANNEL: 'chrome'
           NOTE_CHROME_HEADLESS: 'false'
         run: |
@@ -62,47 +63,77 @@ jobs:
           import note_draft_automation as base
           import run190_note_persistent_cloud as cloud
 
+          def inspect(page):
+              out = {
+                  'auth_active': False,
+                  'owns_expected_profile': False,
+                  'settings_route_active': False,
+                  'creator_name_matches': False,
+              }
+              page.set_default_timeout(30000)
+              page.goto(cloud.EXPECTED_NOTE_PROFILE_URL, wait_until='domcontentloaded', timeout=60000)
+              page.wait_for_timeout(1200)
+              if base._looks_logged_out(page):
+                  return out
+              out['auth_active'] = True
+              try:
+                  control = cloud._exact_settings_control(page)
+                  href = str(control.get_attribute('href') or '').strip()
+                  out['owns_expected_profile'] = href == cloud.PROFILE_SETTINGS_URL
+              except Exception:
+                  out['owns_expected_profile'] = False
+              page.goto(cloud.PROFILE_SETTINGS_URL, wait_until='domcontentloaded', timeout=60000)
+              page.wait_for_timeout(1200)
+              out['settings_route_active'] = str(page.url or '').startswith(cloud.PROFILE_SETTINGS_URL)
+              nickname = page.locator(cloud.CREATOR_NAME_SELECTOR)
+              try:
+                  if nickname.count() == 1 and nickname.first.is_visible(timeout=2500):
+                      actual = ' '.join(str(nickname.first.input_value() or '').split())
+                      out['creator_name_matches'] = actual == cloud.EXPECTED_CREATOR_NAME
+              except Exception:
+                  out['creator_name_matches'] = False
+              return out
+
           result = {
               'read_only': True,
               'zero_gemini_calls': True,
               'notion_writes': 0,
               'draft_mutation': False,
               'public_release': False,
-              'owns_expected_profile': False,
-              'creator_name_matches': False,
           }
           with sync_playwright() as pw:
-              context = cloud._launch_persistent_context(pw)
-              page = context.new_page()
-              page.set_default_timeout(30000)
+              persistent = cloud._launch_persistent_context(pw)
+              p = persistent.new_page()
               try:
-                  page.goto(cloud.EXPECTED_NOTE_PROFILE_URL, wait_until='domcontentloaded', timeout=60000)
-                  page.wait_for_timeout(1200)
-                  if base._looks_logged_out(page):
-                      result['status'] = 'auth_inactive'
-                  else:
-                      try:
-                          control = cloud._exact_settings_control(page)
-                          href = str(control.get_attribute('href') or '').strip()
-                          result['owns_expected_profile'] = href == cloud.PROFILE_SETTINGS_URL
-                      except Exception:
-                          result['owns_expected_profile'] = False
-
-                      page.goto(cloud.PROFILE_SETTINGS_URL, wait_until='domcontentloaded', timeout=60000)
-                      page.wait_for_timeout(1200)
-                      result['settings_route_active'] = str(page.url or '').startswith(cloud.PROFILE_SETTINGS_URL)
-                      nickname = page.locator(cloud.CREATOR_NAME_SELECTOR)
-                      try:
-                          if nickname.count() == 1 and nickname.first.is_visible(timeout=2500):
-                              actual = ' '.join(str(nickname.first.input_value() or '').split())
-                              result['creator_name_matches'] = actual == cloud.EXPECTED_CREATOR_NAME
-                      except Exception:
-                          result['creator_name_matches'] = False
-                      result['status'] = 'ownership_probed'
+                  result['persistent'] = inspect(p)
               finally:
-                  context.close()
-          print('PR792_NOTE_PROFILE_OWNERSHIP=' + json.dumps(result, ensure_ascii=False, sort_keys=True))
-          if result.get('status') != 'ownership_probed':
+                  persistent.close()
+
+              browser = pw.chromium.launch(
+                  channel='chrome',
+                  headless=False,
+                  args=['--lang=ja-JP', '--no-first-run', '--no-default-browser-check', '--disable-dev-shm-usage'],
+              )
+              ephemeral = browser.new_context(
+                  locale='ja-JP',
+                  timezone_id='Asia/Tokyo',
+                  viewport={'width': 1440, 'height': 1100},
+              )
+              q = ephemeral.new_page()
+              try:
+                  result['bootstrap_seeded'] = bool(cloud._seed_note_state(ephemeral, q))
+                  result['bootstrap'] = inspect(q) if result['bootstrap_seeded'] else {
+                      'auth_active': False,
+                      'owns_expected_profile': False,
+                      'settings_route_active': False,
+                      'creator_name_matches': False,
+                  }
+              finally:
+                  ephemeral.close()
+                  browser.close()
+
+          print('PR792_NOTE_SESSION_DIAGNOSTIC=' + json.dumps(result, ensure_ascii=False, sort_keys=True))
+          if result.get('read_only') is not True or result.get('draft_mutation') is not False:
               raise SystemExit(2)
           PY
 
