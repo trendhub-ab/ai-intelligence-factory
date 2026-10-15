@@ -9,6 +9,13 @@ on:
         type: string
   issue_comment:
     types: [created]
+  pull_request:
+    types: [synchronize]
+    branches: [main]
+    paths:
+      - 'run329_note_profile_direct_route_probe.py'
+      - 'tests/test_run329_note_profile_direct_route_probe.py'
+      - '.github/workflows/note-profile-settings-probe.yml'
 
 permissions:
   contents: read
@@ -28,7 +35,12 @@ jobs:
        github.event.issue.pull_request == null &&
        github.event.comment.user.login == 'trendhub-ab' &&
        github.actor == 'trendhub-ab' &&
-       github.event.comment.body == '/aiif note profile probe')
+       github.event.comment.body == '/aiif note profile probe') ||
+      (github.event_name == 'pull_request' &&
+       github.run_attempt == 1 &&
+       github.event.number == 798 &&
+       github.head_ref == 'diagnostic/run329-current-profile-selector-probe-20261016' &&
+       github.actor == 'trendhub-ab')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -47,12 +59,19 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           CONFIRM: ${{ inputs.confirm }}
           COMMENT: ${{ github.event.comment.body }}
+          HEAD_REF: ${{ github.head_ref }}
+          PR_NUMBER: ${{ github.event.number }}
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = 'workflow_dispatch' ]; then
             [ "$CONFIRM" = 'PROBE_NOTE_PROFILE_DIRECT_ROUTE_TRENDHUB_BIZ_READONLY' ] || exit 1
-          else
+          elif [ "$EVENT_NAME" = 'issue_comment' ]; then
             [ "$COMMENT" = '/aiif note profile probe' ] || exit 1
+          elif [ "$EVENT_NAME" = 'pull_request' ]; then
+            [ "$HEAD_REF" = 'diagnostic/run329-current-profile-selector-probe-20261016' ] || exit 1
+            [ "$PR_NUMBER" = '798' ] || exit 1
+          else
+            exit 1
           fi
           echo 'authorized=true' >> "$GITHUB_OUTPUT"
 
