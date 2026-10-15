@@ -28,13 +28,14 @@
 - Gemini Evidence requests: max 1 per run; retry 0; model fallback 0; rank fallback 0.
 - No Lite model.
 - Source failure is isolated; one failed source must not abort or consume remaining-source budget.
+- OfficialVendor/GitHub reader failures reuse `SourceAcquisitionError(source, category)` from `v2_live_shadow_acquisition.py`; new categories are limited to `request_failure`, `http_failure`, `redirect_not_allowed`, `invalid_html`, `invalid_json`, and `invalid_payload`.
 - No raw response body, prompt, token, authorization header, cookie, transport exception text, arbitrary HTML dump, or unpublished Notion/note content may enter artifacts.
 - No live provider/Gemini call is required before merge.
 
 ## Review Focus
 
-1. **Redirect escape from allowlist:** a vendor GET that lands on an unapproved hostname must fail that vendor safely; Task 1 owns the regression.
-2. **HTML drift / deceptive anchors:** vendor pages with malformed or off-domain article links must not create candidates; Task 1 owns the regression.
+1. **Redirect escape from allowlist:** a vendor GET that lands on an unapproved hostname must fail that vendor with `redirect_not_allowed`; Task 1 owns the regression.
+2. **HTML drift / deceptive anchors:** vendor pages with malformed or off-domain article links must not create candidates or trigger fallback discovery; Task 1 owns the regression.
 3. **GitHub token or repository widening:** runtime inputs must not alter the three repositories or expose the token; Task 2 owns the regression.
 4. **Four-source bridge accidentally bypasses `run_four_source_shadow()`:** Live Proof must use the one canonical portfolio/ranking path and one Evidence attempt; Task 3 owns the regression.
 5. **Artifact/evidence-pack drift:** new source diagnostics must not break the existing V2-005 safe candidate/measurement contract or allow auto-promotion; Task 4 owns the regression.
@@ -47,9 +48,10 @@
 - Create: `v2_official_vendor_live.py`
 - Create: `tests/test_v2_official_vendor_live.py`
 - Reuse: `v2_official_vendor_acquisition.py`
+- Reuse: `v2_live_shadow_acquisition.py` (`SourceAcquisitionError` only)
 
 **Interfaces:**
-- Consumes: `acquire_official_vendor_candidates(...)` from `v2_official_vendor_acquisition.py`.
+- Consumes: `acquire_official_vendor_candidates(...)` and existing `SourceAcquisitionError`.
 - Produces:
   - `VendorSourceConfig(provider: str, collection_url: str, allowed_hostname: str, max_items: int = 5, timeout_seconds: float = 8.0)`
   - `OFFICIAL_VENDOR_SOURCES: tuple[VendorSourceConfig, ...]`
@@ -68,10 +70,12 @@ Add tests asserting:
 
 Use fixed local HTML fixtures and assert:
 - only `http/https` article anchors on the exact configured hostname are accepted;
+- anchor text becomes the required title; a same-card `<time datetime>` and short summary may be used when unambiguous, otherwise `published_at=None` and `description=""` are valid;
 - at most 5 items are passed to the existing normalizer;
 - duplicate canonical URLs collapse through the existing normalizer;
 - malformed anchors and off-domain/lookalike hosts are ignored;
-- a redirect/final response URL on another hostname raises a safe vendor error without leaking response text;
+- a response whose final URL hostname differs from `allowed_hostname` raises `SourceAcquisitionError(..., "redirect_not_allowed")` without leaking response text;
+- request/HTTP/parser failures map only to the approved safe categories;
 - HTML that yields no supported candidate returns an empty list, with no crawler/search/browser fallback.
 
 - [ ] **Step 3: Run focused tests and prove RED**
@@ -84,7 +88,7 @@ Expected: FAIL because `v2_official_vendor_live` does not exist.
 
 - [ ] **Step 4: Implement the minimal reader**
 
-Implement the interfaces above using `requests.get` injection and stdlib HTML parsing only. Parse bounded index metadata into the item shape already accepted by `acquire_official_vendor_candidates()`; do not fetch article-detail pages.
+Implement the interfaces above using `requests.get` injection and stdlib `html.parser.HTMLParser`. Parse only same-host index anchors plus optional same-card time/summary into the item shape accepted by `acquire_official_vendor_candidates()`; do not fetch article-detail pages.
 
 - [ ] **Step 5: Run focused tests and existing normalizer tests**
 
@@ -109,9 +113,10 @@ git commit -m "feat: add bounded V2 vendor live reader"
 - Create: `v2_github_live.py`
 - Create: `tests/test_v2_github_live.py`
 - Reuse: `v2_github_acquisition.py`
+- Reuse: `v2_live_shadow_acquisition.py` (`SourceAcquisitionError` only)
 
 **Interfaces:**
-- Consumes: `acquire_github_candidates(...)` from `v2_github_acquisition.py`.
+- Consumes: `acquire_github_candidates(...)` and existing `SourceAcquisitionError`.
 - Produces:
   - `GITHUB_REPOSITORIES: tuple[str, ...]`
   - `fetch_github_repository_releases(*, repository: str, http_get: Callable[..., Any] = requests.get, token: str | None = None, timeout_seconds: float = 8.0, max_events: int = 5) -> list[dict[str, Any]]`
@@ -121,18 +126,19 @@ git commit -m "feat: add bounded V2 vendor live reader"
 
 Assert:
 - `GITHUB_REPOSITORIES` equals the three spec repositories in fixed order;
-- each request is exactly `GET https://api.github.com/repos/{repo}/releases` with `per_page=5`, timeout `8.0`;
+- each request is exactly `GET https://api.github.com/repos/{repo}/releases` with `params={"per_page": 5}`, timeout `8.0`;
 - no tag, branch, issue, code-search, or repository-discovery request is made;
 - an unallowlisted repository is rejected before network access.
 
 - [ ] **Step 2: Write RED normalization and security tests**
 
 With fixed JSON fixtures assert:
-- release rows map to existing event shape with `event_kind="release"` and flow through `acquire_github_candidates()`;
+- release rows map to existing event shape using `id`/`tag_name`, `html_url`, `name or tag_name`, `body`, and `published_at`, with `event_kind="release"`, then flow through `acquire_github_candidates()`;
 - malformed releases are dropped fail-closed;
-- one repository HTTP/JSON failure is isolated and the remaining repositories still run;
-- optional token is used only in the request header and sentinel token text never appears in returned candidates or safe exception strings;
-- redirect/final URL outside `api.github.com` fails that repository safely.
+- one repository request/HTTP/JSON failure is isolated and the remaining repositories still run;
+- optional token is sent only as `Authorization: Bearer <token>`; sentinel token text never appears in returned candidates or safe exception strings;
+- a response final URL outside `api.github.com` raises `SourceAcquisitionError("GitHub", "redirect_not_allowed")`;
+- request/HTTP/JSON failures map only to the approved safe categories.
 
 - [ ] **Step 3: Run focused tests and prove RED**
 
@@ -178,7 +184,7 @@ git commit -m "feat: add bounded V2 GitHub live reader"
   - `fetch_hacker_news_candidates(...)` and `fetch_arxiv_candidates(...)` from `v2_live_shadow_acquisition.py`;
   - `run_four_source_shadow(...)` and `SourcePortfolioConfig` from `v2_source_portfolio.py`.
 - Produces:
-  - `FourSourceLiveConfig(vendor_limit: int = 5, github_limit: int = 5, hn_limit: int = 5, arxiv_limit: int = 5, timeout_seconds: float = 8.0, max_total_candidates: int = 40)`
+  - `FourSourceLiveConfig(hn_limit: int = 5, arxiv_limit: int = 5, timeout_seconds: float = 8.0, max_total_candidates: int = 40)`
   - `run_four_source_live(*, deep_dive: Callable[[Mapping[str, Any]], Mapping[str, Any]], now: datetime, run_id: str, http_get: Callable[..., Any] = requests.get, github_token: str | None = None, v1_reference: str | None = None, config: FourSourceLiveConfig | None = None) -> dict[str, Any]`
 
 - [ ] **Step 1: Write RED integration tests for exact four-source participation**
@@ -186,15 +192,17 @@ git commit -m "feat: add bounded V2 GitHub live reader"
 Assert a deterministic fixture run:
 - builds exactly four source-family providers: `official_vendor`, `github`, `hacker_news`, `arxiv`;
 - delegates final orchestration to `run_four_source_shadow()` rather than calling `run_shadow_selection()` directly;
+- uses `ShadowConfig(max_candidates_per_provider=max_total_candidates, max_deep_dive_attempts=1)` and `SourcePortfolioConfig(max_total_candidates=max_total_candidates)`;
 - reports `budgets.source_families` in the existing canonical order;
 - preserves source-family provenance on screening entries.
 
 - [ ] **Step 2: Write RED budget/failure-isolation tests**
 
 Assert:
-- one source exception does not prevent the other three sources from contributing;
-- failed source contributes zero accepted candidates and consumes no remaining total-candidate budget;
-- total candidates never exceed the configured `max_total_candidates`;
+- one family exception does not prevent the other three families from contributing;
+- failed family contributes zero accepted candidates and consumes no remaining total-candidate budget;
+- total candidates never exceed configured `max_total_candidates`;
+- HN/arXiv use the configured limit/timeout while OfficialVendor/GitHub retain their spec-fixed limits/timeouts;
 - Deep Dive callback is invoked at most once;
 - no rank-2 fallback occurs after rank-1 insufficiency/failure.
 
@@ -236,11 +244,14 @@ git commit -m "feat: compose V2 four-source live acquisition"
 
 **Interfaces:**
 - Consumes: `run_four_source_live(...)` from Task 3 and existing `GeminiEvidenceProvider` measurement semantics.
-- Produces: existing public `build_live_proof(...) -> dict[str, Any]` and `write_live_proof(...)` APIs, with the same V2-005 measurement object and proof version expected by `v2_005_evidence_pack.py`.
+- Produces:
+  - `build_live_proof(*, now: datetime, run_id: str, api_key: str, config: FourSourceLiveConfig | None = None, http_get: Callable[..., Any] = requests.get, http_post: Callable[..., Any] = requests.post, github_token: str | None = None, v1_reference: str | None = None) -> dict[str, Any]`
+  - existing `write_live_proof(report, output_path) -> Path`;
+  - unchanged V2-005 measurement proof version/field contract expected by `v2_005_evidence_pack.py`.
 
 - [ ] **Step 1: Write RED route test against the current two-source implementation**
 
-Add a test that inspects/injects the acquisition boundary and requires `build_live_proof()` to call `run_four_source_live()`; explicitly fail if it calls `build_provider_backed_observation()` directly.
+Add a test that injects/patches the acquisition boundary and requires `build_live_proof()` to call `run_four_source_live()`; explicitly fail if `build_provider_backed_observation()` remains the direct route.
 
 - [ ] **Step 2: Write RED contract-preservation tests**
 
@@ -251,7 +262,8 @@ Assert a deterministic four-source proof still produces:
 - `production_mutation_authorized is False`;
 - `promotion_decision == "human_review_required"`;
 - current safe provider-failure categories and usage metadata behavior remain unchanged;
-- source-family diagnostics may be added outside the safe candidate object but no raw source payload/html appears.
+- four-source participation/status/count diagnostics remain outside the safe candidate object;
+- serialized artifact contains none of the raw HTML/token/response sentinel strings used by the tests.
 
 - [ ] **Step 3: Add evidence-pack compatibility regression**
 
@@ -267,7 +279,7 @@ Expected: new route test FAILS on the old two-source implementation.
 
 - [ ] **Step 5: Modify `build_live_proof()` minimally**
 
-Keep the existing recording HTTP POST / Gemini measurement wrapper. Replace only the acquisition/orchestration call so the measured proof uses `run_four_source_live()`. Preserve the existing API surface wherever possible; add `github_token: str | None = None` only if Task 3 requires it.
+Keep the existing recording HTTP POST / Gemini measurement wrapper. Replace only the acquisition/orchestration call so the measured proof uses `run_four_source_live()`. In `main()`, read the built-in workflow token only from `V2_GITHUB_TOKEN`; no token is required for deterministic/offline tests.
 
 - [ ] **Step 6: Run V2-005/Evidence regression suite**
 
@@ -305,8 +317,8 @@ Require:
 - workflow remains `workflow_dispatch` only, with no `schedule`, `push`, or `workflow_run` provider trigger;
 - permissions remain `contents: read` only;
 - `GEMINI_API_KEY` remains the only repository secret referenced by the provider-backed workflow;
-- built-in `${{ github.token }}` may be exposed to the Python process only for read-only GitHub releases acquisition, never `GH_PAT`;
-- workflow runs focused V2-005C reader/bridge tests before live execution;
+- workflow exports exactly `V2_GITHUB_TOKEN: ${{ github.token }}` for the live-proof process; `GH_PAT` remains absent from this downstream workflow;
+- workflow runs `tests/test_v2_official_vendor_live.py`, `tests/test_v2_github_live.py`, `tests/test_v2_four_source_live.py`, and the existing V2-005 safety suites before live execution;
 - artifact path and 14-day retention remain unchanged.
 
 - [ ] **Step 2: Run workflow test and prove RED**
@@ -315,11 +327,11 @@ Run:
 ```bash
 pytest tests/test_v2_shadow_deep_dive_workflow.py -v
 ```
-Expected: FAIL because current workflow does not yet expose the built-in read-only GitHub token or V2-005C focused tests.
+Expected: FAIL because current workflow does not yet export `V2_GITHUB_TOKEN` or include the V2-005C focused tests.
 
 - [ ] **Step 3: Update workflow minimally**
 
-Pass the built-in read-only GitHub token to `v2_005_live_proof.py` through a dedicated environment variable expected by Task 4, add the new focused test modules to the safety test step, and change no trigger/permission/confirmation/artifact contract.
+Pass `V2_GITHUB_TOKEN: ${{ github.token }}` only to the bounded provider-backed observation step, add the new focused test modules to the safety test step, and change no trigger/permission/confirmation/artifact contract.
 
 - [ ] **Step 4: Run focused V2-005C suite**
 
@@ -364,7 +376,7 @@ Expected: all GREEN/PASS.
 
 - [ ] **Step 7: Resolve only guard-required governance updates**
 
-If the specification freshness fingerprint or non-member classification guard fails solely because of these new V2 shadow files/workflow bytes, update only the exact canonical fingerprint/classification required by the guard. Do not widen Production semantics.
+If the specification freshness fingerprint or non-member classification guard fails solely because of the new V2 shadow files/workflow bytes, update only the exact canonical fingerprint/classification required by the guard. Do not widen Production semantics.
 
 - [ ] **Step 8: Re-run affected guards after any governance update**
 
@@ -372,8 +384,11 @@ Expected: all GREEN/PASS on the exact final head.
 
 - [ ] **Step 9: Commit final workflow/governance changes**
 
+Stage only files that actually changed:
 ```bash
-git add .github/workflows/v2-shadow-deep-dive.yml tests/test_v2_shadow_deep_dive_workflow.py AI_Intelligence_Factory_最終仕様書.md member_customer_surface_contract.py
+git add .github/workflows/v2-shadow-deep-dive.yml tests/test_v2_shadow_deep_dive_workflow.py
+# If and only if guard-required:
+git add AI_Intelligence_Factory_最終仕様書.md member_customer_surface_contract.py
 git commit -m "chore: wire V2-005C live proof workflow"
 ```
 
@@ -389,7 +404,7 @@ After explicit `MERGE GO` and merge to `main`:
 
 1. Trigger `/aiif run v2_shadow_deep_dive` through Issue #71 only.
 2. Run 3 independent proofs first; run at most 2 more only if needed, maximum 5.
-3. Verify each artifact proves four-source participation, provider request count <= 1, `production_authority="v1"`, `production_mutation_authorized=false`, and human-only promotion.
+3. Verify each artifact proves all four source families were attempted, provider request count <= 1, `production_authority="v1"`, `production_mutation_authorized=false`, and human-only promotion.
 4. Stop the series immediately on any P0 invariant violation.
 5. Aggregate 3–5 artifacts with `v2_005_evidence_pack.py`.
 6. Human-review source participation, topic value, Evidence quality, provider reliability, token usage/cost, and V1 comparison where available.
