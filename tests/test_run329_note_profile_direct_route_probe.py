@@ -14,11 +14,27 @@ class Run329NoteProfileDirectRouteProbeTests(unittest.TestCase):
         self.assertIn("if href != PROFILE_SETTINGS_URL", SCRIPT)
         self.assertIn("page.goto(PROFILE_SETTINGS_URL", SCRIPT)
 
-    def test_public_legacy_profile_remains_exact_precondition(self):
+    def test_current_or_legacy_public_profile_both_continue_to_settings_probe(self):
         self.assertIn("run311.PUBLIC_PROFILE_URL", SCRIPT)
         self.assertIn("run311.LEGACY_PROFILE", SCRIPT)
         self.assertIn("run311.CURRENT_PROFILE", SCRIPT)
-        self.assertIn('"Product Hunt"', SCRIPT)
+        self.assertIn('"current_profile_detected"', SCRIPT)
+        self.assertIn('"legacy_profile_detected"', SCRIPT)
+        self.assertNotIn('"status": "already_current_no_probe_needed"', SCRIPT)
+        self.assertIn("page.goto(PROFILE_SETTINGS_URL", SCRIPT)
+
+    def test_probe_records_sanitized_creator_selector_structure_only(self):
+        self.assertIn("cloud.CREATOR_NAME_SELECTOR", SCRIPT)
+        self.assertIn("_creator_selector_surface(page)", SCRIPT)
+        self.assertIn('"creator_selector_count"', SCRIPT)
+        self.assertIn('"creator_visible_count"', SCRIPT)
+        self.assertIn('"candidate_inputs"', SCRIPT)
+        self.assertIn('"name"', SCRIPT)
+        self.assertIn('"ariaLabel"', SCRIPT)
+        self.assertIn('"type"', SCRIPT)
+        self.assertNotIn("run328._surface(page)", SCRIPT)
+        self.assertNotIn('"bodyText"', SCRIPT)
+        self.assertNotIn('"value"', SCRIPT)
 
     def test_probe_has_zero_click_zero_save_zero_fill_contract(self):
         self.assertNotIn(".click()", SCRIPT)
@@ -38,12 +54,11 @@ class Run329NoteProfileDirectRouteProbeTests(unittest.TestCase):
         ):
             self.assertIn(marker, SCRIPT)
 
-    def test_probe_reuses_broad_surface_inventory_and_screenshot(self):
-        self.assertIn("run328._surface(page)", SCRIPT)
-        self.assertIn("pre_surface", SCRIPT)
-        self.assertIn("surface_t1", SCRIPT)
-        self.assertIn("surface_t3", SCRIPT)
+    def test_probe_preserves_screenshot_without_broad_page_dump(self):
         self.assertIn("page.screenshot", SCRIPT)
+        self.assertNotIn("pre_surface", SCRIPT)
+        self.assertNotIn("surface_t1 = run328._surface", SCRIPT)
+        self.assertNotIn("surface_t3 = run328._surface", SCRIPT)
 
     def test_existing_workflow_is_reused_exactly_and_zero_model(self):
         token = "PROBE_NOTE_PROFILE_DIRECT_ROUTE_TRENDHUB_BIZ_READONLY"
