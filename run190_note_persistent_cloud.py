@@ -336,8 +336,8 @@ def _article_list_has_draft_id(page: Any, draft_id: str) -> bool:
     return False
 
 
-def _verify_draft_in_article_list(page: Any, draft_url: str) -> None:
-    """Require the saved stable id to appear in the authenticated account's official article list."""
+def _verify_draft_in_article_list(page: Any, draft_url: str, title: str) -> None:
+    """Require the saved stable id to resolve exactly from note's official article list."""
     draft_id = reconcile.draft_identity_from_url(draft_url, error_type=base.NoteDraftError)
     for attempt in range(4):
         page.goto(ARTICLE_LIST_URL, wait_until="domcontentloaded", timeout=60000)
@@ -347,8 +347,37 @@ def _verify_draft_in_article_list(page: Any, draft_url: str) -> None:
         parsed = urlparse(str(page.url or ""))
         if parsed.scheme != "https" or (parsed.hostname or "").lower() != "note.com" or parsed.path != "/notes":
             raise base.NoteDraftError("note official article list could not be opened")
+
+        # Preserve the legacy exact-href proof when note exposes the stable draft id directly.
         if _article_list_has_draft_id(page, draft_id):
             return
+
+        # Current note UI overlays each article title with an exact accessible edit button.
+        # Use it only as a fallback, and only when it is unambiguous.
+        try:
+            edit_button = page.get_by_role("button", name=f"{title}を編集", exact=True)
+            button_count = edit_button.count()
+        except Exception as exc:
+            raise base.NoteDraftError("note official article-list edit control could not be inspected") from exc
+        if button_count == 0:
+            continue
+        if button_count != 1:
+            raise base.NoteDraftError("note official article-list edit control was ambiguous")
+
+        edit_button.click(timeout=10000)
+        for _ in range(10):
+            if run187._is_editor_url(str(page.url or "")):
+                break
+            page.wait_for_timeout(500)
+        if not run187._is_editor_url(str(page.url or "")):
+            raise base.NoteDraftError("note official article-list edit control did not open an editor route")
+
+        resolved_draft_id = reconcile.draft_identity_from_url(
+            str(page.url or ""), error_type=base.NoteDraftError
+        )
+        if resolved_draft_id != draft_id:
+            raise base.NoteDraftError("note official article-list edit control resolved a different draft identity")
+        return
     raise base.NoteDraftError("saved note draft identity was not present in the official article list")
 
 
@@ -428,7 +457,7 @@ def _create_browser_draft(
                 image_required=True,
                 on_stable_draft_url=on_stable_draft_url,
             )
-            _verify_draft_in_article_list(page, draft_url)
+            _verify_draft_in_article_list(page, draft_url, title)
             return draft_url
         except Exception:
             try:

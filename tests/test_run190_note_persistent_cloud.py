@@ -8,6 +8,41 @@ from unittest.mock import patch
 import run190_note_persistent_cloud as run190
 
 
+class _FakeEditButton:
+    def __init__(self, page, count: int, target_url: str) -> None:
+        self._page = page
+        self._count = count
+        self._target_url = target_url
+
+    def count(self) -> int:
+        return self._count
+
+    def click(self, timeout: int = 0) -> None:
+        del timeout
+        self._page.edit_button_clicks += 1
+        self._page.url = self._target_url
+
+
+class _FakeArticleListPage:
+    def __init__(self, *, button_count: int = 0, click_url: str = "") -> None:
+        self.url = run190.ARTICLE_LIST_URL
+        self.button_count = button_count
+        self.click_url = click_url
+        self.edit_button_clicks = 0
+        self.button_query = None
+
+    def goto(self, url: str, **kwargs) -> None:
+        del kwargs
+        self.url = url
+
+    def wait_for_timeout(self, milliseconds: int) -> None:
+        del milliseconds
+
+    def get_by_role(self, role: str, *, name: str, exact: bool):
+        self.button_query = (role, name, exact)
+        return _FakeEditButton(self, self.button_count, self.click_url)
+
+
 class Run190PersistentCloudTests(unittest.TestCase):
     def test_profile_defaults_to_persistent_home_directory(self) -> None:
         self.assertEqual(run190.DEFAULT_PROFILE_DIR.name, "chrome-profile")
@@ -87,11 +122,64 @@ class Run190PersistentCloudTests(unittest.TestCase):
     def test_creation_requires_official_article_list_proof_before_returning_success(self) -> None:
         source = inspect.getsource(run190._create_browser_draft)
         self.assertIn("draft_url = base._save_draft_and_verify", source)
-        self.assertIn("_verify_draft_in_article_list(page, draft_url)", source)
+        self.assertIn("_verify_draft_in_article_list(page, draft_url, title)", source)
         self.assertLess(
-            source.index("_verify_draft_in_article_list(page, draft_url)"),
+            source.index("_verify_draft_in_article_list(page, draft_url, title)"),
             source.index("return draft_url"),
         )
+
+    def test_official_list_proof_accepts_exact_edit_button_resolving_same_draft_id(self) -> None:
+        draft_id = "n40cb200b1c27"
+        draft_url = f"https://note.com/notes/{draft_id}/edit"
+        title = "Target title"
+        page = _FakeArticleListPage(button_count=1, click_url=draft_url)
+        with (
+            patch.object(run190.base, "_looks_logged_out", return_value=False),
+            patch.object(run190, "_article_list_has_draft_id", return_value=False),
+            patch.object(run190.run187, "_is_editor_url", side_effect=lambda url: str(url).endswith("/edit")),
+            patch.object(run190.reconcile, "draft_identity_from_url", return_value=draft_id),
+        ):
+            run190._verify_draft_in_article_list(page, draft_url, title)
+        self.assertEqual(page.button_query, ("button", f"{title}を編集", True))
+        self.assertEqual(page.edit_button_clicks, 1)
+
+    def test_official_list_proof_rejects_duplicate_exact_edit_buttons(self) -> None:
+        draft_id = "n40cb200b1c27"
+        draft_url = f"https://note.com/notes/{draft_id}/edit"
+        page = _FakeArticleListPage(button_count=2, click_url=draft_url)
+        with (
+            patch.object(run190.base, "_looks_logged_out", return_value=False),
+            patch.object(run190, "_article_list_has_draft_id", return_value=False),
+            patch.object(run190.reconcile, "draft_identity_from_url", return_value=draft_id),
+        ):
+            with self.assertRaises(run190.base.NoteDraftError):
+                run190._verify_draft_in_article_list(page, draft_url, "Duplicate title")
+
+    def test_official_list_proof_rejects_edit_button_resolving_wrong_draft_id(self) -> None:
+        draft_id = "n40cb200b1c27"
+        draft_url = f"https://note.com/notes/{draft_id}/edit"
+        page = _FakeArticleListPage(button_count=1, click_url="https://note.com/notes/nwrongdraft/edit")
+        with (
+            patch.object(run190.base, "_looks_logged_out", return_value=False),
+            patch.object(run190, "_article_list_has_draft_id", return_value=False),
+            patch.object(run190.run187, "_is_editor_url", return_value=True),
+            patch.object(run190.reconcile, "draft_identity_from_url", side_effect=[draft_id, "nwrongdraft"]),
+        ):
+            with self.assertRaises(run190.base.NoteDraftError):
+                run190._verify_draft_in_article_list(page, draft_url, "Wrong target")
+
+    def test_official_list_legacy_href_proof_still_passes_without_edit_button(self) -> None:
+        draft_id = "n40cb200b1c27"
+        draft_url = f"https://note.com/notes/{draft_id}/edit"
+        page = _FakeArticleListPage(button_count=0, click_url="")
+        with (
+            patch.object(run190.base, "_looks_logged_out", return_value=False),
+            patch.object(run190, "_article_list_has_draft_id", return_value=True),
+            patch.object(run190.reconcile, "draft_identity_from_url", return_value=draft_id),
+        ):
+            run190._verify_draft_in_article_list(page, draft_url, "Legacy title")
+        self.assertIsNone(page.button_query)
+        self.assertEqual(page.edit_button_clicks, 0)
 
     def test_run190_installs_latest_official_header_upload_overlay(self) -> None:
         source = inspect.getsource(run190.install)
