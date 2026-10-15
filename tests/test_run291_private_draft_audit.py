@@ -76,7 +76,7 @@ class Run291AccountAndListProofTests(unittest.TestCase):
     def test_browser_audit_proves_expected_account_and_official_list_before_direct_editor_route(self) -> None:
         source = inspect.getsource(audit._browser_audit)
         account_proof = "run190._assert_expected_note_account(page)"
-        list_proof = "run190._verify_draft_in_article_list(page, private_url)"
+        list_proof = 'run190._verify_draft_in_article_list(page, private_url, str(article["title"]))'
         direct_editor_open = 'page.goto(private_url, wait_until="domcontentloaded", timeout=60000)'
         self.assertIn(account_proof, source)
         self.assertIn(list_proof, source)
