@@ -78,17 +78,18 @@ Add one small read-only acquisition layer in front of the existing `acquire_offi
 
 Responsibilities:
 
-- fetch only from an explicit endpoint allowlist stored in code/config reviewed in git;
+- fetch only from the exact initial endpoint allowlist in Section 6.1;
 - allow HTTP GET only;
-- enforce exact host/domain matching;
-- use a fixed request timeout;
-- enforce a fixed maximum number of fetched items before normalization;
-- parse only supported structured response formats;
+- enforce exact host/domain matching before and after redirects;
+- use an 8-second request timeout;
+- enforce a maximum of 5 index items per vendor before normalization;
+- parse only the supported bounded HTML-index contract for the three initial vendor collection pages;
+- perform no article-detail fetch during acquisition;
 - return already-bounded item mappings to `acquire_official_vendor_candidates()`;
 - classify failures with safe categorical reason codes;
 - never persist raw response bodies, cookies, authorization headers, or transport exception text.
 
-The initial live reader should stay intentionally narrow. It must not perform search-engine discovery, site crawling, arbitrary feed discovery, sitemap expansion, or browser automation.
+The initial live reader must not perform search-engine discovery, site crawling, arbitrary feed discovery, sitemap expansion, browser automation, or runtime URL injection.
 
 ### 5.2 GitHub live reader
 
@@ -96,16 +97,18 @@ Add one read-only acquisition layer in front of the existing `acquire_github_can
 
 Responsibilities:
 
-- query only explicitly allowlisted repositories;
+- query only the exact repositories in Section 6.2;
 - use GitHub REST GET endpoints only;
-- read only release/tag/changelog metadata required by the existing candidate contract;
-- enforce a fixed per-repository item limit;
+- for V2-005C proof, read releases only via `/repos/{owner}/{repo}/releases`;
+- request at most 5 releases per repository;
+- preserve stable repository order: OpenAI, Anthropic, Google;
 - use the existing workflow's `contents: read` authority only;
-- if `github.token` is used, it must remain read-only and must never be copied into artifacts or logs;
+- use `github.token` only if required for reliable REST reads, with no permission expansion;
+- never copy the token into artifacts or logs;
 - reject repositories, hosts, event kinds, or URLs outside the allowlist;
 - fail one repository independently without aborting the remaining four-source run.
 
-No GitHub-wide search, issue discovery, arbitrary code search, repository writes, release writes, or elevated permissions are permitted.
+The existing normalizer may continue to support `release`, `tag`, and `changelog`, but V2-005C live proof introduces no tag/changelog fallback. No GitHub-wide search, issue discovery, arbitrary code search, repository writes, release writes, or elevated permissions are permitted.
 
 ### 5.3 Existing Hacker News and ArXiv readers
 
@@ -119,7 +122,7 @@ Modify the measured V2-005 Live Proof entrypoint so the production-safe manual w
 
 The bridge must:
 
-- construct exactly the four approved providers;
+- construct exactly the four approved source-family providers;
 - call `run_four_source_shadow()`;
 - retain the current V2-005 measurement wrapper semantics;
 - capture the evaluated rank-1 candidate using the existing safe-field allowlist;
@@ -147,41 +150,61 @@ Required workflow properties:
 - artifact retention remains bounded;
 - concurrency continues to protect Gemini request budget.
 
-## 6. Source configuration
+## 6. Initial source allowlist
 
-Source configuration must be explicit and reviewable in git.
+The V2-005C proof series uses the following fixed initial allowlist. Runtime input cannot add or replace these sources.
 
-### OfficialVendor
+### 6.1 OfficialVendor collection pages
 
-Each configured source entry must define:
+Initial vendor order is fixed:
 
-- provider name;
-- exact endpoint URL;
-- exact allowed hostname/domain;
-- parser type;
-- max items;
-- timeout.
+1. OpenAI
+   - collection URL: `https://openai.com/news`
+   - exact allowed hostname: `openai.com`
+   - parser: bounded HTML index
+   - max index items: 5
+   - timeout: 8 seconds
+2. Anthropic
+   - collection URL: `https://www.anthropic.com/news`
+   - exact allowed hostname: `www.anthropic.com`
+   - parser: bounded HTML index
+   - max index items: 5
+   - timeout: 8 seconds
+3. Google Gemini
+   - collection URL: `https://blog.google/products-and-platforms/products/gemini/`
+   - exact allowed hostname: `blog.google`
+   - parser: bounded HTML index
+   - max index items: 5
+   - timeout: 8 seconds
 
-The design must support more than one approved vendor without creating runtime discovery. Adding a new vendor later requires a code/config review, not a dynamic user-provided URL.
+The reader may extract only bounded index metadata needed by the existing candidate contract: stable article URL, title, date when available, and short index summary when available. It must not fetch the linked article body during V2-005C acquisition.
 
-### GitHub
+If a vendor changes its HTML so the exact parser contract no longer holds, that vendor fails safely for the run. The implementation must not add a browser fallback, generic scraper, search engine, or alternate URL automatically.
 
-Each configured entry must define:
+### 6.2 GitHub repositories
 
-- exact `owner/repository`;
-- supported event kinds from the existing allowlist (`release`, `tag`, `changelog`);
-- max events;
-- timeout.
+Initial repository order is fixed:
 
-No user-supplied repository/ref is accepted at runtime.
+1. `openai/openai-python`
+2. `anthropics/anthropic-sdk-python`
+3. `googleapis/python-genai`
+
+For each repository, V2-005C reads only the GitHub releases collection, max 5 releases. No tag fallback, branch scan, issue scan, code search, or repository discovery is allowed.
+
+Adding or changing an OfficialVendor URL or GitHub repository after V2-005C requires a reviewed code/config change; it cannot be supplied through workflow input, Issue comment, environment variable, or model output.
 
 ## 7. Budgets
 
 V2-005C keeps all budgets explicit.
 
-- four source families: exactly 4;
-- total candidate budget: use existing `SourcePortfolioConfig` default unless a separate reviewed config narrows it;
-- per-provider candidate budget: use existing `ShadowConfig` contract;
+- source families: exactly 4;
+- OfficialVendor collection pages: exactly 3 initial vendors;
+- GitHub repositories: exactly 3 initial repositories;
+- OfficialVendor max index items: 5 per vendor before family-level portfolio bounding;
+- GitHub max releases: 5 per repository before family-level portfolio bounding;
+- OfficialVendor/GitHub network timeout: 8 seconds per GET;
+- total candidate budget: existing `SourcePortfolioConfig` default unless a separate reviewed config narrows it;
+- per-provider candidate budget: existing `ShadowConfig` contract;
 - network method: GET only for source acquisition;
 - Gemini Evidence requests: max 1 per run;
 - Gemini retry: 0;
@@ -265,11 +288,13 @@ Write RED tests first for:
 - no secret/raw-response leakage;
 - deterministic normalization.
 
+OfficialVendor fixture tests must model the exact three collection-page parser contracts without making network calls. GitHub fixture tests must model the releases endpoint response for the exact three repositories.
+
 ### Layer 2 — four-source integration
 
 Write RED tests proving the current `v2_005_live_proof.py` still uses the old two-source path, then require the new bridge to:
 
-- invoke exactly four providers;
+- invoke exactly four source-family providers;
 - preserve the existing total candidate budget;
 - continue remaining sources after one source fails;
 - keep source-family provenance;
@@ -285,6 +310,7 @@ Write RED workflow tests requiring:
 - read-only permissions;
 - no Production credentials;
 - four-source V2-005C entrypoint;
+- built-in GitHub token only if the read-only releases client needs it;
 - bounded artifact retention;
 - no retry/fallback expansion.
 
@@ -336,10 +362,11 @@ V2-005C should reduce uncertainty without creating a new recurring cost center.
 
 Likely implementation scope:
 
-- create one OfficialVendor live-reader module;
-- create one GitHub live-reader module or a single clearly bounded four-source acquisition bridge if that keeps responsibilities smaller;
+- create one OfficialVendor bounded live-reader module;
+- create one GitHub releases live-reader module;
+- create or modify one four-source acquisition composition layer if necessary to keep vendor/repository aggregation outside the selector;
 - modify `v2_005_live_proof.py` to call the four-source portfolio;
-- modify `.github/workflows/v2-shadow-deep-dive.yml` only as needed to expose read-only source credentials/configuration and invoke V2-005C;
+- modify `.github/workflows/v2-shadow-deep-dive.yml` only as needed to expose the built-in read-only GitHub token and invoke V2-005C;
 - add focused tests for both readers, four-source Live Proof integration, safety boundaries, and workflow contract;
 - update canonical Production specification/fingerprint only if required by the existing freshness guard.
 
