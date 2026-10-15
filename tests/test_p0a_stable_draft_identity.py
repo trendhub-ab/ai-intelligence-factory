@@ -88,7 +88,7 @@ class StableDraftIdentityContractTests(unittest.TestCase):
         self.assertEqual(row["draft_id"], DRAFT_ID)
         self.assertNotIn("https://", row["draft_id"])
 
-    def test_browser_audit_navigates_directly_and_never_reads_history(self) -> None:
+    def test_browser_audit_proves_account_and_official_list_then_uses_exact_route_without_history(self) -> None:
         context = _FakeContext()
         article = {"title": "Expected title", "manuscript": "approved body", "draft_id": DRAFT_ID}
         private_url = f"https://note.com/notes/{DRAFT_ID}/edit"
@@ -98,12 +98,16 @@ class StableDraftIdentityContractTests(unittest.TestCase):
         with _fake_playwright_import(), \
              mock.patch.object(audit.run190, "_profile_dir", side_effect=AssertionError("history profile forbidden")), \
              mock.patch.object(audit.run190, "_launch_persistent_context", return_value=context), \
+             mock.patch.object(audit.run190, "_assert_expected_note_account") as account_proof, \
+             mock.patch.object(audit.run190, "_verify_draft_in_article_list") as list_proof, \
              mock.patch.object(audit.note_base, "_looks_logged_out", return_value=False), \
              mock.patch.object(audit.run187, "_is_editor_url", return_value=True), \
              mock.patch.object(audit, "_title_value", return_value="Expected title"):
             result = audit._browser_audit(article, page_auditor=lambda page, title, manuscript: dict(safe_metrics))
 
-        self.assertEqual(context.page.goto_calls, [private_url])
+        account_proof.assert_called_once_with(context.page)
+        list_proof.assert_called_once_with(context.page, private_url)
+        self.assertEqual(context.page.goto_calls, ["https://note.com/", private_url])
         self.assertEqual(result, safe_metrics)
         self.assertNotIn(DRAFT_ID, str(result))
         self.assertNotIn(private_url, str(result))
