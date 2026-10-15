@@ -1,0 +1,23 @@
+name: PR Run190 focused TDD
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  run190-focused:
+    if: ${{ github.event.pull_request.head.ref == 'fix/note-official-list-edit-button-proof-20261015' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install focused dependencies
+        run: pip install pytest requests playwright
+      - name: Focused RED/GREEN
+        run: pytest -q tests/test_run190_note_persistent_cloud.py
