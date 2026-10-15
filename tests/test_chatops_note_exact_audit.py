@@ -30,6 +30,16 @@ class ChatOpsNoteExactAuditContractTest(unittest.TestCase):
         self.assertNotIn("note-ready-sync.yml", self.text)
         self.assertNotIn("CREATE_NOTE_DRAFT", self.text)
 
+    def test_same_issue_comment_is_claimed_once_before_dispatch(self):
+        self.assertIn("issues: write", self.text)
+        self.assertIn("github.event.comment.id", self.text)
+        self.assertIn('id: claim', self.text)
+        self.assertIn('/issues/comments/${COMMENT_ID}/reactions', self.text)
+        self.assertIn('github-actions[bot]', self.text)
+        self.assertIn('content=eyes', self.text)
+        self.assertIn("steps.claim.outputs.dispatch == 'true'", self.text)
+        self.assertLess(self.text.index('id: claim'), self.text.index('note-private-draft-audit.yml/dispatches'))
+
 
 if __name__ == '__main__':
     unittest.main()
