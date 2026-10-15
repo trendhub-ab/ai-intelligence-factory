@@ -4,7 +4,7 @@
 Production最終照合日: **2026-10-15**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`e5b6a886eb970f77b1257efc882e083e2a63be90a0b8e442dcf595704f808cb5`**
+Production Contract Fingerprint: **`83e15ee980a95a65001628f51ae4bc0574bcd320429430a8120daa3df6068f3f`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -135,7 +135,7 @@ Control Issue、owner、run_attempt等を認証し、GH_PATで既存manual workf
 
 `/aiif note audit <32-hex sync_id>` は既存private draftのread-only監査専用で、`.github/workflows/note-private-draft-audit.yml` だけをexact targetへdispatchする。Bridge自身のGemini/model call、draft mutation、Production実行、public releaseはすべて0 / falseとし、監査対象を別記事へfallbackしない。同一Issue commentの再配送・重複eventは、そのcomment IDへのdurable claimをdispatch前に確認し、同じcommentから監査workflowを二重dispatchしない。
 
-exact private-draft auditは、stable edit routeを直接開けることだけを実在証明にしない。まず同一persistent Chrome sessionがexact `trendhub_biz` / `AI Intelligence Factory` accountを所有することをread-onlyで証明し、次に同じopaque `note下書きID` が認証済みsessionの公式 `https://note.com/notes` 一覧へ存在することを確認する。この2条件を満たした後だけdirect editor routeでtitle / body / eyecatchを監査し、account ownershipまたはofficial-list proofが不成立ならFail-Closedする。
+exact private-draft auditは、stable edit routeを直接開けることだけを実在証明にしない。まず同一persistent Chrome sessionで認証済み `https://note.com/settings/profile` を開き、creator名がexact `AIF - AI Intelligence Factory` であること、かつ同settings page内のlinkがexact `https://note.com/trendhub_biz` profileを指すことの両方でaccount ownershipをread-only証明する。public profile上の可視 `設定` controlには依存しない。次に同じopaque `note下書きID` が認証済みsessionの公式 `https://note.com/notes` 一覧へ存在することを確認する。これらを満たした後だけdirect editor routeでtitle / body / eyecatchを監査し、account ownershipまたはofficial-list proofが不成立ならFail-Closedする。
 
 `/aiif run full` は現行運用上 **`human_narrative`** を明示してDaily ONE-SHOTへ渡す。
 

@@ -67,6 +67,23 @@ class Run190PersistentCloudTests(unittest.TestCase):
             source.index("base._upload_header_image"),
         )
 
+    def test_expected_creator_name_matches_current_public_creator(self) -> None:
+        self.assertEqual(run190.EXPECTED_CREATOR_NAME, "AIF - AI Intelligence Factory")
+
+    def test_expected_profile_href_match_is_exact(self) -> None:
+        self.assertTrue(run190._is_expected_profile_href("/trendhub_biz"))
+        self.assertTrue(run190._is_expected_profile_href("https://note.com/trendhub_biz"))
+        self.assertTrue(run190._is_expected_profile_href("https://note.com/trendhub_biz/"))
+        self.assertFalse(run190._is_expected_profile_href("https://evil.example/trendhub_biz"))
+        self.assertFalse(run190._is_expected_profile_href("https://note.com/trendhub_biz-other"))
+        self.assertFalse(run190._is_expected_profile_href("https://note.com/other"))
+
+    def test_account_proof_uses_authenticated_settings_page_profile_link(self) -> None:
+        source = inspect.getsource(run190._assert_expected_note_account)
+        self.assertIn("_settings_page_has_expected_profile_link(page)", source)
+        self.assertNotIn("page.goto(EXPECTED_NOTE_PROFILE_URL", source)
+        self.assertNotIn("_exact_settings_control(page)", source)
+
     def test_creation_requires_official_article_list_proof_before_returning_success(self) -> None:
         source = inspect.getsource(run190._create_browser_draft)
         self.assertIn("draft_url = base._save_draft_and_verify", source)
