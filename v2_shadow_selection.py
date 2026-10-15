@@ -426,6 +426,8 @@ def run_shadow_selection(
             "provider": candidate["provider"],
             "screening_score": candidate["screening_score"],
             "screening_reasons": list(candidate["screening_reasons"]),
+            "selection_value_score": candidate["selection_value_score"],
+            "selection_value_reasons": list(candidate["selection_value_reasons"]),
             "eligible": bool(candidate["eligible"]),
         }
         for candidate in ranked
