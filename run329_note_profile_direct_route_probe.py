@@ -55,11 +55,11 @@ def _creator_selector_surface(page: Any) -> dict[str, Any]:
               const visible = r.width > 0 && r.height > 0 && s.display !== 'none' &&
                               s.visibility !== 'hidden' && s.opacity !== '0';
               return {
-                tag: el.tagName.toLowerCase(),
-                name: el.getAttribute('name') || '',
-                ariaLabel: el.getAttribute('aria-label') || '',
-                type: el.getAttribute('type') || '',
-                visible,
+                "tag": el.tagName.toLowerCase(),
+                "name": el.getAttribute('name') || '',
+                "ariaLabel": el.getAttribute('aria-label') || '',
+                "type": el.getAttribute('type') || '',
+                "visible": visible,
               };
             })
             """
