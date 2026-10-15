@@ -1,0 +1,52 @@
+name: PR792 canonical spec sync once
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  sync-spec:
+    if: >-
+      github.event.pull_request.head.ref == 'fix/note-audit-account-diagnostics-20261015' &&
+      github.actor == 'trendhub-ab'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Sync canonical specification to proven account contract
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('AI_Intelligence_Factory_最終仕様書.md')
+          text = path.read_text(encoding='utf-8')
+
+          old_fp = 'Production Contract Fingerprint: **`e5b6a886eb970f77b1257efc882e083e2a63be90a0b8e442dcf595704f808cb5`**'
+          new_fp = 'Production Contract Fingerprint: **`83e15ee980a95a65001628f51ae4bc0574bcd320429430a8120daa3df6068f3f`**'
+          if old_fp not in text:
+              raise SystemExit('stale fingerprint anchor not found')
+          text = text.replace(old_fp, new_fp, 1)
+
+          old_contract = '''exact private-draft auditは、stable edit routeを直接開けることだけを実在証明にしない。まず同一persistent Chrome sessionがexact `trendhub_biz` / `AI Intelligence Factory` accountを所有することをread-onlyで証明し、次に同じopaque `note下書きID` が認証済みsessionの公式 `https://note.com/notes` 一覧へ存在することを確認する。この2条件を満たした後だけdirect editor routeでtitle / body / eyecatchを監査し、account ownershipまたはofficial-list proofが不成立ならFail-Closedする。'''
+          new_contract = '''exact private-draft auditは、stable edit routeを直接開けることだけを実在証明にしない。まず同一persistent Chrome sessionで認証済み `https://note.com/settings/profile` を開き、creator名がexact `AIF - AI Intelligence Factory` であること、かつ同settings page内のlinkがexact `https://note.com/trendhub_biz` profileを指すことの両方でaccount ownershipをread-only証明する。public profile上の可視 `設定` controlには依存しない。次に同じopaque `note下書きID` が認証済みsessionの公式 `https://note.com/notes` 一覧へ存在することを確認する。これらを満たした後だけdirect editor routeでtitle / body / eyecatchを監査し、account ownershipまたはofficial-list proofが不成立ならFail-Closedする。'''
+          if old_contract not in text:
+              raise SystemExit('stale account contract anchor not found')
+          text = text.replace(old_contract, new_contract, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Remove one-shot workflow and commit spec sync
+        run: |
+          git rm .github/workflows/pr792-spec-sync.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add AI_Intelligence_Factory_最終仕様書.md
+          git commit -m 'docs: sync current note account ownership contract'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
