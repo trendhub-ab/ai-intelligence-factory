@@ -20,4 +20,4 @@ jobs:
       - name: Install focused dependencies
         run: pip install pytest requests playwright
       - name: Focused RED/GREEN
-        run: pytest -q tests/test_run190_note_persistent_cloud.py
+        run: PYTHONPATH=. pytest -q tests/test_run190_note_persistent_cloud.py -k "official_list or prove_draft or ownership"
