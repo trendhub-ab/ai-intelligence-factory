@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   focused-run190:
@@ -14,91 +14,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - name: Install focused test dependencies
         run: pip install requests pillow
-      - name: Apply exact minimal Run190 account identity fix
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('run190_note_persistent_cloud.py')
-          text = path.read_text(encoding='utf-8')
-
-          old_name = 'EXPECTED_CREATOR_NAME = "AI Intelligence Factory"'
-          new_name = 'EXPECTED_CREATOR_NAME = "AIF - AI Intelligence Factory"'
-          if old_name in text:
-              text = text.replace(old_name, new_name, 1)
-          elif new_name not in text:
-              raise SystemExit('Run190 creator-name anchor missing')
-
-          marker = '\ndef _assert_expected_note_account(page: Any) -> None:\n'
-          helpers = '''
-
-def _is_expected_profile_href(value: str) -> bool:
-    """Match only the exact expected note profile URL, allowing a trailing slash."""
-    try:
-        parsed = urlparse(urljoin("https://note.com", str(value or "").strip()))
-        expected = urlparse(EXPECTED_NOTE_PROFILE_URL)
-    except Exception:
-        return False
-    return (
-        parsed.scheme == "https"
-        and (parsed.hostname or "").lower() == (expected.hostname or "").lower()
-        and (parsed.path or "").rstrip("/") == (expected.path or "").rstrip("/")
-        and not parsed.query
-        and not parsed.fragment
-    )
-
-
-def _settings_page_has_expected_profile_link(page: Any) -> bool:
-    """Read-only proof that settings belongs to the configured trendhub_biz profile."""
-    try:
-        hrefs = page.locator("a[href]").evaluate_all(
-            "els => els.map(el => el.getAttribute('href') || '').filter(Boolean)"
-        )
-    except Exception:
-        return False
-    return any(_is_expected_profile_href(raw) for raw in (hrefs or []))
-'''
-          if '_is_expected_profile_href' not in text:
-              if marker not in text:
-                  raise SystemExit('Run190 account-proof insertion anchor missing')
-              text = text.replace(marker, helpers + marker, 1)
-
-          old_tail = '''    page.goto(EXPECTED_NOTE_PROFILE_URL, wait_until="domcontentloaded", timeout=60000)
-    page.wait_for_timeout(1200)
-    if base._looks_logged_out(page):
-        raise base.NoteAuthenticationExpired("note authentication expired during account ownership proof")
-    control = _exact_settings_control(page)
-    href = str(control.get_attribute("href") or "").strip()
-    if href != PROFILE_SETTINGS_URL:
-        raise base.NoteDraftError("persistent note session does not own the expected note profile")
-'''
-          new_tail = '''    if not _settings_page_has_expected_profile_link(page):
-        raise base.NoteDraftError("persistent note session does not own the expected note profile")
-'''
-          if old_tail in text:
-              text = text.replace(old_tail, new_tail, 1)
-          elif new_tail not in text:
-              raise SystemExit('Run190 public-profile proof anchor missing')
-
-          path.write_text(text, encoding='utf-8')
-          PY
       - name: Run focused Run190 tests
         run: python -m unittest tests.test_run190_note_persistent_cloud -v
-      - name: Commit minimal production fix if needed
-        run: |
-          if git diff --quiet -- run190_note_persistent_cloud.py; then
-            echo 'Run190 already contains the minimal fix.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add run190_note_persistent_cloud.py
-          git commit -m 'fix: refresh note account ownership proof'
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
