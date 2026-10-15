@@ -4,7 +4,7 @@
 Production最終照合日: **2026-10-15**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`0bc2c30cbd3a764808318755ae7c3c4bf50d0a8c7c3d3985c857d78b2e0b9785`**
+Production Contract Fingerprint: **`e5b6a886eb970f77b1257efc882e083e2a63be90a0b8e442dcf595704f808cb5`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -133,7 +133,9 @@ Production Dailyは **Manual ONE-SHOT** が正規経路。
 
 Control Issue、owner、run_attempt等を認証し、GH_PATで既存manual workflowを1回だけdispatchする。Bridge自身がProduction処理を直接実行しない。exact target commandは32-hex identityを厳格に要求し、別記事へfallbackしない。
 
-`/aiif note audit <32-hex sync_id>` は既存private draftのread-only監査専用で、`.github/workflows/note-private-draft-audit.yml` だけをexact targetへdispatchする。Bridge自身のGemini/model call、draft mutation、Production実行、public releaseはすべて0 / falseとし、監査対象を別記事へfallbackしない。
+`/aiif note audit <32-hex sync_id>` は既存private draftのread-only監査専用で、`.github/workflows/note-private-draft-audit.yml` だけをexact targetへdispatchする。Bridge自身のGemini/model call、draft mutation、Production実行、public releaseはすべて0 / falseとし、監査対象を別記事へfallbackしない。同一Issue commentの再配送・重複eventは、そのcomment IDへのdurable claimをdispatch前に確認し、同じcommentから監査workflowを二重dispatchしない。
+
+exact private-draft auditは、stable edit routeを直接開けることだけを実在証明にしない。まず同一persistent Chrome sessionがexact `trendhub_biz` / `AI Intelligence Factory` accountを所有することをread-onlyで証明し、次に同じopaque `note下書きID` が認証済みsessionの公式 `https://note.com/notes` 一覧へ存在することを確認する。この2条件を満たした後だけdirect editor routeでtitle / body / eyecatchを監査し、account ownershipまたはofficial-list proofが不成立ならFail-Closedする。
 
 `/aiif run full` は現行運用上 **`human_narrative`** を明示してDaily ONE-SHOTへ渡す。
 
@@ -747,6 +749,8 @@ note automationの自動到達点は **private draft**。Public releaseは人間
 - account ownershipまたはarticle-list proofが曖昧・不成立ならFail-Closedし、`queue_confirmed`へ進めないこと
 - このproof自体はpublic release、追加Gemini call、追加Notion writeを行わないこと
 
+既存private draftのread-only監査も同じidentity proofを共有し、direct editor routeの存在だけで成功扱いしない。期待accountと公式 `/notes` 一覧のexact draft identityを先に証明できない場合は、本文・eyecatch監査へ進まずsafe diagnostic codeでFail-Closedする。
+
 ### 11.2 Existing draft repair / exact regeneration
 
 汎用exact repair lanes:
@@ -1072,7 +1076,7 @@ Production surfaceが変わるPRでは、**本書の同期をmerge条件**とす
 - **Subscription Attribution:** GitHub GET/PUTは同じ `EYECATCH_GITHUB_BRANCH` を使用し、既存更新はbranch上current SHAをPUTへ渡す。
 - **Note delivery:** current-run Ready全件をexact target判定へ送る。`reconcile_existing` はdurable-ledger reconciliationとしてVM fan-out可能。
 - **Exact note sync:** bare syncに加え32-hex target指定のChatOps再同期を持つ。
-- **Exact note audit:** 32-hex target指定のChatOpsから既存private draftをread-only監査し、Gemini/model call・draft mutation・Production実行・public releaseを行わない。
+- **Exact note audit:** 32-hex target指定のChatOpsから既存private draftをread-only監査し、expected account ownershipと公式 `/notes` のexact draft identityを先に証明する。同一Issue commentの重複deliveryはdispatch前のdurable claimで抑止し、Gemini/model call・draft mutation・Production実行・public releaseを行わない。
 - **Existing draft regeneration:** exact sync_id、既存draft identity、未公開stateを固定し、現行Gate通過後も同じdraftだけ更新。
 - **Persisted resume:** `Ready / Deep Dive` をfresh確認し、Provider generation / Gemini call 0でpersist済み本文とeyecatchを同じdraftへ反映。
 - **Ready asset recovery:** exact Content Intelligence pageをdirect GETし、terminal guard → current Production → fresh Ready proof後だけ配送。
