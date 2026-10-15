@@ -89,12 +89,12 @@ def _audit_wrapper(original: Callable[..., dict[str, Any]]) -> Callable[..., dic
 
 
 def run(*, confirm: str, sync_id: str, prepare_only: bool = False) -> dict[str, Any]:
-    original = base._audit_current_page
-    base._audit_current_page = _audit_wrapper(original)
+    original_upstream = base292._ORIGINAL_AUDIT_CURRENT_PAGE
+    base292._ORIGINAL_AUDIT_CURRENT_PAGE = _audit_wrapper(original_upstream)
     try:
         return base292.run(confirm=confirm, sync_id=sync_id, prepare_only=prepare_only)
     finally:
-        base._audit_current_page = original
+        base292._ORIGINAL_AUDIT_CURRENT_PAGE = original_upstream
 
 
 def _safe_failure_result(sync_id: str, code: str, metrics: dict[str, Any] | None = None) -> dict[str, Any]:
