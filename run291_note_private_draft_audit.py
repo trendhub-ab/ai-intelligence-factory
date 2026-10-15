@@ -127,6 +127,7 @@ def _expected_article(sync_id: str) -> dict[str, Any]:
     row["manuscript"] = presented
     return row
 
+
 def _title_value(page: Any) -> str:
     field = note_base._find_title(page)
     try:
