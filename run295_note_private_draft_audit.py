@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Run295: use one shared eyecatch-persistence proof for note creation and audit.
+"""Run295: use shared note identity/list and eyecatch proofs for private-draft audit.
 
-Run294 proved the current GenRec private draft contains a 620x325 header image even
-though note no longer exposes the legacy visible "画像を変更" control. Run295 turns
-that diagnostic into the canonical fail-closed proof used by the read-only audit.
-The creation path installs the same proof separately from run194_note_persistent_cloud.
+This entrypoint is read-only. Before judging body/eyecatch persistence it proves that
+the persistent browser owns the exact trendhub_biz / AI Intelligence Factory account
+and that the persisted opaque draft id appears in note's official /notes list. It then
+reopens the exact stable edit route and performs the existing eyecatch/body audit.
 
-This entrypoint is read-only. It emits only categorical/numeric eyecatch metrics and
-the existing Run292 safe body diagnostics. No unpublished text, draft URL, image URL,
-screenshot, model call, draft mutation, or public-release action is exposed.
+It emits only categorical/numeric diagnostics. No unpublished text, draft URL, image
+URL, screenshot, model call, draft mutation, Notion write, or public-release action is
+exposed.
 """
 from __future__ import annotations
 
@@ -24,6 +24,13 @@ import run292_note_rendered_body_audit as base292
 base = base292.base
 
 
+class Run295IdentityProofError(base.PrivateDraftAuditError):
+    def __init__(self, code: str, metrics: dict[str, Any] | None = None) -> None:
+        super().__init__(f"Run295 identity/list proof failed safely: {code}")
+        self.code = str(code)
+        self.safe_metrics = dict(metrics or {})
+
+
 class Run295EyecatchProofError(base.PrivateDraftAuditError):
     def __init__(self, code: str, metrics: dict[str, Any]) -> None:
         super().__init__(f"Run295 eyecatch proof failed safely: {code}")
@@ -31,13 +38,49 @@ class Run295EyecatchProofError(base.PrivateDraftAuditError):
         self.safe_metrics = dict(metrics)
 
 
+def _prove_account_and_official_list(page: Any, draft_url: str) -> None:
+    """Reuse the Production creation proofs read-only for an existing persisted draft."""
+    try:
+        base.run190._assert_expected_note_account(page)
+    except Exception:
+        raise Run295IdentityProofError("note_account_ownership_unconfirmed") from None
+
+    try:
+        base.run190._verify_draft_in_article_list(page, draft_url)
+    except Exception as exc:
+        code = "official_article_list_proof_unconfirmed"
+        if str(exc) == "saved note draft identity was not present in the official article list":
+            code = "draft_absent_from_official_article_list"
+        raise Run295IdentityProofError(code) from None
+
+
+def _reopen_exact_draft(page: Any, draft_url: str, title: str) -> None:
+    try:
+        page.goto(draft_url, wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(1200)
+        if base.note_base._looks_logged_out(page):
+            raise RuntimeError("logged out")
+        if not base.run187._is_editor_url(str(page.url or "")):
+            raise RuntimeError("not editor")
+        if base._title_value(page) != title.strip():
+            raise RuntimeError("title mismatch")
+    except Exception:
+        raise Run295IdentityProofError("draft_route_reopen_failed") from None
+
+
 def _audit_wrapper(original: Callable[..., dict[str, Any]]) -> Callable[..., dict[str, Any]]:
     def wrapped(page: Any, title: str, manuscript: str) -> dict[str, Any]:
+        draft_url = str(page.url or "")
+        _prove_account_and_official_list(page, draft_url)
+        _reopen_exact_draft(page, draft_url, title)
+
         try:
             title_locator = base.note_base._find_title(page)
         except Exception:
             title_locator = None
         metrics = eyecatch.collect_eyecatch_metrics(page, title_locator=title_locator)
+        metrics["account_ownership_proven"] = True
+        metrics["official_article_list_proven"] = True
         state = eyecatch.classify_eyecatch_persistence(metrics)
         if not eyecatch.eyecatch_persistence_confirmed(metrics):
             code = "eyecatch_missing_likely" if state == eyecatch.MISSING_LIKELY else "eyecatch_persistence_ambiguous"
@@ -45,6 +88,8 @@ def _audit_wrapper(original: Callable[..., dict[str, Any]]) -> Callable[..., dic
 
         proxy = eyecatch.EyecatchProofPageProxy(page, base.note_base._find_title)
         result = original(proxy, title, manuscript)
+        result["account_ownership_proven"] = True
+        result["official_article_list_proven"] = True
         result["eyecatch_present"] = True
         result["eyecatch_proof_mode"] = state
         for key, value in metrics.items():
@@ -90,6 +135,9 @@ def main() -> None:
     exit_code = 0
     try:
         result = run(confirm=args.confirm, sync_id=args.sync_id, prepare_only=args.prepare_only)
+    except Run295IdentityProofError as exc:
+        result = _safe_failure_result(args.sync_id, exc.code, exc.safe_metrics)
+        exit_code = 2
     except Run295EyecatchProofError as exc:
         result = _safe_failure_result(args.sync_id, exc.code, exc.safe_metrics)
         exit_code = 2
