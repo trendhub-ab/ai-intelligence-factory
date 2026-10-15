@@ -12,6 +12,8 @@ Safety contract:
 - persistent browser state is never committed or uploaded as an artifact;
 - NOTE_STORAGE_STATE_B64 is used only as an optional one-time note.com session bootstrap;
 - Google/other-domain cookies from the bootstrap state are deliberately ignored;
+- the authenticated browser must prove ownership of the exact trendhub_biz profile before mutation;
+- a saved draft must also appear by the same stable draft id in note's official article list;
 - existing Ready/article, header-image, persistence and Notion fail-closed guards remain.
 """
 from __future__ import annotations
@@ -24,9 +26,10 @@ import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import note_draft_automation as base
+import note_publication_reconcile as reconcile
 import run185_note_ready_legacy_skip as run185
 import run189_note_editor_route_gate as run189
 import run193_note_official_header_upload as run193
@@ -38,6 +41,11 @@ CHANNEL_ENV = "NOTE_CHROME_CHANNEL"
 HEADLESS_ENV = "NOTE_CHROME_HEADLESS"
 DEFAULT_PROFILE_DIR = Path.home() / ".aiif-note" / "chrome-profile"
 MAX_HISTORY_CANDIDATES = 24
+EXPECTED_NOTE_PROFILE_URL = "https://note.com/trendhub_biz"
+PROFILE_SETTINGS_URL = "https://note.com/settings/profile"
+EXPECTED_CREATOR_NAME = "AI Intelligence Factory"
+CREATOR_NAME_SELECTOR = 'input[name="editNickname"][aria-label="クリエイター名"]:visible'
+ARTICLE_LIST_URL = "https://note.com/notes"
 _ORIGINAL_DECODE_STORAGE_STATE = base._decode_storage_state
 
 
@@ -236,6 +244,93 @@ def _launch_persistent_context(playwright: Any) -> Any:
         ) from exc
 
 
+def _exact_settings_control(page: Any) -> Any:
+    matches: list[Any] = []
+    for tag in ("a", "button"):
+        controls = page.locator(f"{tag}:visible")
+        try:
+            count = min(controls.count(), 80)
+        except Exception:
+            continue
+        for index in range(count):
+            control = controls.nth(index)
+            try:
+                text = " ".join(str(control.inner_text(timeout=500) or "").split())
+            except Exception:
+                continue
+            if text == "設定":
+                matches.append(control)
+    if len(matches) != 1:
+        raise base.NoteDraftError("expected note account ownership control could not be proven")
+    return matches[0]
+
+
+def _assert_expected_note_account(page: Any) -> None:
+    """Read-only proof that the active session owns trendhub_biz and has the expected creator name."""
+    page.goto(PROFILE_SETTINGS_URL, wait_until="domcontentloaded", timeout=60000)
+    page.wait_for_timeout(1200)
+    if base._looks_logged_out(page):
+        raise base.NoteAuthenticationExpired("note authentication is not active for the expected account")
+    if not str(page.url or "").startswith(PROFILE_SETTINGS_URL):
+        raise base.NoteAuthenticationExpired("note profile settings could not be opened for the expected account")
+
+    nickname = page.locator(CREATOR_NAME_SELECTOR)
+    try:
+        count = nickname.count()
+    except Exception as exc:
+        raise base.NoteDraftError("expected note creator identity could not be inspected") from exc
+    if count != 1 or not nickname.first.is_visible(timeout=2500):
+        raise base.NoteDraftError("expected note creator identity could not be proven")
+    actual_name = " ".join(str(nickname.first.input_value() or "").split())
+    if actual_name != EXPECTED_CREATOR_NAME:
+        raise base.NoteDraftError("persistent note session belongs to an unexpected creator account")
+
+    page.goto(EXPECTED_NOTE_PROFILE_URL, wait_until="domcontentloaded", timeout=60000)
+    page.wait_for_timeout(1200)
+    if base._looks_logged_out(page):
+        raise base.NoteAuthenticationExpired("note authentication expired during account ownership proof")
+    control = _exact_settings_control(page)
+    href = str(control.get_attribute("href") or "").strip()
+    if href != PROFILE_SETTINGS_URL:
+        raise base.NoteDraftError("persistent note session does not own the expected note profile")
+
+
+def _article_list_has_draft_id(page: Any, draft_id: str) -> bool:
+    try:
+        hrefs = page.locator("a[href]").evaluate_all(
+            "els => els.map(el => el.getAttribute('href') || '').filter(Boolean)"
+        )
+    except Exception:
+        return False
+    expected_paths = {f"/notes/{draft_id}", f"/notes/{draft_id}/edit"}
+    for raw in hrefs or []:
+        try:
+            parsed = urlparse(urljoin("https://note.com", str(raw)))
+        except Exception:
+            continue
+        if parsed.scheme != "https" or (parsed.hostname or "").lower() not in {"note.com", "editor.note.com"}:
+            continue
+        if (parsed.path or "").rstrip("/") in expected_paths:
+            return True
+    return False
+
+
+def _verify_draft_in_article_list(page: Any, draft_url: str) -> None:
+    """Require the saved stable id to appear in the authenticated account's official article list."""
+    draft_id = reconcile.draft_identity_from_url(draft_url, error_type=base.NoteDraftError)
+    for attempt in range(4):
+        page.goto(ARTICLE_LIST_URL, wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(1200 + (attempt * 500))
+        if base._looks_logged_out(page):
+            raise base.NoteAuthenticationExpired("note authentication expired during draft-list verification")
+        parsed = urlparse(str(page.url or ""))
+        if parsed.scheme != "https" or (parsed.hostname or "").lower() != "note.com" or parsed.path != "/notes":
+            raise base.NoteDraftError("note official article list could not be opened")
+        if _article_list_has_draft_id(page, draft_id):
+            return
+    raise base.NoteDraftError("saved note draft identity was not present in the official article list")
+
+
 def _establish_editor(page: Any, context: Any) -> None:
     """Reach the editor using persistent state, bootstrapping note.com state at most once."""
     try:
@@ -283,7 +378,19 @@ def _create_browser_draft(
         try:
             page.goto("https://note.com/", wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(1000)
-            _establish_editor(page, context)
+            try:
+                _assert_expected_note_account(page)
+            except base.NoteAuthenticationExpired as first_error:
+                seeded = _seed_note_state(context, page)
+                if not seeded:
+                    raise base.NoteAuthenticationExpired(
+                        "the persistent cloud Chrome profile is not authenticated as the expected note account"
+                    ) from first_error
+                page.goto("https://note.com/", wait_until="domcontentloaded", timeout=60000)
+                page.wait_for_timeout(900)
+                _assert_expected_note_account(page)
+
+            run189._ensure_editor_route(page)
             if not run187._is_editor_url(str(page.url or "")):
                 raise base.NoteDraftError("persistent Chrome did not remain on a confirmed note editor route")
 
@@ -293,13 +400,15 @@ def _create_browser_draft(
             base._paste_manuscript(page, body, body_manuscript)
             body = base._find_body(page, title_field)
             base._verify_body_content(body, body_manuscript)
-            return base._save_draft_and_verify(
+            draft_url = base._save_draft_and_verify(
                 page,
                 title,
                 body_manuscript,
                 image_required=True,
                 on_stable_draft_url=on_stable_draft_url,
             )
+            _verify_draft_in_article_list(page, draft_url)
+            return draft_url
         except Exception:
             try:
                 page.screenshot(path=str(base.ARTIFACT_DIR / "failure.png"), full_page=False)
