@@ -1,0 +1,221 @@
+name: PR note list read-only diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-note-list-readonly-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  start-cloud-vm:
+    if: ${{ github.event.pull_request.head.ref == 'diag/note-official-list-proof-20261015' && github.actor == 'trendhub-ab' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  probe:
+    needs: start-cloud-vm
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 12
+    env:
+      NOTE_TARGET_SYNC_ID: '3fa479ffdca98194a493cb3a0d2b3a36'
+      NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+      NOTE_CHROME_CHANNEL: 'chrome'
+      NOTE_CHROME_HEADLESS: 'false'
+      NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+      NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+      NOTION_API_VERSION: '2026-03-11'
+      NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+      NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+      NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+      NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install requests playwright
+      - name: Probe list routing without mutation or unpublished-content output
+        run: |
+          xvfb-run -a python - <<'PY'
+          import json, os
+          from urllib.parse import urljoin, urlparse
+          from playwright.sync_api import sync_playwright
+          import note_draft_automation as base
+          import run187_note_editor_readiness as run187
+          import run190_note_persistent_cloud as run190
+          import run291_note_private_draft_audit as run291
+
+          article = run291._expected_article(os.environ['NOTE_TARGET_SYNC_ID'])
+          draft_id = str(article['draft_id'])
+          title = str(article['title'])
+          private_url = run291._draft_edit_url(draft_id)
+
+          js = r'''({draftId, title}) => {
+            const norm = s => String(s || '').replace(/\s+/g, ' ').trim();
+            const visible = el => {
+              const r = el.getBoundingClientRect();
+              const s = getComputedStyle(el);
+              return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden';
+            };
+            const anchors = Array.from(document.querySelectorAll('a[href]'));
+            let idAnyHref = 0, idVisibleHref = 0, notesRoute = 0, notesEditRoute = 0, creatorNRoute = 0, otherIdRoute = 0;
+            for (const a of anchors) {
+              const raw = String(a.getAttribute('href') || '');
+              if (!raw.includes(draftId)) continue;
+              idAnyHref++;
+              if (visible(a)) idVisibleHref++;
+              let p = '';
+              try { p = new URL(raw, 'https://note.com').pathname.replace(/\/$/, ''); } catch (_) {}
+              if (p === `/notes/${draftId}`) notesRoute++;
+              else if (p === `/notes/${draftId}/edit`) notesEditRoute++;
+              else if (p.includes('/n/') && p.includes(draftId)) creatorNRoute++;
+              else otherIdRoute++;
+            }
+            const candidates = Array.from(document.querySelectorAll('a,button,[role="button"],[role="link"],[role="tab"],h1,h2,h3,p,span,div'))
+              .filter(el => visible(el));
+            const titleExact = candidates.filter(el => norm(el.innerText) === norm(title));
+            const titleContainingAnchors = anchors.filter(a => visible(a) && norm(a.innerText).includes(norm(title)));
+            const draftControls = Array.from(document.querySelectorAll('a,button,[role="button"],[role="tab"]'))
+              .filter(el => visible(el) && norm(el.innerText) === '下書き');
+            const attrMatches = Array.from(document.querySelectorAll('*')).filter(el =>
+              el.getAttributeNames().some(name => String(el.getAttribute(name) || '').includes(draftId))
+            );
+            return {
+              total_anchor_count: anchors.length,
+              id_any_href_count: idAnyHref,
+              id_visible_href_count: idVisibleHref,
+              id_notes_route_count: notesRoute,
+              id_notes_edit_route_count: notesEditRoute,
+              id_creator_n_route_count: creatorNRoute,
+              id_other_route_count: otherIdRoute,
+              id_any_attribute_element_count: attrMatches.length,
+              exact_title_visible_element_count: titleExact.length,
+              title_containing_anchor_count: titleContainingAnchors.length,
+              draft_filter_control_count: draftControls.length,
+              body_has_draft_label: norm(document.body.innerText).includes('下書き'),
+              scroll_height: Math.round(document.documentElement.scrollHeight || 0),
+              viewport_height: Math.round(window.innerHeight || 0),
+            };
+          }'''
+
+          def metrics(page):
+            value = page.evaluate(js, {'draftId': draft_id, 'title': title})
+            return value if isinstance(value, dict) else {}
+
+          result = {
+            'status': 'probe_complete_no_mutation',
+            'zero_gemini_calls': True,
+            'read_only': True,
+            'draft_mutation': False,
+            'public_release': False,
+            'notion_writes': 0,
+          }
+
+          with sync_playwright() as p:
+            context = run190._launch_persistent_context(p)
+            page = context.new_page()
+            page.set_default_timeout(30000)
+            try:
+              page.goto('https://note.com/', wait_until='domcontentloaded', timeout=60000)
+              page.wait_for_timeout(1000)
+              run190._assert_expected_note_account(page)
+              result['account_proof'] = True
+
+              page.goto(run190.ARTICLE_LIST_URL, wait_until='domcontentloaded', timeout=60000)
+              page.wait_for_timeout(1800)
+              result['article_list_route_ok'] = str(page.url or '').startswith(run190.ARTICLE_LIST_URL)
+              result['before_filter'] = metrics(page)
+
+              # Scroll read-only to catch lazy-rendered cards.
+              for _ in range(4):
+                page.evaluate('window.scrollTo(0, document.documentElement.scrollHeight)')
+                page.wait_for_timeout(700)
+              result['after_scroll'] = metrics(page)
+
+              controls = page.locator('a,button,[role="button"],[role="tab"]:visible')
+              exact = []
+              for i in range(min(controls.count(), 120)):
+                loc = controls.nth(i)
+                try:
+                  if ' '.join(str(loc.inner_text(timeout=300) or '').split()) == '下書き':
+                    exact.append(loc)
+                except Exception:
+                  pass
+              result['unique_draft_filter_clickable'] = len(exact) == 1
+              if len(exact) == 1:
+                exact[0].click()
+                page.wait_for_timeout(1500)
+                result['after_draft_filter'] = metrics(page)
+
+              page.goto(private_url, wait_until='domcontentloaded', timeout=60000)
+              page.wait_for_timeout(1200)
+              result['direct_editor_route_ok'] = bool(run187._is_editor_url(str(page.url or '')))
+              result['direct_editor_title_match'] = bool(run291._title_value(page) == title.strip())
+              try:
+                resolved_id = run291.note_lifecycle.draft_identity_from_url(str(page.url or ''), error_type=run291.PrivateDraftAuditError)
+              except Exception:
+                resolved_id = ''
+              result['direct_editor_id_match'] = bool(resolved_id == draft_id)
+            finally:
+              context.close()
+
+          print('NOTE_LIST_READONLY_DIAGNOSTIC=' + json.dumps(result, ensure_ascii=False, sort_keys=True))
+          PY
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [start-cloud-vm, probe]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Stop persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
