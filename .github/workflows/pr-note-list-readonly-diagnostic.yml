@@ -66,13 +66,11 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests playwright
-      - name: Probe list routing without mutation or unpublished-content output
+      - name: Prove exact official-list title click resolves persisted draft identity
         run: |
           xvfb-run -a python - <<'PY'
           import json, os
-          from urllib.parse import urljoin, urlparse
           from playwright.sync_api import sync_playwright
-          import note_draft_automation as base
           import run187_note_editor_readiness as run187
           import run190_note_persistent_cloud as run190
           import run291_note_private_draft_audit as run291
@@ -80,59 +78,6 @@ jobs:
           article = run291._expected_article(os.environ['NOTE_TARGET_SYNC_ID'])
           draft_id = str(article['draft_id'])
           title = str(article['title'])
-          private_url = run291._draft_edit_url(draft_id)
-
-          js = r'''({draftId, title}) => {
-            const norm = s => String(s || '').replace(/\s+/g, ' ').trim();
-            const visible = el => {
-              const r = el.getBoundingClientRect();
-              const s = getComputedStyle(el);
-              return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden';
-            };
-            const anchors = Array.from(document.querySelectorAll('a[href]'));
-            let idAnyHref = 0, idVisibleHref = 0, notesRoute = 0, notesEditRoute = 0, creatorNRoute = 0, otherIdRoute = 0;
-            for (const a of anchors) {
-              const raw = String(a.getAttribute('href') || '');
-              if (!raw.includes(draftId)) continue;
-              idAnyHref++;
-              if (visible(a)) idVisibleHref++;
-              let p = '';
-              try { p = new URL(raw, 'https://note.com').pathname.replace(/\/$/, ''); } catch (_) {}
-              if (p === `/notes/${draftId}`) notesRoute++;
-              else if (p === `/notes/${draftId}/edit`) notesEditRoute++;
-              else if (p.includes('/n/') && p.includes(draftId)) creatorNRoute++;
-              else otherIdRoute++;
-            }
-            const candidates = Array.from(document.querySelectorAll('a,button,[role="button"],[role="link"],[role="tab"],h1,h2,h3,p,span,div'))
-              .filter(el => visible(el));
-            const titleExact = candidates.filter(el => norm(el.innerText) === norm(title));
-            const titleContainingAnchors = anchors.filter(a => visible(a) && norm(a.innerText).includes(norm(title)));
-            const draftControls = Array.from(document.querySelectorAll('a,button,[role="button"],[role="tab"]'))
-              .filter(el => visible(el) && norm(el.innerText) === '下書き');
-            const attrMatches = Array.from(document.querySelectorAll('*')).filter(el =>
-              el.getAttributeNames().some(name => String(el.getAttribute(name) || '').includes(draftId))
-            );
-            return {
-              total_anchor_count: anchors.length,
-              id_any_href_count: idAnyHref,
-              id_visible_href_count: idVisibleHref,
-              id_notes_route_count: notesRoute,
-              id_notes_edit_route_count: notesEditRoute,
-              id_creator_n_route_count: creatorNRoute,
-              id_other_route_count: otherIdRoute,
-              id_any_attribute_element_count: attrMatches.length,
-              exact_title_visible_element_count: titleExact.length,
-              title_containing_anchor_count: titleContainingAnchors.length,
-              draft_filter_control_count: draftControls.length,
-              body_has_draft_label: norm(document.body.innerText).includes('下書き'),
-              scroll_height: Math.round(document.documentElement.scrollHeight || 0),
-              viewport_height: Math.round(window.innerHeight || 0),
-            };
-          }'''
-
-          def metrics(page):
-            value = page.evaluate(js, {'draftId': draft_id, 'title': title})
-            return value if isinstance(value, dict) else {}
 
           result = {
             'status': 'probe_complete_no_mutation',
@@ -142,6 +87,42 @@ jobs:
             'public_release': False,
             'notion_writes': 0,
           }
+
+          mark_script = r'''(title) => {
+            const norm = s => String(s || '').replace(/\s+/g, ' ').trim();
+            const visible = el => {
+              const r = el.getBoundingClientRect();
+              const s = getComputedStyle(el);
+              return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden';
+            };
+            const candidates = Array.from(document.querySelectorAll('h1,h2,h3,p,span,div,a,button,[role="link"],[role="button"]'))
+              .filter(el => visible(el) && norm(el.innerText) === norm(title));
+            if (candidates.length !== 1) return {exact_title_count:candidates.length, target_marked:false};
+            const titleEl = candidates[0];
+            let target = titleEl;
+            let cur = titleEl;
+            for (let depth = 0; depth < 10 && cur; depth++, cur = cur.parentElement) {
+              const tag = String(cur.tagName || '').toLowerCase();
+              const role = String(cur.getAttribute && cur.getAttribute('role') || '').toLowerCase();
+              const tabindex = cur.getAttribute && cur.getAttribute('tabindex');
+              const cursor = getComputedStyle(cur).cursor;
+              if (tag === 'a' || tag === 'button' || role === 'link' || role === 'button' || tabindex === '0' || cursor === 'pointer') {
+                target = cur;
+                break;
+              }
+            }
+            target.setAttribute('data-aiif-readonly-title-target','1');
+            const tag = String(target.tagName || '').toLowerCase();
+            const role = String(target.getAttribute && target.getAttribute('role') || '').toLowerCase();
+            return {
+              exact_title_count:candidates.length,
+              target_marked:true,
+              target_tag:tag,
+              target_role:role,
+              target_has_href:!!(target.getAttribute && target.getAttribute('href')),
+              target_cursor_pointer:getComputedStyle(target).cursor === 'pointer'
+            };
+          }'''
 
           with sync_playwright() as p:
             context = run190._launch_persistent_context(p)
@@ -156,42 +137,30 @@ jobs:
               page.goto(run190.ARTICLE_LIST_URL, wait_until='domcontentloaded', timeout=60000)
               page.wait_for_timeout(1800)
               result['article_list_route_ok'] = str(page.url or '').startswith(run190.ARTICLE_LIST_URL)
-              result['before_filter'] = metrics(page)
+              marked = page.evaluate(mark_script, title)
+              result['list_title_target'] = marked if isinstance(marked, dict) else {}
+              if not result['list_title_target'].get('target_marked'):
+                raise SystemExit('exact title was not uniquely markable on official list')
 
-              # Scroll read-only to catch lazy-rendered cards.
-              for _ in range(4):
-                page.evaluate('window.scrollTo(0, document.documentElement.scrollHeight)')
-                page.wait_for_timeout(700)
-              result['after_scroll'] = metrics(page)
+              target = page.locator('[data-aiif-readonly-title-target="1"]')
+              target.click(timeout=10000)
+              page.wait_for_timeout(1500)
 
-              controls = page.locator('a,button,[role="button"],[role="tab"]:visible')
-              exact = []
-              for i in range(min(controls.count(), 120)):
-                loc = controls.nth(i)
-                try:
-                  if ' '.join(str(loc.inner_text(timeout=300) or '').split()) == '下書き':
-                    exact.append(loc)
-                except Exception:
-                  pass
-              result['unique_draft_filter_clickable'] = len(exact) == 1
-              if len(exact) == 1:
-                exact[0].click()
-                page.wait_for_timeout(1500)
-                result['after_draft_filter'] = metrics(page)
-
-              page.goto(private_url, wait_until='domcontentloaded', timeout=60000)
-              page.wait_for_timeout(1200)
-              result['direct_editor_route_ok'] = bool(run187._is_editor_url(str(page.url or '')))
-              result['direct_editor_title_match'] = bool(run291._title_value(page) == title.strip())
+              result['list_click_editor_route_ok'] = bool(run187._is_editor_url(str(page.url or '')))
               try:
-                resolved_id = run291.note_lifecycle.draft_identity_from_url(str(page.url or ''), error_type=run291.PrivateDraftAuditError)
+                resolved_id = run291.note_lifecycle.draft_identity_from_url(
+                  str(page.url or ''), error_type=run291.PrivateDraftAuditError
+                )
               except Exception:
                 resolved_id = ''
-              result['direct_editor_id_match'] = bool(resolved_id == draft_id)
+              result['list_click_id_match'] = bool(resolved_id == draft_id)
+              result['list_click_title_match'] = bool(
+                result['list_click_editor_route_ok'] and run291._title_value(page) == title.strip()
+              )
             finally:
               context.close()
 
-          print('NOTE_LIST_READONLY_DIAGNOSTIC=' + json.dumps(result, ensure_ascii=False, sort_keys=True))
+          print('NOTE_LIST_TITLE_CLICK_DIAGNOSTIC=' + json.dumps(result, ensure_ascii=False, sort_keys=True))
           PY
 
   stop-cloud-vm:
