@@ -22,6 +22,7 @@ except ModuleNotFoundError:
 
 import run190_note_persistent_cloud as cloud
 import run291_note_private_draft_audit as audit
+import run292_note_rendered_body_audit as audit292
 
 
 class Run291UrlAndHistoryTests(unittest.TestCase):
@@ -69,6 +70,29 @@ class Run291UrlAndHistoryTests(unittest.TestCase):
                 "https://editor.note.com/notes/old/edit/",
             ],
         )
+
+
+class Run291AccountAndListProofTests(unittest.TestCase):
+    def test_browser_audit_proves_expected_account_and_official_list_before_direct_editor_route(self) -> None:
+        source = inspect.getsource(audit._browser_audit)
+        account_proof = "run190._assert_expected_note_account(page)"
+        list_proof = "run190._verify_draft_in_article_list(page, private_url)"
+        direct_editor_open = 'page.goto(private_url, wait_until="domcontentloaded", timeout=60000)'
+        self.assertIn(account_proof, source)
+        self.assertIn(list_proof, source)
+        self.assertIn(direct_editor_open, source)
+        self.assertLess(source.index(account_proof), source.index(list_proof))
+        self.assertLess(source.index(list_proof), source.index(direct_editor_open))
+
+    def test_safe_diagnostics_distinguish_account_and_official_list_failures(self) -> None:
+        cases = {
+            "Expected note account ownership could not be proven": "expected_account_unproven",
+            "Stable private draft is not present in official article list": "draft_not_in_official_list",
+        }
+        for message, expected in cases.items():
+            with self.subTest(message=message):
+                code = audit292._safe_non_body_guard_code(audit.PrivateDraftAuditError(message))
+                self.assertEqual(code, expected)
 
 
 class Run291BodyAuditTests(unittest.TestCase):

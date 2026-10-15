@@ -5,6 +5,8 @@ Run291 never creates, edits, saves, publishes, or withdraws a note. It:
 - requires an exact current-quality / 投稿準備中 queue row;
 - reconstructs the already-approved note-editor presentation manuscript;
 - requires the persisted opaque note下書きID bound to the exact queue row;
+- proves the active browser owns the expected trendhub_biz / AI Intelligence Factory account;
+- requires the persisted draft ID to appear on note's official article list;
 - reconstructs one canonical private edit route and opens only that route read-only;
 - verifies persisted title/body/eyecatch and presentation structure;
 - returns only non-content audit metrics. The draft URL and unpublished body are never printed.
@@ -47,7 +49,6 @@ def _normalize_sync_id(value: str) -> str:
 
 def _prop_date(prop: dict | None) -> str:
     return str((((prop or {}).get("date") or {}).get("start")) or "").strip()
-
 
 
 def _is_note_edit_url(value: str) -> bool:
@@ -125,7 +126,6 @@ def _expected_article(sync_id: str) -> dict[str, Any]:
         raise PrivateDraftAuditError("Prepared note presentation is unexpectedly short")
     row["manuscript"] = presented
     return row
-
 
 
 def _title_value(page: Any) -> str:
@@ -290,19 +290,37 @@ def _browser_audit(article: dict[str, Any], *, page_auditor: Any | None = None) 
         page.set_default_timeout(30000)
         try:
             try:
+                page.goto("https://note.com/", wait_until="domcontentloaded", timeout=60000)
+                page.wait_for_timeout(1000)
+                run190._assert_expected_note_account(page)
+            except note_base.NoteAuthenticationExpired as first_error:
+                seeded = bool(run190._seed_note_state(context, page))
+                if not seeded:
+                    raise PrivateDraftAuditError("Expected note account ownership could not be proven") from first_error
+                try:
+                    page.goto("https://note.com/", wait_until="domcontentloaded", timeout=60000)
+                    page.wait_for_timeout(900)
+                    run190._assert_expected_note_account(page)
+                except (note_base.NoteAuthenticationExpired, note_base.NoteDraftError) as exc:
+                    raise PrivateDraftAuditError("Expected note account ownership could not be proven") from exc
+            except note_base.NoteDraftError as exc:
+                raise PrivateDraftAuditError("Expected note account ownership could not be proven") from exc
+            except Exception as exc:
+                raise PrivateDraftAuditError("Expected note account ownership could not be proven") from exc
+
+            try:
+                run190._verify_draft_in_article_list(page, private_url)
+            except note_base.NoteAuthenticationExpired as exc:
+                raise PrivateDraftAuditError("Expected note account ownership could not be proven") from exc
+            except note_base.NoteDraftError as exc:
+                raise PrivateDraftAuditError("Stable private draft is not present in official article list") from exc
+
+            try:
                 page.goto(private_url, wait_until="domcontentloaded", timeout=60000)
                 page.wait_for_timeout(1200)
             except Exception as exc:
                 raise PrivateDraftAuditError("Stable private draft route could not be opened") from exc
 
-            if note_base._looks_logged_out(page):
-                seeded = bool(run190._seed_note_state(context, page))
-                if seeded:
-                    try:
-                        page.goto(private_url, wait_until="domcontentloaded", timeout=60000)
-                        page.wait_for_timeout(1200)
-                    except Exception as exc:
-                        raise PrivateDraftAuditError("Stable private draft route could not be reopened") from exc
             if note_base._looks_logged_out(page):
                 raise PrivateDraftAuditError("note authentication is not active")
             if not run187._is_editor_url(str(page.url or "")):
