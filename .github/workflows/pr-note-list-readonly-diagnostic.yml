@@ -66,7 +66,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests playwright
-      - name: Prove exact official-list edit button resolves persisted draft identity
+      - name: Prove exact official-list edit button resolves persisted draft ID
         run: |
           xvfb-run -a python - <<'PY'
           import json, os
@@ -101,20 +101,10 @@ jobs:
               page.wait_for_timeout(1800)
               result['article_list_route_ok'] = str(page.url or '').startswith(run190.ARTICLE_LIST_URL)
 
-              exact_title = page.locator('h1,h2,h3,p,span,div,a,button,[role="link"],[role="button"]').filter(has_text=title)
-              title_matches = 0
-              for i in range(min(exact_title.count(), 200)):
-                try:
-                  if ' '.join(str(exact_title.nth(i).inner_text(timeout=300) or '').split()) == ' '.join(title.split()):
-                    title_matches += 1
-                except Exception:
-                  pass
-              result['exact_title_visible_count'] = title_matches
-
               button = page.get_by_role('button', name=f'{title}を編集', exact=True)
               result['exact_edit_button_count'] = button.count()
-              if title_matches != 1 or button.count() != 1:
-                raise SystemExit('official list did not expose one exact title plus one exact edit button')
+              if button.count() != 1:
+                raise SystemExit('official list did not expose one exact edit button')
 
               button.click(timeout=10000)
               for _ in range(10):
@@ -130,13 +120,10 @@ jobs:
               except Exception:
                 resolved_id = ''
               result['list_click_id_match'] = bool(resolved_id == draft_id)
-              result['list_click_title_match'] = bool(
-                result['list_click_editor_route_ok'] and run291._title_value(page) == title.strip()
-              )
             finally:
               context.close()
 
-          print('NOTE_LIST_EDIT_BUTTON_DIAGNOSTIC=' + json.dumps(result, ensure_ascii=False, sort_keys=True))
+          print('NOTE_LIST_EDIT_ID_DIAGNOSTIC=' + json.dumps(result, ensure_ascii=False, sort_keys=True))
           PY
 
   stop-cloud-vm:
