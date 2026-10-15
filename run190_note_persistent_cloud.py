@@ -303,12 +303,13 @@ def _assert_expected_note_account(page: Any) -> None:
 
     nickname = page.locator(CREATOR_NAME_SELECTOR)
     try:
+        nickname.first.wait_for(state="visible", timeout=5000)
         count = nickname.count()
     except Exception as exc:
         raise base.NoteDraftError("expected note creator identity could not be inspected") from exc
-    if count != 1 or not nickname.first.is_visible(timeout=2500):
+    if count != 1:
         raise base.NoteDraftError("expected note creator identity could not be proven")
-    actual_name = " ".join(str(nickname.first.input_value() or "").split())
+    actual_name = " ".join(str(nickname.first.input_value(timeout=2500) or "").split())
     if actual_name != EXPECTED_CREATOR_NAME:
         raise base.NoteDraftError("persistent note session belongs to an unexpected creator account")
 
