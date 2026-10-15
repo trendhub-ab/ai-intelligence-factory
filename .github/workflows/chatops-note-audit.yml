@@ -7,7 +7,7 @@ on:
 permissions:
   actions: write
   contents: read
-  issues: read
+  issues: write
 
 concurrency:
   group: aiif-chatops-note-audit-control
@@ -48,7 +48,35 @@ jobs:
           fi
           echo "sync_id=${sync_id,,}" >> "$GITHUB_OUTPUT"
 
+      - name: Claim this Issue comment exactly once
+        id: claim
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          set -euo pipefail
+          endpoint="/repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}/reactions"
+          claimed="$(gh api \
+            -H 'Accept: application/vnd.github+json' \
+            "$endpoint" \
+            --paginate \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and .content == "eyes") | .id' \
+            | head -n 1)"
+          if [ -n "$claimed" ]; then
+            echo 'dispatch=false' >> "$GITHUB_OUTPUT"
+            echo 'duplicate Issue-comment delivery suppressed before audit dispatch' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "$endpoint" \
+            -f content=eyes \
+            >/dev/null
+          echo 'dispatch=true' >> "$GITHUB_OUTPUT"
+
       - name: Dispatch existing read-only private draft audit exactly once
+        if: steps.claim.outputs.dispatch == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           SYNC_ID: ${{ steps.auth.outputs.sync_id }}
@@ -64,12 +92,14 @@ jobs:
       - name: Record safe read-only dispatch
         env:
           SYNC_ID: ${{ steps.auth.outputs.sync_id }}
+          DISPATCH: ${{ steps.claim.outputs.dispatch }}
         run: |
           {
             echo '### AIIF ChatOps Exact Note Audit Bridge'
             echo '- control issue: `#71`'
             echo '- target branch: `main`'
             echo "- exact private-draft read-only audit authorized for sync_id: \`$SYNC_ID\`"
+            echo "- dispatch performed by this bridge run: \`$DISPATCH\`"
             echo '- Gemini/model calls performed by bridge: `0`'
             echo '- draft mutation authorized: `false`'
             echo '- Production started: `false`'
