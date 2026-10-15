@@ -1,0 +1,77 @@
+name: AIIF ChatOps Exact Note Audit Bridge
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+  issues: read
+
+concurrency:
+  group: aiif-chatops-note-audit-control
+  cancel-in-progress: false
+
+jobs:
+  authorize-and-dispatch:
+    if: >-
+      github.run_attempt == 1 &&
+      github.event.issue.number == 71 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.user.login == 'trendhub-ab' &&
+      github.actor == 'trendhub-ab' &&
+      startsWith(github.event.comment.body, '/aiif note audit ') &&
+      github.event.comment.body != '/aiif note audit openai2015'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Re-authorize exact read-only audit command fail-closed
+        id: auth
+        env:
+          COMMAND: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          case "$COMMAND" in
+            '/aiif note audit '*)
+              sync_id="${COMMAND#'/aiif note audit '}"
+              ;;
+            *)
+              echo '::error::Refusing unknown Note audit ChatOps command'
+              exit 1
+              ;;
+          esac
+          if ! printf '%s' "${sync_id:-}" | grep -Eq '^[0-9a-fA-F]{32}$'; then
+            echo '::error::Exact 32-hex sync_id is required'
+            exit 1
+          fi
+          echo "sync_id=${sync_id,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch existing read-only private draft audit exactly once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYNC_ID: ${{ steps.auth.outputs.sync_id }}
+        run: |
+          set -euo pipefail
+          payload="$(printf '{"ref":"main","inputs":{"confirm":"AUDIT_NOTE_DRAFT","sync_id":"%s"}}' "$SYNC_ID")"
+          printf '%s' "$payload" | gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/note-private-draft-audit.yml/dispatches" \
+            --input -
+
+      - name: Record safe read-only dispatch
+        env:
+          SYNC_ID: ${{ steps.auth.outputs.sync_id }}
+        run: |
+          {
+            echo '### AIIF ChatOps Exact Note Audit Bridge'
+            echo '- control issue: `#71`'
+            echo '- target branch: `main`'
+            echo "- exact private-draft read-only audit authorized for sync_id: \`$SYNC_ID\`"
+            echo '- Gemini/model calls performed by bridge: `0`'
+            echo '- draft mutation authorized: `false`'
+            echo '- Production started: `false`'
+            echo '- public note release authorized: `false`'
+          } >> "$GITHUB_STEP_SUMMARY"
