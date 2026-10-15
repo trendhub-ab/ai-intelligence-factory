@@ -1,0 +1,34 @@
+name: PR792 read-only note account diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: pr792-note-account-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  dispatch-read-only-audit:
+    if: >-
+      github.run_attempt == 1 &&
+      github.event.pull_request.head.ref == 'fix/note-audit-account-diagnostics-20261015' &&
+      github.actor == 'trendhub-ab'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch exact existing private-draft audit on PR branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' '{"ref":"fix/note-audit-account-diagnostics-20261015","inputs":{"confirm":"AUDIT_NOTE_DRAFT","sync_id":"3fa479ffdca98194a493cb3a0d2b3a36"}}' | gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/note-private-draft-audit.yml/dispatches" \
+            --input -
+          echo 'Dispatched one read-only exact private-draft audit on the PR branch.'
