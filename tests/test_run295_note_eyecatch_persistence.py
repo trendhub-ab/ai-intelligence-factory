@@ -59,6 +59,8 @@ class _NoLegacyLocator:
 
 
 class _Page:
+    url = "https://note.com/notes/nfake/edit"
+
     def locator(self, selector: str, *args, **kwargs):
         return _NoLegacyLocator()
 
@@ -109,8 +111,6 @@ class Run295CreationGuardTests(unittest.TestCase):
 
             @staticmethod
             def _save_draft_and_verify(page, title, manuscript, image_required=True):
-                # Simulate the obsolete production check. A plain page with count()==0
-                # would pass, while Run295's proxy exposes proof as one visible control.
                 legacy = page.locator(proof.LEGACY_CONTROL_SELECTOR).first
                 if legacy.count() and not legacy.is_visible(timeout=10):
                     raise FakeDraftError("legacy false negative")
@@ -156,23 +156,31 @@ class Run295AuditIntegrationTests(unittest.TestCase):
             return {"eyecatch_present": seen["legacy_visible"]}
 
         wrapped = audit._audit_wrapper(original)
-        with mock.patch.object(audit.base.note_base, "_find_title", return_value=object()), mock.patch.object(
+        with mock.patch.object(audit, "_prove_account_and_official_list"), mock.patch.object(
+            audit, "_reopen_exact_draft"
+        ), mock.patch.object(audit.base.note_base, "_find_title", return_value=object()), mock.patch.object(
             proof, "collect_eyecatch_metrics", return_value=present_header_metrics()
         ):
             result = wrapped(_Page(), "private-title", "private-body")
         self.assertTrue(seen["legacy_visible"])
+        self.assertTrue(result["account_ownership_proven"])
+        self.assertTrue(result["official_article_list_proven"])
         self.assertTrue(result["eyecatch_present"])
         self.assertEqual(result["eyecatch_proof_mode"], proof.PRESENT_HEADER_MEDIA)
         self.assertEqual(result["max_top_media_width"], 620)
 
     def test_audit_wrapper_rejects_missing_before_old_selector_can_pass(self) -> None:
         wrapped = audit._audit_wrapper(lambda page, title, manuscript: {"unexpected": True})
-        with mock.patch.object(audit.base.note_base, "_find_title", return_value=object()), mock.patch.object(
+        with mock.patch.object(audit, "_prove_account_and_official_list"), mock.patch.object(
+            audit, "_reopen_exact_draft"
+        ), mock.patch.object(audit.base.note_base, "_find_title", return_value=object()), mock.patch.object(
             proof, "collect_eyecatch_metrics", return_value=missing_metrics()
         ):
             with self.assertRaises(audit.Run295EyecatchProofError) as ctx:
                 wrapped(_Page(), "private-title", "private-body")
         self.assertEqual(ctx.exception.code, "eyecatch_missing_likely")
+        self.assertTrue(ctx.exception.safe_metrics["account_ownership_proven"])
+        self.assertTrue(ctx.exception.safe_metrics["official_article_list_proven"])
 
     def test_run_restores_original_audit_on_failure(self) -> None:
         original_audit = audit.base._audit_current_page
