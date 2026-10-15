@@ -1,11 +1,10 @@
-name: PR792 read-only note account diagnostic
+name: PR792 read-only note profile ownership diagnostic
 
 on:
   pull_request:
     branches: [main]
 
 permissions:
-  actions: write
   contents: read
 
 concurrency:
@@ -13,22 +12,122 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  dispatch-read-only-audit:
+  start-cloud-vm:
     if: >-
       github.run_attempt == 1 &&
       github.event.pull_request.head.ref == 'fix/note-audit-account-diagnostics-20261015' &&
       github.actor == 'trendhub-ab'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
     steps:
-      - name: Dispatch exact existing private-draft audit on PR branch
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start persistent note Chrome VM
         run: |
           set -euo pipefail
-          printf '%s' '{"ref":"fix/note-audit-account-diagnostics-20261015","inputs":{"confirm":"AUDIT_NOTE_DRAFT","sync_id":"3fa479ffdca98194a493cb3a0d2b3a36"}}' | gh api \
-            --method POST \
-            -H 'Accept: application/vnd.github+json' \
-            "/repos/${GITHUB_REPOSITORY}/actions/workflows/note-private-draft-audit.yml/dispatches" \
-            --input -
-          echo 'Dispatched one read-only exact private-draft audit on the PR branch.'
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  probe-profile-ownership:
+    needs: start-cloud-vm
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install read-only browser dependency
+        run: pip install playwright requests
+      - name: Prove expected profile ownership without mutation
+        env:
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+        run: |
+          xvfb-run -a python - <<'PY'
+          import json
+          from playwright.sync_api import sync_playwright
+          import note_draft_automation as base
+          import run190_note_persistent_cloud as cloud
+
+          result = {
+              'read_only': True,
+              'zero_gemini_calls': True,
+              'notion_writes': 0,
+              'draft_mutation': False,
+              'public_release': False,
+              'owns_expected_profile': False,
+              'creator_name_matches': False,
+          }
+          with sync_playwright() as pw:
+              context = cloud._launch_persistent_context(pw)
+              page = context.new_page()
+              page.set_default_timeout(30000)
+              try:
+                  page.goto(cloud.EXPECTED_NOTE_PROFILE_URL, wait_until='domcontentloaded', timeout=60000)
+                  page.wait_for_timeout(1200)
+                  if base._looks_logged_out(page):
+                      result['status'] = 'auth_inactive'
+                  else:
+                      try:
+                          control = cloud._exact_settings_control(page)
+                          href = str(control.get_attribute('href') or '').strip()
+                          result['owns_expected_profile'] = href == cloud.PROFILE_SETTINGS_URL
+                      except Exception:
+                          result['owns_expected_profile'] = False
+
+                      page.goto(cloud.PROFILE_SETTINGS_URL, wait_until='domcontentloaded', timeout=60000)
+                      page.wait_for_timeout(1200)
+                      result['settings_route_active'] = str(page.url or '').startswith(cloud.PROFILE_SETTINGS_URL)
+                      nickname = page.locator(cloud.CREATOR_NAME_SELECTOR)
+                      try:
+                          if nickname.count() == 1 and nickname.first.is_visible(timeout=2500):
+                              actual = ' '.join(str(nickname.first.input_value() or '').split())
+                              result['creator_name_matches'] = actual == cloud.EXPECTED_CREATOR_NAME
+                      except Exception:
+                          result['creator_name_matches'] = False
+                      result['status'] = 'ownership_probed'
+              finally:
+                  context.close()
+          print('PR792_NOTE_PROFILE_OWNERSHIP=' + json.dumps(result, ensure_ascii=False, sort_keys=True))
+          if result.get('status') != 'ownership_probed':
+              raise SystemExit(2)
+          PY
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [start-cloud-vm, probe-profile-ownership]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Stop persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
