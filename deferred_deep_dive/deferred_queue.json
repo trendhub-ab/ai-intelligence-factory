@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-15T10:26:43.816318+00:00",
+  "updated_at": "2026-10-15T10:27:58.441031+00:00",
   "items": [
-    {
-      "key": "https://developers.googleblog.com/gemini-4-argon-for-robotics",
-      "deferred_at": "2026-10-14T09:11:21.781636+00:00",
-      "expires_at": "2026-12-13T09:11:21.781636+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Gemini 4 Argon for Robotics",
-        "originalTitle": "Gemini 4 Argon for Robotics",
-        "displayName": "Gemini 4 Argon for Robotics",
-        "sourceLanguage": "en",
-        "url": "https://developers.googleblog.com/gemini-4-argon-for-robotics/",
-        "description": "Gemini 4 Argon for Robotics",
-        "stargazerCount": 215,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-13T16:55:47Z",
-        "sourceContext": "HN points=215 comments=49 matched_query=Gemini",
-        "primaryUrl": "https://developers.googleblog.com/gemini-4-argon-for-robotics/",
-        "sourceDetails": {
-          "hn_id": "50074869",
-          "hn_url": "https://news.ycombinator.com/item?id=50074869",
-          "external_url": "https://developers.googleblog.com/gemini-4-argon-for-robotics/",
-          "comments": 49,
-          "matched_query": "Gemini",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3f9479ff-dca9-81fd-9c3f-dccf65dc82df",
-      "score": 80,
-      "reason": "ロボティクス向け最新モデルの実務的価値が高い",
-      "commercial_score": 82,
-      "shelf_life_score": 70,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 80.7
-    },
     {
       "key": "https://blog.google/innovation-and-ai/technology/developers-tools/build-with-gemini-4-argon",
       "deferred_at": "2026-10-14T09:11:21.781701+00:00",
