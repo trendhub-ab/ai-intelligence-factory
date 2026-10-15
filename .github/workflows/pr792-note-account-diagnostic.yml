@@ -1,4 +1,4 @@
-name: PR792 read-only note profile ownership diagnostic
+name: PR792 focused Run190 TDD
 
 on:
   pull_request:
@@ -7,171 +7,17 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: pr792-note-account-diagnostic
-  cancel-in-progress: false
-
 jobs:
-  start-cloud-vm:
-    if: >-
-      github.run_attempt == 1 &&
-      github.event.pull_request.head.ref == 'fix/note-audit-account-diagnostics-20261015' &&
-      github.actor == 'trendhub-ab'
+  focused-run190:
+    if: github.event.pull_request.head.ref == 'fix/note-audit-account-diagnostics-20261015'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - name: Start persistent note Chrome VM
-        run: |
-          set -euo pipefail
-          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
-          if [ "$state" != "RUNNING" ]; then
-            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
-          fi
-
-  probe-profile-ownership:
-    needs: start-cloud-vm
-    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
-    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Install read-only browser dependency
-        run: pip install playwright requests
-      - name: Probe known profile identity without exposing account data
-        env:
-          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
-          NOTE_CHROME_CHANNEL: 'chrome'
-          NOTE_CHROME_HEADLESS: 'false'
-        run: |
-          xvfb-run -a python - <<'PY'
-          import json
-          from playwright.sync_api import sync_playwright
-          import note_draft_automation as base
-          import run190_note_persistent_cloud as cloud
-
-          CURRENT_PUBLIC_CREATOR = 'AIF - AI Intelligence Factory'
-          EXPECTED_HANDLE = 'trendhub_biz'
-
-          def inspect(page):
-              out = {
-                  'auth_active': False,
-                  'settings_route_active': False,
-                  'creator_matches_legacy_expected': False,
-                  'creator_matches_current_public': False,
-                  'known_handle_in_settings_dom': False,
-                  'known_handle_exact_input_match': False,
-                  'known_handle_exact_link_match': False,
-              }
-              page.set_default_timeout(30000)
-              page.goto(cloud.EXPECTED_NOTE_PROFILE_URL, wait_until='domcontentloaded', timeout=60000)
-              page.wait_for_timeout(1200)
-              if base._looks_logged_out(page):
-                  return out
-              out['auth_active'] = True
-              page.goto(cloud.PROFILE_SETTINGS_URL, wait_until='domcontentloaded', timeout=60000)
-              page.wait_for_timeout(1200)
-              out['settings_route_active'] = str(page.url or '').startswith(cloud.PROFILE_SETTINGS_URL)
-              nickname = page.locator(cloud.CREATOR_NAME_SELECTOR)
-              try:
-                  if nickname.count() == 1 and nickname.first.is_visible(timeout=2500):
-                      actual = ' '.join(str(nickname.first.input_value() or '').split())
-                      out['creator_matches_legacy_expected'] = actual == cloud.EXPECTED_CREATOR_NAME
-                      out['creator_matches_current_public'] = actual == CURRENT_PUBLIC_CREATOR
-              except Exception:
-                  pass
-              flags = page.evaluate(
-                  """(expectedHandle) => {
-                    const all = Array.from(document.querySelectorAll('*'));
-                    const inputs = Array.from(document.querySelectorAll('input,textarea'));
-                    const links = Array.from(document.querySelectorAll('a[href]'));
-                    const norm = s => String(s || '').trim();
-                    return {
-                      dom: document.documentElement.outerHTML.includes(expectedHandle),
-                      input: inputs.some(el => norm(el.value) === expectedHandle),
-                      link: links.some(el => {
-                        try {
-                          const u = new URL(el.href, location.href);
-                          return u.hostname === 'note.com' && u.pathname.replace(/\/$/, '') === '/' + expectedHandle;
-                        } catch (_) { return false; }
-                      }),
-                    };
-                  }""",
-                  EXPECTED_HANDLE,
-              )
-              out['known_handle_in_settings_dom'] = bool(flags.get('dom'))
-              out['known_handle_exact_input_match'] = bool(flags.get('input'))
-              out['known_handle_exact_link_match'] = bool(flags.get('link'))
-              return out
-
-          result = {
-              'read_only': True,
-              'zero_gemini_calls': True,
-              'notion_writes': 0,
-              'draft_mutation': False,
-              'public_release': False,
-          }
-          with sync_playwright() as pw:
-              persistent = cloud._launch_persistent_context(pw)
-              p = persistent.new_page()
-              try:
-                  result['persistent'] = inspect(p)
-              finally:
-                  persistent.close()
-
-              browser = pw.chromium.launch(
-                  channel='chrome', headless=False,
-                  args=['--lang=ja-JP', '--no-first-run', '--no-default-browser-check', '--disable-dev-shm-usage'],
-              )
-              ephemeral = browser.new_context(locale='ja-JP', timezone_id='Asia/Tokyo', viewport={'width': 1440, 'height': 1100})
-              q = ephemeral.new_page()
-              try:
-                  result['bootstrap_seeded'] = bool(cloud._seed_note_state(ephemeral, q))
-                  result['bootstrap'] = inspect(q) if result['bootstrap_seeded'] else {}
-              finally:
-                  ephemeral.close()
-                  browser.close()
-
-          print('PR792_NOTE_IDENTITY_DIAGNOSTIC=' + json.dumps(result, ensure_ascii=False, sort_keys=True))
-          if result.get('read_only') is not True or result.get('draft_mutation') is not False:
-              raise SystemExit(2)
-          PY
-
-  stop-cloud-vm:
-    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
-    needs: [start-cloud-vm, probe-profile-ownership]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
-      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
-    steps:
-      - uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      - uses: google-github-actions/setup-gcloud@v3
-      - name: Stop persistent note Chrome VM
-        run: |
-          set -euo pipefail
-          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
-          if [ "$state" = "RUNNING" ]; then
-            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
-          fi
+      - name: Install focused test dependencies
+        run: pip install requests pillow
+      - name: Run focused Run190 tests
+        run: python -m unittest tests.test_run190_note_persistent_cloud -v
