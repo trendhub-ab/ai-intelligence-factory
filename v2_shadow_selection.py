@@ -18,6 +18,17 @@ from candidate_identity import canonicalize_url
 
 
 DEFAULT_MIN_SCREENING_SCORE = 40
+DIRECT_CANDIDATE_SOURCE_FAMILIES = frozenset(
+    {"official_vendor", "github", "hacker_news", "arxiv"}
+)
+DISCOVERY_ONLY_SOURCE_FAMILIES = frozenset({"x"})
+RETIRED_SOURCE_FAMILIES = frozenset({"product_hunt"})
+
+
+def source_family_can_emit_candidate(source_family: str) -> bool:
+    """Return whether a source family may emit a direct V2 shadow candidate."""
+
+    return str(source_family or "").strip().lower() in DIRECT_CANDIDATE_SOURCE_FAMILIES
 
 
 @dataclass(frozen=True)
@@ -90,10 +101,17 @@ def normalize_candidate(
 
     V2-001 intentionally requires both a usable URL and title. When either is
     absent, the candidate is rejected rather than inventing an identity.
+    V2-005B also preserves bounded source provenance and rejects source families
+    that are discovery-only, retired, or otherwise not approved for direct
+    candidate emission.
     """
 
     if not isinstance(raw, Mapping):
         raise ValueError("candidate must be a mapping")
+
+    source_family = _first_text(raw, "source_family").lower()
+    if source_family and not source_family_can_emit_candidate(source_family):
+        raise ValueError("source family may not emit a direct V2 candidate")
 
     primary_url = _first_text(raw, "primary_url", "primaryUrl", "url")
     title = _first_text(raw, "title", "name")
@@ -110,7 +128,7 @@ def normalize_candidate(
         else raw.get("source_timestamp")
     )
 
-    return {
+    result: dict[str, Any] = {
         "candidate_identity": identity,
         "provider": str(provider or "").strip(),
         "primary_url": primary_url,
@@ -120,6 +138,13 @@ def normalize_candidate(
         "acquired_at": acquired_at.isoformat(),
         "evidence_sufficiency": "unassessed",
     }
+    if source_family:
+        result["source_family"] = source_family
+    for key in ("canonical_url", "upstream_id", "repository", "event_kind"):
+        value = _first_text(raw, key)
+        if value:
+            result[key] = value
+    return result
 
 
 def deduplicate_candidates(candidates: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -424,6 +449,7 @@ def run_shadow_selection(
         {
             "candidate_identity": candidate["candidate_identity"],
             "provider": candidate["provider"],
+            "source_family": candidate.get("source_family"),
             "screening_score": candidate["screening_score"],
             "screening_reasons": list(candidate["screening_reasons"]),
             "selection_value_score": candidate["selection_value_score"],
