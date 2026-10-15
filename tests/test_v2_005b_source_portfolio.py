@@ -9,15 +9,15 @@ from v2_shadow_selection import ShadowConfig, normalize_candidate, run_shadow_se
 NOW = datetime(2026, 10, 15, 3, 0, tzinfo=timezone.utc)
 
 
-def _candidate(source_family: str) -> dict[str, str]:
+def _candidate(source_family: str, suffix: str = "1") -> dict[str, str]:
     return {
-        "url": f"https://example.com/{source_family}",
+        "url": f"https://example.com/{source_family}/{suffix}",
         "title": "AI API release cuts enterprise deployment cost",
         "description": "New release improves production workflow integration and customer deployment.",
         "published_at": "2026-10-15T01:00:00+00:00",
         "source_family": source_family,
-        "canonical_url": f"https://example.com/{source_family}",
-        "upstream_id": f"{source_family}-1",
+        "canonical_url": f"https://example.com/{source_family}/{suffix}",
+        "upstream_id": f"{source_family}-{suffix}",
     }
 
 
@@ -62,7 +62,7 @@ def test_normalization_preserves_bounded_source_provenance():
     normalized = normalize_candidate(raw, provider="GitHub", acquired_at=NOW)
 
     assert normalized["source_family"] == "github"
-    assert normalized["canonical_url"] == "https://example.com/github"
+    assert normalized["canonical_url"] == "https://example.com/github/1"
     assert normalized["upstream_id"] == "github-1"
     assert normalized["repository"] == "openai/openai-python"
     assert normalized["event_kind"] == "release"
@@ -94,3 +94,57 @@ def test_discovery_only_and_retired_sources_fail_closed_when_normalized_directly
             assert "source family" in str(exc).lower()
         else:
             raise AssertionError(f"{family} must not emit a direct V2 candidate")
+
+
+def test_four_source_run_has_explicit_total_candidate_budget():
+    providers = {
+        "OfficialVendor": lambda: [_candidate("official_vendor", "1"), _candidate("official_vendor", "2")],
+        "GitHub": lambda: [_candidate("github", "1"), _candidate("github", "2")],
+        "HackerNews": lambda: [_candidate("hacker_news", "1"), _candidate("hacker_news", "2")],
+        "ArXiv": lambda: [_candidate("arxiv", "1"), _candidate("arxiv", "2")],
+    }
+
+    report = run_shadow_selection(
+        providers=providers,
+        deep_dive=lambda _candidate: {"evidence_sufficient": True},
+        config=ShadowConfig(max_candidates_per_provider=2, max_total_candidates=3),
+        now=NOW,
+        run_id="v2-005b-total-budget",
+    )
+
+    assert report["budgets"]["max_total_candidates"] == 3
+    assert report["acquired_candidate_count"] == 3
+    assert report["normalized_candidate_count"] == 3
+    assert sum(
+        status["accepted_count"] for status in report["provider_statuses"].values()
+    ) == 3
+    assert report["actual_calls"]["deep_dive"] == 1
+
+
+def test_source_failure_does_not_consume_other_sources_candidate_budget():
+    def fail_official_vendor():
+        raise RuntimeError("synthetic source failure")
+
+    providers = {
+        "OfficialVendor": fail_official_vendor,
+        "GitHub": lambda: [_candidate("github")],
+        "HackerNews": lambda: [_candidate("hacker_news")],
+        "ArXiv": lambda: [_candidate("arxiv")],
+    }
+
+    report = run_shadow_selection(
+        providers=providers,
+        deep_dive=lambda _candidate: {"evidence_sufficient": True},
+        config=ShadowConfig(max_candidates_per_provider=1, max_total_candidates=4),
+        now=NOW,
+        run_id="v2-005b-source-failure-isolation",
+    )
+
+    assert report["provider_statuses"]["OfficialVendor"]["status"] == "failure"
+    assert report["provider_statuses"]["GitHub"]["normalized_count"] == 1
+    assert report["provider_statuses"]["HackerNews"]["normalized_count"] == 1
+    assert report["provider_statuses"]["ArXiv"]["normalized_count"] == 1
+    assert report["acquired_candidate_count"] == 3
+    assert report["normalized_candidate_count"] == 3
+    assert report["actual_calls"]["provider"] == 4
+    assert report["actual_calls"]["deep_dive"] == 1
