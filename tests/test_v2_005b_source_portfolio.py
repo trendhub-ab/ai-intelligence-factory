@@ -41,8 +41,9 @@ def test_selection_value_is_source_family_neutral_for_identical_content():
         for family in ("official_vendor", "github", "hacker_news", "arxiv")
     }
 
-    assert len(set(scores.values())) == 1
-    score, reasons = scores["official_vendor"]
+    reference = scores["official_vendor"]
+    assert all(value == reference for value in scores.values())
+    score, reasons = reference
     assert score == 60
     assert reasons == [
         "ai_relevance",
