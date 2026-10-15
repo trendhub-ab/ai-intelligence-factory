@@ -51,7 +51,7 @@ jobs:
           python-version: '3.11'
       - name: Install read-only browser dependency
         run: pip install playwright requests
-      - name: Probe persistent and bootstrap sessions without mutation
+      - name: Probe known profile identity without exposing account data
         env:
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
           NOTE_CHROME_CHANNEL: 'chrome'
@@ -63,12 +63,18 @@ jobs:
           import note_draft_automation as base
           import run190_note_persistent_cloud as cloud
 
+          CURRENT_PUBLIC_CREATOR = 'AIF - AI Intelligence Factory'
+          EXPECTED_HANDLE = 'trendhub_biz'
+
           def inspect(page):
               out = {
                   'auth_active': False,
-                  'owns_expected_profile': False,
                   'settings_route_active': False,
-                  'creator_name_matches': False,
+                  'creator_matches_legacy_expected': False,
+                  'creator_matches_current_public': False,
+                  'known_handle_in_settings_dom': False,
+                  'known_handle_exact_input_match': False,
+                  'known_handle_exact_link_match': False,
               }
               page.set_default_timeout(30000)
               page.goto(cloud.EXPECTED_NOTE_PROFILE_URL, wait_until='domcontentloaded', timeout=60000)
@@ -76,12 +82,6 @@ jobs:
               if base._looks_logged_out(page):
                   return out
               out['auth_active'] = True
-              try:
-                  control = cloud._exact_settings_control(page)
-                  href = str(control.get_attribute('href') or '').strip()
-                  out['owns_expected_profile'] = href == cloud.PROFILE_SETTINGS_URL
-              except Exception:
-                  out['owns_expected_profile'] = False
               page.goto(cloud.PROFILE_SETTINGS_URL, wait_until='domcontentloaded', timeout=60000)
               page.wait_for_timeout(1200)
               out['settings_route_active'] = str(page.url or '').startswith(cloud.PROFILE_SETTINGS_URL)
@@ -89,9 +89,32 @@ jobs:
               try:
                   if nickname.count() == 1 and nickname.first.is_visible(timeout=2500):
                       actual = ' '.join(str(nickname.first.input_value() or '').split())
-                      out['creator_name_matches'] = actual == cloud.EXPECTED_CREATOR_NAME
+                      out['creator_matches_legacy_expected'] = actual == cloud.EXPECTED_CREATOR_NAME
+                      out['creator_matches_current_public'] = actual == CURRENT_PUBLIC_CREATOR
               except Exception:
-                  out['creator_name_matches'] = False
+                  pass
+              flags = page.evaluate(
+                  """(expectedHandle) => {
+                    const all = Array.from(document.querySelectorAll('*'));
+                    const inputs = Array.from(document.querySelectorAll('input,textarea'));
+                    const links = Array.from(document.querySelectorAll('a[href]'));
+                    const norm = s => String(s || '').trim();
+                    return {
+                      dom: document.documentElement.outerHTML.includes(expectedHandle),
+                      input: inputs.some(el => norm(el.value) === expectedHandle),
+                      link: links.some(el => {
+                        try {
+                          const u = new URL(el.href, location.href);
+                          return u.hostname === 'note.com' && u.pathname.replace(/\/$/, '') === '/' + expectedHandle;
+                        } catch (_) { return false; }
+                      }),
+                    };
+                  }""",
+                  EXPECTED_HANDLE,
+              )
+              out['known_handle_in_settings_dom'] = bool(flags.get('dom'))
+              out['known_handle_exact_input_match'] = bool(flags.get('input'))
+              out['known_handle_exact_link_match'] = bool(flags.get('link'))
               return out
 
           result = {
@@ -110,29 +133,19 @@ jobs:
                   persistent.close()
 
               browser = pw.chromium.launch(
-                  channel='chrome',
-                  headless=False,
+                  channel='chrome', headless=False,
                   args=['--lang=ja-JP', '--no-first-run', '--no-default-browser-check', '--disable-dev-shm-usage'],
               )
-              ephemeral = browser.new_context(
-                  locale='ja-JP',
-                  timezone_id='Asia/Tokyo',
-                  viewport={'width': 1440, 'height': 1100},
-              )
+              ephemeral = browser.new_context(locale='ja-JP', timezone_id='Asia/Tokyo', viewport={'width': 1440, 'height': 1100})
               q = ephemeral.new_page()
               try:
                   result['bootstrap_seeded'] = bool(cloud._seed_note_state(ephemeral, q))
-                  result['bootstrap'] = inspect(q) if result['bootstrap_seeded'] else {
-                      'auth_active': False,
-                      'owns_expected_profile': False,
-                      'settings_route_active': False,
-                      'creator_name_matches': False,
-                  }
+                  result['bootstrap'] = inspect(q) if result['bootstrap_seeded'] else {}
               finally:
                   ephemeral.close()
                   browser.close()
 
-          print('PR792_NOTE_SESSION_DIAGNOSTIC=' + json.dumps(result, ensure_ascii=False, sort_keys=True))
+          print('PR792_NOTE_IDENTITY_DIAGNOSTIC=' + json.dumps(result, ensure_ascii=False, sort_keys=True))
           if result.get('read_only') is not True or result.get('draft_mutation') is not False:
               raise SystemExit(2)
           PY
