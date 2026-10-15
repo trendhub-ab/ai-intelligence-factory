@@ -43,7 +43,7 @@ DEFAULT_PROFILE_DIR = Path.home() / ".aiif-note" / "chrome-profile"
 MAX_HISTORY_CANDIDATES = 24
 EXPECTED_NOTE_PROFILE_URL = "https://note.com/trendhub_biz"
 PROFILE_SETTINGS_URL = "https://note.com/settings/profile"
-EXPECTED_CREATOR_NAME = "AI Intelligence Factory"
+EXPECTED_CREATOR_NAME = "AIF - AI Intelligence Factory"
 CREATOR_NAME_SELECTOR = 'input[name="editNickname"][aria-label="クリエイター名"]:visible'
 ARTICLE_LIST_URL = "https://note.com/notes"
 _ORIGINAL_DECODE_STORAGE_STATE = base._decode_storage_state
@@ -265,6 +265,33 @@ def _exact_settings_control(page: Any) -> Any:
     return matches[0]
 
 
+def _is_expected_profile_href(value: str) -> bool:
+    """Match only the exact expected note profile URL, allowing a trailing slash."""
+    try:
+        parsed = urlparse(urljoin("https://note.com", str(value or "").strip()))
+        expected = urlparse(EXPECTED_NOTE_PROFILE_URL)
+    except Exception:
+        return False
+    return (
+        parsed.scheme == "https"
+        and (parsed.hostname or "").lower() == (expected.hostname or "").lower()
+        and (parsed.path or "").rstrip("/") == (expected.path or "").rstrip("/")
+        and not parsed.query
+        and not parsed.fragment
+    )
+
+
+def _settings_page_has_expected_profile_link(page: Any) -> bool:
+    """Read-only proof that settings belongs to the configured trendhub_biz profile."""
+    try:
+        hrefs = page.locator("a[href]").evaluate_all(
+            "els => els.map(el => el.getAttribute('href') || '').filter(Boolean)"
+        )
+    except Exception:
+        return False
+    return any(_is_expected_profile_href(raw) for raw in (hrefs or []))
+
+
 def _assert_expected_note_account(page: Any) -> None:
     """Read-only proof that the active session owns trendhub_biz and has the expected creator name."""
     page.goto(PROFILE_SETTINGS_URL, wait_until="domcontentloaded", timeout=60000)
@@ -285,13 +312,7 @@ def _assert_expected_note_account(page: Any) -> None:
     if actual_name != EXPECTED_CREATOR_NAME:
         raise base.NoteDraftError("persistent note session belongs to an unexpected creator account")
 
-    page.goto(EXPECTED_NOTE_PROFILE_URL, wait_until="domcontentloaded", timeout=60000)
-    page.wait_for_timeout(1200)
-    if base._looks_logged_out(page):
-        raise base.NoteAuthenticationExpired("note authentication expired during account ownership proof")
-    control = _exact_settings_control(page)
-    href = str(control.get_attribute("href") or "").strip()
-    if href != PROFILE_SETTINGS_URL:
+    if not _settings_page_has_expected_profile_link(page):
         raise base.NoteDraftError("persistent note session does not own the expected note profile")
 
 
