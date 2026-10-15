@@ -4,7 +4,7 @@
 Production最終照合日: **2026-10-15**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`e891e323ea646cafbd9b77e13310d65085df71fac05970be95c9f12f919b1cc9`**
+Production Contract Fingerprint: **`0bc2c30cbd3a764808318755ae7c3c4bf50d0a8c7c3d3985c857d78b2e0b9785`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -126,11 +126,14 @@ Production Dailyは **Manual ONE-SHOT** が正規経路。
 - `/aiif run local_skills_production_validation`
 - `/aiif note sync`
 - `/aiif note sync <32-hex sync_id>`
+- `/aiif note audit <32-hex sync_id>`
 - `/aiif note regenerate <32-hex sync_id>`
 - `/aiif note regenerate_resume <32-hex sync_id>`
 - `/aiif ready asset_recovery <32-hex sync_id>`
 
 Control Issue、owner、run_attempt等を認証し、GH_PATで既存manual workflowを1回だけdispatchする。Bridge自身がProduction処理を直接実行しない。exact target commandは32-hex identityを厳格に要求し、別記事へfallbackしない。
+
+`/aiif note audit <32-hex sync_id>` は既存private draftのread-only監査専用で、`.github/workflows/note-private-draft-audit.yml` だけをexact targetへdispatchする。Bridge自身のGemini/model call、draft mutation、Production実行、public releaseはすべて0 / falseとし、監査対象を別記事へfallbackしない。
 
 `/aiif run full` は現行運用上 **`human_narrative`** を明示してDaily ONE-SHOTへ渡す。
 
@@ -1069,6 +1072,7 @@ Production surfaceが変わるPRでは、**本書の同期をmerge条件**とす
 - **Subscription Attribution:** GitHub GET/PUTは同じ `EYECATCH_GITHUB_BRANCH` を使用し、既存更新はbranch上current SHAをPUTへ渡す。
 - **Note delivery:** current-run Ready全件をexact target判定へ送る。`reconcile_existing` はdurable-ledger reconciliationとしてVM fan-out可能。
 - **Exact note sync:** bare syncに加え32-hex target指定のChatOps再同期を持つ。
+- **Exact note audit:** 32-hex target指定のChatOpsから既存private draftをread-only監査し、Gemini/model call・draft mutation・Production実行・public releaseを行わない。
 - **Existing draft regeneration:** exact sync_id、既存draft identity、未公開stateを固定し、現行Gate通過後も同じdraftだけ更新。
 - **Persisted resume:** `Ready / Deep Dive` をfresh確認し、Provider generation / Gemini call 0でpersist済み本文とeyecatchを同じdraftへ反映。
 - **Ready asset recovery:** exact Content Intelligence pageをdirect GETし、terminal guard → current Production → fresh Ready proof後だけ配送。
