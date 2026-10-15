@@ -66,7 +66,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests playwright
-      - name: Prove exact official-list title click resolves persisted draft identity
+      - name: Prove exact official-list edit button resolves persisted draft identity
         run: |
           xvfb-run -a python - <<'PY'
           import json, os
@@ -78,7 +78,6 @@ jobs:
           article = run291._expected_article(os.environ['NOTE_TARGET_SYNC_ID'])
           draft_id = str(article['draft_id'])
           title = str(article['title'])
-
           result = {
             'status': 'probe_complete_no_mutation',
             'zero_gemini_calls': True,
@@ -87,42 +86,6 @@ jobs:
             'public_release': False,
             'notion_writes': 0,
           }
-
-          mark_script = r'''(title) => {
-            const norm = s => String(s || '').replace(/\s+/g, ' ').trim();
-            const visible = el => {
-              const r = el.getBoundingClientRect();
-              const s = getComputedStyle(el);
-              return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden';
-            };
-            const candidates = Array.from(document.querySelectorAll('h1,h2,h3,p,span,div,a,button,[role="link"],[role="button"]'))
-              .filter(el => visible(el) && norm(el.innerText) === norm(title));
-            if (candidates.length !== 1) return {exact_title_count:candidates.length, target_marked:false};
-            const titleEl = candidates[0];
-            let target = titleEl;
-            let cur = titleEl;
-            for (let depth = 0; depth < 10 && cur; depth++, cur = cur.parentElement) {
-              const tag = String(cur.tagName || '').toLowerCase();
-              const role = String(cur.getAttribute && cur.getAttribute('role') || '').toLowerCase();
-              const tabindex = cur.getAttribute && cur.getAttribute('tabindex');
-              const cursor = getComputedStyle(cur).cursor;
-              if (tag === 'a' || tag === 'button' || role === 'link' || role === 'button' || tabindex === '0' || cursor === 'pointer') {
-                target = cur;
-                break;
-              }
-            }
-            target.setAttribute('data-aiif-readonly-title-target','1');
-            const tag = String(target.tagName || '').toLowerCase();
-            const role = String(target.getAttribute && target.getAttribute('role') || '').toLowerCase();
-            return {
-              exact_title_count:candidates.length,
-              target_marked:true,
-              target_tag:tag,
-              target_role:role,
-              target_has_href:!!(target.getAttribute && target.getAttribute('href')),
-              target_cursor_pointer:getComputedStyle(target).cursor === 'pointer'
-            };
-          }'''
 
           with sync_playwright() as p:
             context = run190._launch_persistent_context(p)
@@ -137,14 +100,27 @@ jobs:
               page.goto(run190.ARTICLE_LIST_URL, wait_until='domcontentloaded', timeout=60000)
               page.wait_for_timeout(1800)
               result['article_list_route_ok'] = str(page.url or '').startswith(run190.ARTICLE_LIST_URL)
-              marked = page.evaluate(mark_script, title)
-              result['list_title_target'] = marked if isinstance(marked, dict) else {}
-              if not result['list_title_target'].get('target_marked'):
-                raise SystemExit('exact title was not uniquely markable on official list')
 
-              target = page.locator('[data-aiif-readonly-title-target="1"]')
-              target.click(timeout=10000)
-              page.wait_for_timeout(1500)
+              exact_title = page.locator('h1,h2,h3,p,span,div,a,button,[role="link"],[role="button"]').filter(has_text=title)
+              title_matches = 0
+              for i in range(min(exact_title.count(), 200)):
+                try:
+                  if ' '.join(str(exact_title.nth(i).inner_text(timeout=300) or '').split()) == ' '.join(title.split()):
+                    title_matches += 1
+                except Exception:
+                  pass
+              result['exact_title_visible_count'] = title_matches
+
+              button = page.get_by_role('button', name=f'{title}を編集', exact=True)
+              result['exact_edit_button_count'] = button.count()
+              if title_matches != 1 or button.count() != 1:
+                raise SystemExit('official list did not expose one exact title plus one exact edit button')
+
+              button.click(timeout=10000)
+              for _ in range(10):
+                if run187._is_editor_url(str(page.url or '')):
+                  break
+                page.wait_for_timeout(500)
 
               result['list_click_editor_route_ok'] = bool(run187._is_editor_url(str(page.url or '')))
               try:
@@ -160,7 +136,7 @@ jobs:
             finally:
               context.close()
 
-          print('NOTE_LIST_TITLE_CLICK_DIAGNOSTIC=' + json.dumps(result, ensure_ascii=False, sort_keys=True))
+          print('NOTE_LIST_EDIT_BUTTON_DIAGNOSTIC=' + json.dumps(result, ensure_ascii=False, sort_keys=True))
           PY
 
   stop-cloud-vm:
