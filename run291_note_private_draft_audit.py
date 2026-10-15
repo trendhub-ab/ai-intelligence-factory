@@ -309,7 +309,7 @@ def _browser_audit(article: dict[str, Any], *, page_auditor: Any | None = None) 
                 raise PrivateDraftAuditError("Expected note account ownership could not be proven") from exc
 
             try:
-                run190._verify_draft_in_article_list(page, private_url)
+                run190._verify_draft_in_article_list(page, private_url, str(article["title"]))
             except note_base.NoteAuthenticationExpired as exc:
                 raise PrivateDraftAuditError("Expected note account ownership could not be proven") from exc
             except note_base.NoteDraftError as exc:
