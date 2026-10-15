@@ -43,6 +43,13 @@ class Run295EyecatchProofError(base.PrivateDraftAuditError):
         self.safe_metrics = dict(metrics)
 
 
+class _ConfirmedAuditEyecatchProofPageProxy(eyecatch.EyecatchProofPageProxy):
+    """Reuse the proof collected immediately before entering legacy Run291 audit."""
+
+    def _confirmed(self) -> bool:
+        return True
+
+
 def _safe_account_proof_stage(exc: BaseException) -> str | None:
     """Read only fixed allow-listed causes; never expose dynamic exception text."""
     current: BaseException | None = exc
@@ -70,7 +77,7 @@ def _audit_wrapper(original: Callable[..., dict[str, Any]]) -> Callable[..., dic
             code = "eyecatch_missing_likely" if state == eyecatch.MISSING_LIKELY else "eyecatch_persistence_ambiguous"
             raise Run295EyecatchProofError(code, metrics)
 
-        proxy = eyecatch.EyecatchProofPageProxy(page, base.note_base._find_title)
+        proxy = _ConfirmedAuditEyecatchProofPageProxy(page, base.note_base._find_title)
         result = original(proxy, title, manuscript)
         result["eyecatch_present"] = True
         result["eyecatch_proof_mode"] = state
