@@ -1,8 +1,10 @@
 """AIIF Rebuild V2-005 measured four-source live shadow proof.
 
-This module wraps the V2-005C four-source shadow path with safe measurement
-only. It does not grant Production authority and does not write Notion, note,
-Ready state, queues, delivery ledgers, or publication state.
+This module wraps the V2 four-source shadow path with safe measurement only.
+It may perform one batched Flash-Lite semantic-screening request followed by one
+rank-1 Flash Evidence request. It does not grant Production authority and does
+not write Notion, note, Ready state, queues, delivery ledgers, or publication
+state.
 """
 
 from __future__ import annotations
@@ -16,6 +18,11 @@ from typing import Any, Callable, Mapping
 import requests
 
 from v2_four_source_live import FourSourceLiveConfig, run_four_source_live
+from v2_semantic_screening import (
+    DEFAULT_SEMANTIC_MODEL,
+    GeminiSemanticScreeningProvider,
+    SemanticScreeningError,
+)
 from v2_shadow_observation import (
     DEFAULT_DEEP_DIVE_OUTPUT_PATH,
     DEFAULT_MODEL,
@@ -26,7 +33,7 @@ from v2_shadow_observation import (
 )
 
 
-PROOF_VERSION = "V2-005"
+PROOF_VERSION = "V2-006"
 PROMOTION_DECISION = "human_review_required"
 _SAFE_CANDIDATE_FIELDS = (
     "candidate_identity",
@@ -96,24 +103,44 @@ def build_live_proof(
     github_token: str | None = None,
     v1_reference: str | None = None,
 ) -> dict[str, Any]:
-    """Run one bounded V2-005 four-source live proof with safe measurement only."""
+    """Run one bounded V2 four-source live proof with safe measurement only."""
 
-    recording_post = _RecordingHttpPost(http_post)
-    provider = GeminiEvidenceProvider(
+    semantic_recording_post = _RecordingHttpPost(http_post)
+    evidence_recording_post = _RecordingHttpPost(http_post)
+    semantic_provider = GeminiSemanticScreeningProvider(
+        api_key=api_key,
+        model=DEFAULT_SEMANTIC_MODEL,
+        http_post=semantic_recording_post,
+    )
+    evidence_provider = GeminiEvidenceProvider(
         api_key=api_key,
         model=DEFAULT_MODEL,
-        http_post=recording_post,
+        http_post=evidence_recording_post,
     )
     evaluated_candidate: dict[str, Any] | None = None
     provider_result: dict[str, Any] | None = None
     provider_error_category: str | None = None
     evidence_contract_reason: str | None = None
+    semantic_provider_error_category: str | None = None
+
+    def recording_semantic_screen(
+        candidates: list[Mapping[str, Any]],
+    ) -> Mapping[str, Mapping[str, Any]]:
+        nonlocal semantic_provider_error_category
+        try:
+            return semantic_provider(candidates)
+        except Exception as exc:
+            if isinstance(exc, SemanticScreeningError):
+                semantic_provider_error_category = exc.safe_code
+            else:
+                semantic_provider_error_category = type(exc).__name__
+            raise
 
     def recording_deep_dive(candidate: Mapping[str, Any]) -> Mapping[str, Any]:
         nonlocal evaluated_candidate, provider_result, provider_error_category, evidence_contract_reason
         evaluated_candidate = _safe_candidate(candidate)
         try:
-            raw_result = provider(candidate)
+            raw_result = evidence_provider(candidate)
             provider_result = dict(raw_result)
             return provider_result
         except Exception as exc:
@@ -125,6 +152,7 @@ def build_live_proof(
             raise
 
     report = run_four_source_live(
+        semantic_screen=recording_semantic_screen,
         deep_dive=recording_deep_dive,
         now=now,
         run_id=run_id,
@@ -137,8 +165,12 @@ def build_live_proof(
         **report,
         "observation": {
             "mode": PROVIDER_BACKED_MODE,
+            "semantic_model": DEFAULT_SEMANTIC_MODEL,
+            "semantic_request_budget": 1,
+            "semantic_provider_error_category": semantic_provider_error_category,
             "model": DEFAULT_MODEL,
             "request_budget": 1,
+            "total_model_request_budget": 2,
             "provider_result": provider_result,
             "provider_error_category": provider_error_category,
             "evidence_contract_reason": evidence_contract_reason,
@@ -148,8 +180,13 @@ def build_live_proof(
         "v2_005_measurement": {
             "proof_version": PROOF_VERSION,
             "evaluated_candidate": evaluated_candidate,
-            "provider_usage": recording_post.usage,
-            "provider_request_count": recording_post.attempt_count,
+            "semantic_provider_usage": semantic_recording_post.usage,
+            "semantic_provider_request_count": semantic_recording_post.attempt_count,
+            "provider_usage": evidence_recording_post.usage,
+            "provider_request_count": evidence_recording_post.attempt_count,
+            "total_model_request_count": (
+                semantic_recording_post.attempt_count + evidence_recording_post.attempt_count
+            ),
             "production_mutation_authorized": False,
             "promotion_decision": PROMOTION_DECISION,
         },
@@ -157,13 +194,13 @@ def build_live_proof(
 
 
 def write_live_proof(report: Mapping[str, Any], output_path: str | Path) -> Path:
-    """Write deterministic V2-005 JSON using the existing V2 artifact contract."""
+    """Write deterministic V2 JSON using the existing artifact contract."""
 
     return write_observation(report, output_path)
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run measured V2-005 four-source live shadow proof")
+    parser = argparse.ArgumentParser(description="Run measured V2 four-source live shadow proof")
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--output", default=str(DEFAULT_DEEP_DIVE_OUTPUT_PATH))
     return parser.parse_args()
