@@ -1,23 +1,29 @@
 from __future__ import annotations
 
+import inspect
 import json
 from datetime import datetime, timezone
 
-from v2_live_shadow_acquisition import LiveAcquisitionConfig
+import v2_005_live_proof as live_proof
+from v2_four_source_live import FourSourceLiveConfig
 from v2_005_live_proof import build_live_proof
 
 
-NOW = datetime(2026, 10, 15, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 16, 0, 0, tzinfo=timezone.utc)
 
 
 class FakeResponse:
-    def __init__(self, *, json_data=None, text="", status_code=200):
+    def __init__(self, *, json_data=None, text="", status_code=200, url=None):
         self._json_data = json_data
         self.text = text
         self.content = text.encode("utf-8")
         self.status_code = status_code
+        if url is not None:
+            self.url = url
 
     def json(self):
+        if isinstance(self._json_data, Exception):
+            raise self._json_data
         return self._json_data
 
     def raise_for_status(self):
@@ -30,31 +36,46 @@ def _arxiv_xml(entries: str = "") -> str:
     <feed xmlns="http://www.w3.org/2005/Atom">{entries}</feed>'''
 
 
-def two_candidate_http_get(url, **kwargs):
+def four_source_http_get(url, **kwargs):
+    if url == "https://openai.com/news":
+        return FakeResponse(
+            url=url,
+            text='''<html><body><a href="/index/alpha-ai-release"><h2>AI API release adds enterprise deployment controls</h2></a></body></html>''',
+        )
+    if url in {
+        "https://www.anthropic.com/news",
+        "https://blog.google/products-and-platforms/products/gemini/",
+    }:
+        return FakeResponse(url=url, text="<html><body></body></html>")
+    if url == "https://api.github.com/repos/openai/openai-python/releases":
+        return FakeResponse(
+            url=url,
+            json_data=[{
+                "id": 123,
+                "html_url": "https://github.com/openai/openai-python/releases/tag/v2.0.0",
+                "name": "OpenAI Python v2.0.0 AI API release",
+                "tag_name": "v2.0.0",
+                "body": "AI SDK release improves production deployment workflow, API integration, and enterprise cost.",
+                "published_at": "2026-10-15T20:00:00Z",
+            }],
+        )
+    if url in {
+        "https://api.github.com/repos/anthropics/anthropic-sdk-python/releases",
+        "https://api.github.com/repos/googleapis/python-genai/releases",
+    }:
+        return FakeResponse(url=url, json_data=[])
     if url.endswith("topstories.json"):
-        return FakeResponse(json_data=[101, 102])
+        return FakeResponse(json_data=[101])
     if "/101.json" in url:
         return FakeResponse(
             json_data={
                 "id": 101,
                 "type": "story",
-                "title": "Alpha bounded AI release",
+                "title": "Bounded AI release improves deployment",
                 "url": "https://a.example/releases/alpha",
                 "time": 1792020000,
                 "score": 180,
                 "descendants": 60,
-            }
-        )
-    if "/102.json" in url:
-        return FakeResponse(
-            json_data={
-                "id": 102,
-                "type": "story",
-                "title": "Beta bounded AI release",
-                "url": "https://b.example/releases/beta",
-                "time": 1792020000,
-                "score": 170,
-                "descendants": 55,
             }
         )
     if "export.arxiv.org" in url:
@@ -87,13 +108,25 @@ def _build(*, post_response):
 
     report = build_live_proof(
         now=NOW,
-        run_id="v2-005-test",
+        run_id="v2-005c-test",
         api_key="SECRET_KEY",
-        config=LiveAcquisitionConfig(hn_limit=2, arxiv_limit=0, total_candidate_limit=2),
-        http_get=two_candidate_http_get,
+        config=FourSourceLiveConfig(
+            vendor_limit=5,
+            github_limit=5,
+            hn_limit=1,
+            arxiv_limit=0,
+            max_total_candidates=8,
+        ),
+        http_get=four_source_http_get,
         http_post=http_post,
     )
     return report, post_calls
+
+
+def test_live_proof_routes_through_four_source_bridge_not_old_two_source_builder():
+    source = inspect.getsource(live_proof.build_live_proof)
+    assert "run_four_source_live" in source
+    assert "build_provider_backed_observation" not in source
 
 
 def test_live_proof_records_safe_rank1_measurement_with_one_provider_request():
@@ -117,6 +150,13 @@ def test_live_proof_records_safe_rank1_measurement_with_one_provider_request():
         "screening_reasons",
     }
     assert measurement["provider_request_count"] == 1
+    assert measurement["provider_request_count"] == report["actual_calls"]["deep_dive"]
+    assert report["live_acquisition"]["source_families"] == [
+        "official_vendor",
+        "github",
+        "hacker_news",
+        "arxiv",
+    ]
 
 
 def test_live_proof_records_numeric_provider_usage_when_present():
@@ -160,23 +200,22 @@ def test_live_proof_tolerates_malformed_usage_metadata():
     assert report["v2_005_measurement"]["provider_usage"] is None
 
 
-def test_live_proof_does_not_persist_description_prompt_key_headers_or_raw_provider_body():
+def test_live_proof_does_not_persist_raw_source_html_prompt_key_headers_or_raw_provider_body():
     def secret_http_get(url, **kwargs):
-        if url.endswith("topstories.json"):
-            return FakeResponse(json_data=[101])
-        if "/101.json" in url:
+        if url == "https://openai.com/news":
             return FakeResponse(
-                json_data={
-                    "id": 101,
-                    "type": "story",
-                    "title": "Alpha bounded AI release",
-                    "url": "https://a.example/releases/alpha",
-                    "time": 1792020000,
-                    "score": 180,
-                    "descendants": 60,
-                    "text": "SECRET_DESCRIPTION",
-                }
+                url=url,
+                text='<html><body><!-- SECRET_VENDOR_HTML --><a href="/index/release"><h2>AI API release improves deployment</h2></a></body></html>',
             )
+        if url in {
+            "https://www.anthropic.com/news",
+            "https://blog.google/products-and-platforms/products/gemini/",
+        }:
+            return FakeResponse(url=url, text="<html><body></body></html>")
+        if url.startswith("https://api.github.com/repos/"):
+            return FakeResponse(url=url, json_data=[])
+        if url.endswith("topstories.json"):
+            return FakeResponse(json_data=[])
         if "export.arxiv.org" in url:
             return FakeResponse(text=_arxiv_xml())
         raise AssertionError(url)
@@ -188,14 +227,14 @@ def test_live_proof_does_not_persist_description_prompt_key_headers_or_raw_provi
 
     report = build_live_proof(
         now=NOW,
-        run_id="v2-005-secret-test",
+        run_id="v2-005c-secret-test",
         api_key="SECRET_KEY",
-        config=LiveAcquisitionConfig(hn_limit=1, arxiv_limit=0, total_candidate_limit=1),
+        config=FourSourceLiveConfig(hn_limit=0, arxiv_limit=0, max_total_candidates=5),
         http_get=secret_http_get,
         http_post=http_post,
     )
     serialized = json.dumps(report, ensure_ascii=False)
-    assert "SECRET_DESCRIPTION" not in serialized
+    assert "SECRET_VENDOR_HTML" not in serialized
     assert "SECRET_KEY" not in serialized
     assert "SECRET_PROVIDER_BODY" not in serialized
     assert "x-goog-api-key" not in serialized
@@ -212,10 +251,10 @@ def test_live_proof_preserves_safe_provider_failure_classification_without_retry
 
     report = build_live_proof(
         now=NOW,
-        run_id="v2-005-429",
+        run_id="v2-005c-429",
         api_key="SECRET_KEY",
-        config=LiveAcquisitionConfig(hn_limit=2, arxiv_limit=0, total_candidate_limit=2),
-        http_get=two_candidate_http_get,
+        config=FourSourceLiveConfig(hn_limit=1, arxiv_limit=0, max_total_candidates=8),
+        http_get=four_source_http_get,
         http_post=http_post,
     )
     assert post_calls == 1
@@ -236,8 +275,10 @@ def test_live_proof_insufficient_rank1_never_rescues_rank2():
 
 def test_live_proof_keeps_v1_authority_and_diagnostic_only_boundary():
     report, _ = _build(post_response=FakeResponse(json_data=_provider_body()))
+    assert report["observation"]["mode"] == "provider_backed_one_shot"
     assert report["observation"]["production_authority"] == "v1"
     assert report["observation"]["diagnostic_only"] is True
     assert report["observation"]["request_budget"] == 1
+    assert report["observation"]["model"] == "gemini-3.6-flash"
     assert report["actual_calls"]["deep_dive"] <= 1
     assert report["v2_005_measurement"]["production_mutation_authorized"] is False
