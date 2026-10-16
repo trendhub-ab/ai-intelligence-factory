@@ -126,7 +126,7 @@ def _jp_font(size: int, bold: bool = True):
 def _latin_font(size: int, bold: bool = True):
     paths = (
         "/usr/share/fonts/truetype/lato/Lato-Bold.ttf" if bold else "/usr/share/fonts/truetype/lato/Lato-Regular.ttf",
-        "/usr/share/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     )
     return _font(paths, size)
 
@@ -161,6 +161,28 @@ def _wrap_chars(draw: ImageDraw.Draw, text: str, font, max_width: int, max_lines
     return lines[:max_lines]
 
 
+def _wrap_exact_chars(draw: ImageDraw.Draw, text: str, font, max_width: int, max_lines: int) -> list[str]:
+    """Wrap a public headline without dropping, rewriting, or adding characters."""
+    text = (text or "").strip()
+    if not text:
+        return []
+    lines: list[str] = []
+    current = ""
+    for char in text:
+        candidate = current + char
+        if current and _text_width(draw, candidate, font) > max_width:
+            if len(lines) + 1 >= max_lines:
+                return []
+            lines.append(current)
+            current = char
+        else:
+            current = candidate
+    if current:
+        lines.append(current)
+    if len(lines) > max_lines or "".join(lines) != text:
+        return []
+    return lines
+
 
 def balanced_headline_lines(text: str) -> list[str]:
     """Choose a reader-natural two-line break for short/medium Japanese headlines.
@@ -190,18 +212,17 @@ def balanced_headline_lines(text: str) -> list[str]:
 
 def _fit_headline(draw: ImageDraw.Draw, text: str, max_width: int = 760, max_lines: int = 3):
     preferred = balanced_headline_lines(text)
-    if 1 <= len(preferred) <= 2:
+    if 1 <= len(preferred) <= 2 and "".join(preferred) == text:
         for size in range(82, 49, -2):
             font = _jp_font(size, bold=True)
             if all(_text_width(draw, line, font) <= max_width for line in preferred):
                 return font, preferred
-    for size in range(76, 47, -2):
+    for size in range(76, 45, -2):
         font = _jp_font(size, bold=True)
-        lines = _wrap_chars(draw, text, font, max_width, max_lines)
-        if lines and len(lines) <= max_lines and all(_text_width(draw, line, font) <= max_width for line in lines):
+        lines = _wrap_exact_chars(draw, text, font, max_width, max_lines)
+        if lines:
             return font, lines
-    font = _jp_font(46, bold=True)
-    return font, _wrap_chars(draw, text, font, max_width, max_lines)
+    raise ValueError("Cannot fit complete eyecatch title within layout bounds")
 
 
 def _light(color: tuple[int, int, int], factor: float) -> tuple[int, int, int]:
@@ -292,10 +313,9 @@ def generate_note_editorial_eyecatch(title: str, summary: str, output_path: str,
     category = (category or infer_editorial_category(title, summary)).strip() or "AI & TECH"
     accent = _CATEGORY_ACCENTS.get(category, _CATEGORY_ACCENTS["AI & TECH"])
     date_label = date_label or datetime.now(ZoneInfo("Asia/Tokyo")).strftime("%Y.%m")
-    headline = editorial_hook_from_title(title)
-    full_headline = re.sub(r"^【[^】]{1,28}】\s*", "", _clean_public_copy(title))
-    if headline != full_headline or "..." in headline or "…" in headline:
-        raise ValueError("Cannot render a complete eyecatch title with the legacy fallback")
+    headline = re.sub(r"^【[^】]{1,28}】\s*", "", _clean_public_copy(title))
+    if not headline or "..." in headline or "…" in headline:
+        raise ValueError("Cannot render a complete eyecatch title with the deterministic fallback")
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     img = Image.new("RGB", (WIDTH, HEIGHT), (252, 253, 255))
@@ -306,6 +326,8 @@ def generate_note_editorial_eyecatch(title: str, summary: str, output_path: str,
     _draw_tags(draw, category, date_label, accent)
 
     headline_font, headline_lines = _fit_headline(draw, headline, max_width=760, max_lines=3)
+    if "".join(headline_lines) != headline or any("..." in line or "…" in line for line in headline_lines):
+        raise ValueError("Cannot render a complete eyecatch title with the deterministic fallback")
     proof = headline_contract.headline_pnginfo(title, headline, headline_lines)
     navy = (7, 30, 66)
     y = 160
