@@ -1,0 +1,40 @@
+name: Member Home API Access Probe
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/member-home-access-probe.yml'
+      - 'docs/superpowers/specs/2026-10-10-member-home-canonical-host-migration-design.md'
+      - 'docs/superpowers/plans/2026-10-10-member-home-canonical-host-migration.md'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify member home is readable by production Notion integration
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          MEMBER_HOME_PAGE_ID: '3c5479ff-dca9-8103-bff0-f2d5f408d35f'
+        run: |
+          set -euo pipefail
+          if [ -z "${NOTION_TOKEN:-}" ]; then
+            echo 'MEMBER_HOME_API_ACCESS=FAIL reason=missing_secret'
+            exit 1
+          fi
+          status="$(curl --silent --show-error --output /tmp/member-home.json --write-out '%{http_code}' \
+            --request GET \
+            --url "https://api.notion.com/v1/pages/${MEMBER_HOME_PAGE_ID}" \
+            --header "Authorization: Bearer ${NOTION_TOKEN}" \
+            --header 'Notion-Version: 2026-03-11')"
+          echo "MEMBER_HOME_API_HTTP_STATUS=${status}"
+          if [ "${status}" != '200' ]; then
+            echo 'MEMBER_HOME_API_ACCESS=FAIL'
+            exit 1
+          fi
+          echo 'MEMBER_HOME_API_ACCESS=PASS'
