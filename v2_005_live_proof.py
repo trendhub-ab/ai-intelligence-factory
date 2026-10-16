@@ -33,7 +33,7 @@ from v2_shadow_observation import (
 )
 
 
-PROOF_VERSION = "V2-006"
+PROOF_VERSION = "V2-005"
 PROMOTION_DECISION = "human_review_required"
 _SAFE_CANDIDATE_FIELDS = (
     "candidate_identity",
