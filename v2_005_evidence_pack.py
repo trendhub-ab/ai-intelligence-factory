@@ -12,6 +12,8 @@ import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from v2_shadow_observation import EVIDENCE_MODEL_POOL
+
 
 PROOF_VERSION = "V2-005"
 PROMOTION_DECISION = "human_review_required"
@@ -70,8 +72,19 @@ def _mapping(value: Any, label: str) -> Mapping[str, Any]:
     return value
 
 
-def _bounded_request_count(value: Any, label: str) -> int:
+def _logical_request_count(value: Any, label: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value not in {0, 1}:
+        raise EvidencePackContractError(f"{label}_invalid")
+    return value
+
+
+def _provider_request_count(value: Any, label: str) -> int:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or value < 0
+        or value > len(EVIDENCE_MODEL_POOL)
+    ):
         raise EvidencePackContractError(f"{label}_invalid")
     return value
 
@@ -179,13 +192,26 @@ def _validate_report(report: Mapping[str, Any]) -> dict[str, Any]:
         raise EvidencePackContractError("production_authority_invalid")
     if observation.get("diagnostic_only") is not True:
         raise EvidencePackContractError("diagnostic_only_invalid")
-    if observation.get("model") != "gemini-3.6-flash":
+
+    raw_pool = observation.get("evidence_model_pool")
+    if (
+        not isinstance(raw_pool, list)
+        or len(raw_pool) != len(EVIDENCE_MODEL_POOL)
+        or len(set(raw_pool)) != len(raw_pool)
+        or set(raw_pool) != set(EVIDENCE_MODEL_POOL)
+    ):
+        raise EvidencePackContractError("evidence_model_pool_invalid")
+    model = observation.get("model")
+    if model not in raw_pool:
         raise EvidencePackContractError("model_invalid")
-    if observation.get("request_budget") != 1:
+    selected_model = observation.get("selected_evidence_model")
+    if selected_model is not None and selected_model not in raw_pool:
+        raise EvidencePackContractError("selected_evidence_model_invalid")
+    if observation.get("request_budget") != len(EVIDENCE_MODEL_POOL):
         raise EvidencePackContractError("request_budget_invalid")
 
     actual_calls = _mapping(report.get("actual_calls"), "actual_calls")
-    actual_count = _bounded_request_count(
+    actual_count = _logical_request_count(
         actual_calls.get("deep_dive"),
         "actual_deep_dive_count",
     )
@@ -193,11 +219,13 @@ def _validate_report(report: Mapping[str, Any]) -> dict[str, Any]:
     measurement = _mapping(report.get("v2_005_measurement"), "v2_005_measurement")
     if measurement.get("proof_version") != PROOF_VERSION:
         raise EvidencePackContractError("proof_version_invalid")
-    measured_count = _bounded_request_count(
+    measured_count = _provider_request_count(
         measurement.get("provider_request_count"),
         "provider_request_count",
     )
-    if measured_count != actual_count:
+    if actual_count == 0 and measured_count != 0:
+        raise EvidencePackContractError("provider_request_count_mismatch")
+    if actual_count == 1 and measured_count == 0:
         raise EvidencePackContractError("provider_request_count_mismatch")
     if measurement.get("production_mutation_authorized") is not False:
         raise EvidencePackContractError("production_mutation_authorized")
@@ -206,7 +234,7 @@ def _validate_report(report: Mapping[str, Any]) -> dict[str, Any]:
 
     candidate = _candidate(
         measurement.get("evaluated_candidate"),
-        attempted=measured_count,
+        attempted=actual_count,
     )
     usage = _usage(measurement.get("provider_usage"))
 
@@ -221,13 +249,19 @@ def _validate_report(report: Mapping[str, Any]) -> dict[str, Any]:
         result = _mapping(observation.get("provider_result"), "provider_result")
         if result.get("evidence_sufficient") is not True:
             raise EvidencePackContractError("sufficient_result_invalid")
+        if selected_model is None or model != selected_model:
+            raise EvidencePackContractError("selected_evidence_model_missing")
     else:
         if selected is not None:
             raise EvidencePackContractError("non_sufficient_winner_present")
-        if outcome == "insufficient_evidence" and measured_count == 1:
+        if outcome == "insufficient_evidence":
             result = _mapping(observation.get("provider_result"), "provider_result")
             if result.get("evidence_sufficient") is not False:
                 raise EvidencePackContractError("insufficient_result_invalid")
+            if selected_model is None or model != selected_model:
+                raise EvidencePackContractError("selected_evidence_model_missing")
+        elif outcome in {"provider_failure", "not_attempted"} and selected_model is not None:
+            raise EvidencePackContractError("unexpected_selected_evidence_model")
 
     error_code = observation.get("provider_error_category")
     if outcome == "provider_failure":
@@ -246,6 +280,7 @@ def _validate_report(report: Mapping[str, Any]) -> dict[str, Any]:
         "outcome": outcome,
         "selected_candidate_identity": selected,
         "evaluated_candidate": candidate,
+        "selected_evidence_model": selected_model,
         "provider_request_count": measured_count,
         "provider_usage": usage,
         "provider_error_category": error_code,
