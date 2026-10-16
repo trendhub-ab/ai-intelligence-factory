@@ -76,13 +76,17 @@ def test_v2_workflow_uses_only_model_secret_and_builtin_readonly_github_token():
     assert "article_audit/v2_shadow_deep_dive.json" in text
 
 
-def test_v2_workflow_runs_reviewed_v2_005c_safety_suite():
+def test_v2_workflow_runs_reviewed_variable_fallback_safety_suite():
     text = WORKFLOW.read_text(encoding="utf-8")
     for required_test in (
         "tests/test_v2_official_vendor_live.py",
         "tests/test_v2_github_live.py",
         "tests/test_v2_four_source_live.py",
+        "tests/test_v2_semantic_screening.py",
+        "tests/test_v2_semantic_selection_integration.py",
+        "tests/test_v2_variable_gemini_fallback.py",
         "tests/test_v2_005_live_proof.py",
+        "tests/test_v2_005_evidence_contract_diagnostics.py",
         "tests/test_v2_005_evidence_pack.py",
         "tests/test_v2_live_shadow_acquisition_budget.py",
         "tests/test_v2_shadow_deep_dive.py",
