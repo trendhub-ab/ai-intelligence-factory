@@ -1,7 +1,44 @@
 {
   "version": 1,
-  "updated_at": "2026-10-15T10:27:58.441031+00:00",
+  "updated_at": "2026-10-16T10:36:09.960528+00:00",
   "items": [
+    {
+      "key": "https://machinelearning.apple.com/research/mlx-distributed-inference",
+      "deferred_at": "2026-10-16T10:36:09.960080+00:00",
+      "expires_at": "2026-12-15T10:36:09.960080+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Local and Distributed Large LLM Inference with MLX and RDMA on Mac Studio",
+        "originalTitle": "Local and Distributed Large LLM Inference with MLX and RDMA on Mac Studio",
+        "displayName": "Local and Distributed Large LLM Inference with MLX and RDMA on Mac Studio",
+        "sourceLanguage": "en",
+        "url": "https://machinelearning.apple.com/research/mlx-distributed-inference",
+        "description": "Local and Distributed Large LLM Inference with MLX and RDMA on Mac Studio",
+        "stargazerCount": 6,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-16T03:34:45Z",
+        "sourceContext": "HN points=6 comments=1 matched_query=LLM",
+        "primaryUrl": "https://machinelearning.apple.com/research/mlx-distributed-inference",
+        "sourceDetails": {
+          "hn_id": "50113743",
+          "hn_url": "https://news.ycombinator.com/item?id=50113743",
+          "external_url": "https://machinelearning.apple.com/research/mlx-distributed-inference",
+          "comments": 1,
+          "matched_query": "LLM",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3fb479ff-dca9-8109-a73b-f7b7d7559dcd",
+      "score": 82,
+      "reason": "ローカル環境での分散推論基盤として極めて実用的。",
+      "commercial_score": 80,
+      "shelf_life_score": 85,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "INFRA",
+      "deep_dive_priority_score": 81.3
+    },
     {
       "key": "https://blog.google/innovation-and-ai/technology/developers-tools/build-with-gemini-4-argon",
       "deferred_at": "2026-10-14T09:11:21.781701+00:00",
@@ -232,6 +269,89 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "AGENT",
       "deep_dive_priority_score": 78.25
+    },
+    {
+      "key": "https://arxiv.org/abs/2610.22331",
+      "deferred_at": "2026-10-16T10:36:09.960222+00:00",
+      "expires_at": "2026-12-15T10:36:09.960222+00:00",
+      "repo": {
+        "source": "ArXiv",
+        "nameWithOwner": "KnowGPO: Knowledge-Grouped Policy Optimization for Search Agents",
+        "originalTitle": "KnowGPO: Knowledge-Grouped Policy Optimization for Search Agents",
+        "displayName": "KnowGPO: Knowledge-Grouped Policy Optimization for Search Agents",
+        "sourceLanguage": "en",
+        "url": "https://arxiv.org/abs/2610.22331v1",
+        "description": "Deep search agents solve knowledge-intensive tasks through long-horizon, multi-turn interactions, where assigning credit to individual search decisions is fundamentally difficult. Outcome-based reinforcement learning provides only a single terminal reward shared across an entire trajectory. Recent process-supervision methods aim to assign credit at finer granularity, but they typically anchor credit to either surface-level trajectory states or model-internal signals, both of which become unrelia",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-15T17:52:33Z",
+        "sourceContext": "Deep search agents solve knowledge-intensive tasks through long-horizon, multi-turn interactions, where assigning credit to individual search decisions is fundamentally difficult. Outcome-based reinforcement learning provides only a single terminal reward shared across an entire trajectory. Recent process-supervision methods aim to assign credit at finer granularity, but they typically anchor credit to either surface-level trajectory states or model-internal signals, both of which become unreliable in deep search where observations are heterogeneous and retrieved contexts are long and noisy. We propose KnowGPO, a reinforcement learning framework that aligns trajectories by the task-relevant knowledge they have acquired rather than by their surface observations. For each query, KnowGPO decomposes the information required to derive the answer into atomic knowledge conditions, and represents the state of a trajectory at each step by the subset of conditions it has satisfied. Trajectories sharing the same knowledge state are grouped for within-group comparison, and the incremental knowledge gain between consecutive steps serves as an environment-grounded process reward. Experiments on Xbench, BrowseComp-ZH, and GAIA show KnowGPO consistently outperforms outcome-only (GRPO) and process-supervision baselines (GiGPO, IGPO) by 3.8 to 4.2 points, with our 8B model rivaling or exceeding most 32B open-source systems.",
+        "primaryUrl": "https://arxiv.org/abs/2610.22331v1",
+        "sourceDetails": {
+          "authors": [
+            "Siqi Chen",
+            "Zhengxi Lu",
+            "Yuchen Yan",
+            "Xingyu Wu",
+            "Qipeng Chen",
+            "Xin Zhang",
+            "Aiting Liu",
+            "Chao Deng",
+            "Jie Liu",
+            "Jin Ma",
+            "Weiming Lu",
+            "Jun Xiao",
+            "Yongliang Shen"
+          ],
+          "categories": [
+            "cs.AI"
+          ]
+        }
+      },
+      "notion_page_id": "3fb479ff-dca9-81e0-bd18-fc348d1b918f",
+      "score": 78,
+      "reason": "知識探索型エージェントの報酬設計を大きく改善する。",
+      "commercial_score": 75,
+      "shelf_life_score": 70,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "AGENT",
+      "deep_dive_priority_score": 76.95
+    },
+    {
+      "key": "https://platform.claude.com/docs/en/release-notes/overview?aif_revision=648dd95a86fbb02e",
+      "deferred_at": "2026-10-16T10:36:09.960311+00:00",
+      "expires_at": "2026-10-30T10:36:09.960311+00:00",
+      "repo": {
+        "source": "OfficialVendor",
+        "nameWithOwner": "Anthropic — Fast mode for Claude Opus 5.5 is now available on Claude in Microsoft Foundry for deployments hosted on Azure.",
+        "originalTitle": "Anthropic — Fast mode for Claude Opus 5.5 is now available on Claude in Microsoft Foundry for deployments hosted on Azure.",
+        "displayName": "Anthropic — Fast mode for Claude Opus 5.5 is now available on Claude in Microsoft Foundry for deployments hosted on Azure.",
+        "sourceLanguage": "en",
+        "url": "https://platform.claude.com/docs/en/release-notes/overview?aif_revision=648dd95a86fbb02e",
+        "description": "Fast mode for Claude Opus 5.5 is now available on Claude in Microsoft Foundry for deployments hosted on Azure.",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-02-01",
+        "sourceContext": "Fast mode for Claude Opus 5.5 is now available on Claude in Microsoft Foundry for deployments hosted on Azure.",
+        "primaryUrl": "https://platform.claude.com/docs/en/release-notes/overview",
+        "sourceDetails": {
+          "vendor": "Anthropic",
+          "vendor_region": "US",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://platform.claude.com/docs/en/release-notes/overview",
+          "candidate_revision": "648dd95a86fbb02e",
+          "vendor_record_kind": "structured_html",
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "3fb479ff-dca9-81d7-96a8-f5d61a58d0e5",
+      "score": 75,
+      "reason": "Azure上でのClaude Opus高速モード提供開始",
+      "commercial_score": 80,
+      "shelf_life_score": 65,
+      "shelf_life": "TREND",
+      "portfolio_topic": "PRODUCT",
+      "deep_dive_priority_score": 76.75
     },
     {
       "key": "https://news.ycombinator.com/item?id=50085323",
@@ -651,85 +771,6 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "MODEL",
       "deep_dive_priority_score": 74.6
-    },
-    {
-      "key": "https://arxiv.org/abs/2609.35645",
-      "deferred_at": "2026-09-29T04:50:48.625415+00:00",
-      "expires_at": "2026-11-28T04:50:48.625415+00:00",
-      "repo": {
-        "source": "ArXiv",
-        "nameWithOwner": "CoSE-E: A Benchmark for Code-switched Speech Evaluation in Enterprise Settings",
-        "originalTitle": "CoSE-E: A Benchmark for Code-switched Speech Evaluation in Enterprise Settings",
-        "displayName": "CoSE-E: A Benchmark for Code-switched Speech Evaluation in Enterprise Settings",
-        "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2609.35645v1",
-        "description": "Code-switching (CS), a seamless alternation between languages within a single utterance, remains a critical challenge in automatic speech recognition (ASR). While prior works focus on conversational CS-ASR, enterprise settings demand evaluation of operational impact beyond edit-distance errors: how code-switching transcription errors propagate to downstream voice agent task failures. In this work, we propose (1) a CS-ASR synthetic benchmark and multidimensional evaluation framework tailored to e",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-28T17:14:11Z",
-        "sourceContext": "Code-switching (CS), a seamless alternation between languages within a single utterance, remains a critical challenge in automatic speech recognition (ASR). While prior works focus on conversational CS-ASR, enterprise settings demand evaluation of operational impact beyond edit-distance errors: how code-switching transcription errors propagate to downstream voice agent task failures. In this work, we propose (1) a CS-ASR synthetic benchmark and multidimensional evaluation framework tailored to enterprise domains, (2) systematic evaluation of frontier ASR systems across 5 language pairs, (3) diagnostic analysis of the additional transcription errors that code-switching introduces across language pairs and models. We release COSE-E to support enterprise-focused CSASR evaluation for multilingual voice agents in enterprise deployment.",
-        "primaryUrl": "https://arxiv.org/abs/2609.35645v1",
-        "sourceDetails": {
-          "authors": [
-            "Shama Gupta",
-            "Hoang H Nguyen",
-            "Chelsea Huang",
-            "Lindsay Devon Brin",
-            "Fanny Riols"
-          ],
-          "categories": [
-            "cs.SD",
-            "cs.CL",
-            "cs.LG",
-            "eess.AS"
-          ]
-        }
-      },
-      "notion_page_id": "3ea479ff-dca9-8120-b266-e6590cb167eb",
-      "score": 74,
-      "reason": "音声認識の誤り伝播評価手法を網羅的に提案",
-      "commercial_score": 75,
-      "shelf_life_score": 85,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 74.35
-    },
-    {
-      "key": "https://artificialanalysis.ai/articles/gemini-4-argon-google-top-three-labs",
-      "deferred_at": "2026-10-01T11:18:06.215476+00:00",
-      "expires_at": "2026-10-15T11:18:06.215476+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Gemini 4 Argon: Google is back among the top three labs in intelligence achieved",
-        "originalTitle": "Gemini 4 Argon: Google is back among the top three labs in intelligence achieved",
-        "displayName": "Gemini 4 Argon: Google is back among the top three labs in intelligence achieved",
-        "sourceLanguage": "en",
-        "url": "https://artificialanalysis.ai/articles/gemini-4-argon-google-top-three-labs",
-        "description": "Gemini 4 Argon: Google is back among the top three labs in intelligence achieved",
-        "stargazerCount": 6,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-01T00:07:07Z",
-        "sourceContext": "HN points=6 comments=0 matched_query=Gemini",
-        "primaryUrl": "https://artificialanalysis.ai/articles/gemini-4-argon-google-top-three-labs",
-        "sourceDetails": {
-          "hn_id": "49916067",
-          "hn_url": "https://news.ycombinator.com/item?id=49916067",
-          "external_url": "https://artificialanalysis.ai/articles/gemini-4-argon-google-top-three-labs",
-          "comments": 0,
-          "matched_query": "Gemini",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3ec479ff-dca9-81fc-8741-dd4d86f4e88b",
-      "score": 72,
-      "reason": "Googleの知能ランキング復帰に関する分析。",
-      "commercial_score": 78,
-      "shelf_life_score": 35,
-      "shelf_life": "TREND",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 74.1
     }
   ]
 }
