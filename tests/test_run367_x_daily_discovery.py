@@ -51,11 +51,18 @@ def test_fixed_watchlist_and_actor_bounds():
 
     assert len(handles) == 20
     assert len({item.casefold() for item in handles}) == 20
-    assert payload["outputFormat"] == "profile"
-    assert payload["maxPosts"] == 5
-    assert payload["onlyPostsNewerThan"] == "12 hours"
-    assert payload["includeRaw"] is False
-    assert payload["isolateProfiles"] is True
+    assert xdaily.DEFAULT_ACTOR_ID == "xquik~x-tweet-scraper"
+    assert payload["twitterHandles"] == list(handles)
+    assert payload["mode"] == "profileTweets"
+    assert payload["maxItems"] == 100
+    assert payload["maxItemsPerTarget"] == 5
+    assert payload["within_time"] == "12h"
+    assert payload["outputVariant"] == "rich"
+    assert payload["fieldStyle"] == "camelCase"
+    assert payload["outputPreset"] == "flat"
+    assert "handles" not in payload
+    assert "outputFormat" not in payload
+    assert "isolateProfiles" not in payload
     assert xdaily.DEFAULT_MAX_CHARGE_USD == 0.05
     assert xdaily.DEFAULT_MAX_RECORDS == 100
 
@@ -174,6 +181,39 @@ def test_provider_failure_isolated_from_existing_sources(monkeypatch, caplog):
     assert result == []
     assert "provider unavailable" in caplog.text
     assert pipeline.X_DISCOVERY_LAST_ERROR == "provider unavailable"
+
+
+def test_legacy_workflow_actor_override_is_translated_to_xquik(monkeypatch):
+    pipeline, _ = _fake_pipeline()
+    monkeypatch.setenv("AIIF_X_DISCOVERY_ENABLED", "true")
+    monkeypatch.setenv("AIIF_RUN_MODE", "full")
+    monkeypatch.setenv("APIFY_TOKEN", "test-token")
+    monkeypatch.setenv("APIFY_ACTOR_ID", xdaily.LEGACY_ACTOR_ID)
+    captured = {}
+
+    class CapturingProvider:
+        name = "apify"
+        external_calls = 0
+        provider_errors = []
+        skipped_pinned = 0
+        requested_profile_count = 20
+        profile_rows_read = 0
+        empty_profile_count = 0
+        profiles_with_posts = set()
+        raw_items = []
+
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def fetch(self, *, max_records):
+            return []
+
+    monkeypatch.setattr(xdaily, "ApifyProvider", CapturingProvider)
+    result = xdaily.acquire_x_candidates(pipeline)
+
+    assert result == []
+    assert captured["actor_id"] == xdaily.DEFAULT_ACTOR_ID
+    assert captured["actor_input"]["twitterHandles"] == list(xdaily._load_watchlist())
 
 
 def test_canonical_url_removes_only_tracking_noise():

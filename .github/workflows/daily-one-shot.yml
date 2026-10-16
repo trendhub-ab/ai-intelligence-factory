@@ -161,7 +161,7 @@ jobs:
           PRODUCTION_E2E_PREPARE_ONLY: ${{ inputs.e2e_prepare_only }}
           AIIF_X_DISCOVERY_ENABLED: ${{ inputs.mode == 'full' }}
           APIFY_TOKEN: ${{ inputs.mode == 'full' && secrets.APIFY_TOKEN || '' }}
-          APIFY_ACTOR_ID: "simple.actor~x-profile-posts"
+          APIFY_ACTOR_ID: "xquik~x-tweet-scraper"
           APIFY_MAX_CHARGE_USD: "0.05"
           X_DISCOVERY_MAX_RECORDS: "100"
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

@@ -22,6 +22,7 @@ def _handle(record: Mapping[str, Any]) -> str:
         "author_handle",
         "authorHandle",
         "authorUserName",
+        "authorUsername",
         "username",
         "userName",
         "screen_name",
@@ -85,7 +86,7 @@ def normalize_post(
 ) -> DiscoverySignal:
     text = str(_first(record, "text", "full_text", "fullText", "content") or "").strip()
     handle = _handle(record)
-    post_url = str(_first(record, "post_url", "tweet_url", "twitterUrl", "url") or "").strip()
+    post_url = str(_first(record, "post_url", "tweet_url", "tweetUrl", "twitterUrl", "url") or "").strip()
     post_id_raw = _first(record, "post_id", "tweet_id", "id_str", "id")
     if post_id_raw is None:
         seed = "|".join((post_url, handle, text))

@@ -19,7 +19,8 @@ def test_one_shot_exposes_apify_only_through_full_gated_production_step():
     assert "AIIF_RUN_MODE: ${{ inputs.mode }}" in text
     assert "AIIF_X_DISCOVERY_ENABLED: ${{ inputs.mode == 'full' }}" in text
     assert "APIFY_TOKEN: ${{ inputs.mode == 'full' && secrets.APIFY_TOKEN || '' }}" in text
-    assert 'APIFY_ACTOR_ID: "simple.actor~x-profile-posts"' in text
+    assert 'APIFY_ACTOR_ID: "xquik~x-tweet-scraper"' in text
+    assert 'APIFY_ACTOR_ID: "simple.actor~x-profile-posts"' not in text
     assert 'APIFY_MAX_CHARGE_USD: "0.05"' in text
     assert 'X_DISCOVERY_MAX_RECORDS: "100"' in text
     assert "run: python production_pipeline.py" in text
@@ -41,5 +42,6 @@ def test_scheduled_daily_remains_hard_paused_with_dormant_x_contract():
     assert "if: ${{ false }}" in text
     assert "schedule:" not in text
     assert 'AIIF_X_DISCOVERY_ENABLED: "true"' in text
+    assert 'APIFY_ACTOR_ID: "xquik~x-tweet-scraper"' in text
     assert 'APIFY_MAX_CHARGE_USD: "0.05"' in text
     assert 'X_DISCOVERY_MAX_RECORDS: "100"' in text

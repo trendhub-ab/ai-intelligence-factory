@@ -42,7 +42,7 @@ jobs:
           AIIF_RUN_MODE: "full"
           AIIF_X_DISCOVERY_ENABLED: "true"
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
-          APIFY_ACTOR_ID: "simple.actor~x-profile-posts"
+          APIFY_ACTOR_ID: "xquik~x-tweet-scraper"
           APIFY_MAX_CHARGE_USD: "0.05"
           X_DISCOVERY_MAX_RECORDS: "100"
 

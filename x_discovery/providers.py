@@ -82,10 +82,14 @@ class ApifyProvider(XDiscoveryProvider):
         self.profiles_with_posts: Set[str] = set()
 
     def _count_requested_profiles(self) -> int:
-        handles = self.actor_input.get("handles")
-        start_urls = self.actor_input.get("startUrls")
+        handles = self.actor_input.get("twitterHandles")
+        if not isinstance(handles, list):
+            handles = self.actor_input.get("handles")
+        profile_urls = self.actor_input.get("profileUrls")
+        if not isinstance(profile_urls, list):
+            profile_urls = self.actor_input.get("startUrls")
         handle_count = len(handles) if isinstance(handles, list) else 0
-        url_count = len(start_urls) if isinstance(start_urls, list) else 0
+        url_count = len(profile_urls) if isinstance(profile_urls, list) else 0
         return handle_count + url_count
 
     @staticmethod
@@ -96,15 +100,30 @@ class ApifyProvider(XDiscoveryProvider):
             or row.get("username")
             or row.get("authorHandle")
             or row.get("authorUserName")
+            or row.get("authorUsername")
+            or row.get("sourceTarget")
         )
-        return str(value or "unknown").lstrip("@")
+        if value:
+            return str(value).lstrip("@")
+        author = row.get("author")
+        if isinstance(author, Mapping):
+            nested = author.get("username") or author.get("userName") or author.get("handle")
+            if nested:
+                return str(nested).lstrip("@")
+        return "unknown"
+
+    @staticmethod
+    def _is_diagnostic_row(row: Mapping[str, Any]) -> bool:
+        result_type = str(row.get("resultType") or "").strip().lower()
+        row_id = str(row.get("id") or "")
+        return bool(row.get("error")) or result_type == "diagnostic" or row_id.startswith("diag:")
 
     def _record_error(self, row: Mapping[str, Any]) -> None:
         diagnostic = {
             "handle": self._row_handle(row),
-            "error": str(row.get("error") or "unknown_error"),
+            "error": str(row.get("error") or row.get("status") or "unknown_error"),
         }
-        description = row.get("errorDescription") or row.get("error_description")
+        description = row.get("errorDescription") or row.get("error_description") or row.get("message")
         if description:
             diagnostic["description"] = str(description)
         for source_key, target_key in (
@@ -123,11 +142,14 @@ class ApifyProvider(XDiscoveryProvider):
             self.skipped_pinned += 1
             return
         accepted.append(post)
+        handle = self._row_handle(post)
+        if handle != "unknown":
+            self.profiles_with_posts.add(handle)
 
     def _flatten_profile_rows(self, payload: List[Dict[str, Any]], *, max_records: int) -> List[Dict[str, Any]]:
         accepted: List[Dict[str, Any]] = []
         for row in payload:
-            if row.get("error"):
+            if self._is_diagnostic_row(row):
                 self._record_error(row)
                 continue
 
@@ -195,7 +217,7 @@ class ApifyProvider(XDiscoveryProvider):
                 "Authorization": f"Bearer {self.token}",
                 "Content-Type": "application/json; charset=utf-8",
                 "Accept": "application/json",
-                "User-Agent": "ai-intelligence-factory-x-discovery/0.6",
+                "User-Agent": "ai-intelligence-factory-x-discovery/0.7",
             },
             method="POST",
         )
@@ -283,8 +305,12 @@ class ApifyProvider(XDiscoveryProvider):
 
         accepted: List[Dict[str, Any]] = []
         for row in self.raw_items:
-            if row.get("error"):
-                self._record_error(row)
+            if self._is_diagnostic_row(row):
+                status = str(row.get("status") or "").strip().lower()
+                if status == "zero-output" and self._row_handle(row) != "unknown":
+                    self.empty_profile_count += 1
+                else:
+                    self._record_error(row)
                 continue
             self._accept_post(row, accepted)
             if len(accepted) >= int(max_records):
