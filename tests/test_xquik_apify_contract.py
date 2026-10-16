@@ -91,6 +91,13 @@ def test_apify_provider_filters_xquik_diagnostic_rows_from_signals():
                         "sourceTarget": "nasa",
                     },
                     {
+                        "id": "diag:unexpected-error:broken",
+                        "resultType": "diagnostic",
+                        "status": "unexpected-error",
+                        "message": "Actor could not read this target.",
+                        "sourceTarget": "broken",
+                    },
+                    {
                         "id": "21",
                         "text": "fresh",
                         "url": "https://x.com/OpenAI/status/21",
@@ -102,7 +109,7 @@ def test_apify_provider_filters_xquik_diagnostic_rows_from_signals():
     provider = ApifyProvider(
         token="secret",
         actor_id="xquik~x-tweet-scraper",
-        actor_input={"twitterHandles": ["nasa", "OpenAI"], "mode": "profileTweets"},
+        actor_input={"twitterHandles": ["nasa", "OpenAI", "broken"], "mode": "profileTweets"},
         max_total_charge_usd=0.05,
     )
 
@@ -110,10 +117,11 @@ def test_apify_provider_filters_xquik_diagnostic_rows_from_signals():
         items = provider.fetch(max_records=10)
 
     assert [item["id"] for item in items] == ["21"]
+    assert provider.empty_profile_count == 1
     assert provider.provider_errors == [
         {
-            "handle": "nasa",
-            "error": "zero-output",
-            "description": "No tweets matched the requested profile window.",
+            "handle": "broken",
+            "error": "unexpected-error",
+            "description": "Actor could not read this target.",
         }
     ]
