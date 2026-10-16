@@ -12,6 +12,15 @@ from v2_005_evidence_pack import (
 )
 
 
+EVIDENCE_POOL = [
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.7-flash",
+    "gemini-3.8-flash",
+    "gemini-3-flash-preview",
+]
+
+
 def _usage(prompt: int = 100, candidate: int = 20, total: int = 120):
     return {
         "prompt_token_count": prompt,
@@ -26,9 +35,13 @@ def _valid_report(
     outcome: str = "sufficient",
     usage=None,
     provider_error: str | None = None,
+    provider_requests: int | None = None,
+    selected_model: str | None = None,
 ):
     sufficient = outcome == "sufficient"
     attempted = 0 if outcome == "not_attempted" else 1
+    if provider_requests is None:
+        provider_requests = 0 if attempted == 0 else 1
     provider_result = None
     if outcome in {"sufficient", "insufficient_evidence"}:
         provider_result = {
@@ -40,6 +53,9 @@ def _valid_report(
             ),
             "evidence_points": [f"{run_id} bounded evidence point"],
         }
+        selected_model = selected_model or EVIDENCE_POOL[0]
+    elif selected_model is None:
+        selected_model = None
 
     identity = f"https://v2.example/{run_id}"
     return {
@@ -55,8 +71,10 @@ def _valid_report(
         },
         "observation": {
             "mode": "provider_backed_one_shot",
-            "model": "gemini-3.6-flash",
-            "request_budget": 1,
+            "evidence_model_pool": list(EVIDENCE_POOL),
+            "model": selected_model or EVIDENCE_POOL[0],
+            "selected_evidence_model": selected_model,
+            "request_budget": 5,
             "provider_result": provider_result,
             "provider_error_category": provider_error,
             "production_authority": "v1",
@@ -81,7 +99,7 @@ def _valid_report(
                 else None
             ),
             "provider_usage": usage,
-            "provider_request_count": attempted,
+            "provider_request_count": provider_requests,
             "production_mutation_authorized": False,
             "promotion_decision": "human_review_required",
         },
@@ -95,12 +113,15 @@ def _three_reports():
             "run-2",
             outcome="insufficient_evidence",
             usage=_usage(90, 10, 100),
+            provider_requests=2,
+            selected_model="gemini-3.5-flash",
         ),
         _valid_report(
             "run-3",
             outcome="provider_failure",
             usage=None,
             provider_error="provider_http_429",
+            provider_requests=5,
         ),
     ]
 
@@ -154,9 +175,9 @@ def test_evidence_pack_rejects_duplicate_run_ids():
         (("observation", "mode"), "manual_zero_model"),
         (("observation", "production_authority"), "v2"),
         (("observation", "diagnostic_only"), False),
-        (("observation", "request_budget"), 2),
+        (("observation", "request_budget"), 4),
         (("actual_calls", "deep_dive"), 2),
-        (("v2_005_measurement", "provider_request_count"), 2),
+        (("v2_005_measurement", "provider_request_count"), 6),
         (("v2_005_measurement", "production_mutation_authorized"), True),
         (("v2_005_measurement", "promotion_decision"), "approved"),
     ],
@@ -173,10 +194,29 @@ def test_evidence_pack_rejects_any_run_without_v1_shadow_safety_proof(path, valu
         build_evidence_pack(reports)
 
 
-def test_evidence_pack_rejects_mismatched_request_counts():
+def test_evidence_pack_accepts_multiple_provider_attempts_for_one_logical_deep_dive():
     reports = _three_reports()
-    reports[1]["actual_calls"]["deep_dive"] = 0
-    reports[1]["v2_005_measurement"]["provider_request_count"] = 1
+    reports[0]["v2_005_measurement"]["provider_request_count"] = 4
+    reports[0]["observation"]["selected_evidence_model"] = "gemini-3.8-flash"
+    reports[0]["observation"]["model"] = "gemini-3.8-flash"
+
+    pack = build_evidence_pack(reports)
+
+    row = next(item for item in pack["runs"] if item["run_id"] == "run-1")
+    assert row["provider_request_count"] == 4
+
+
+def test_evidence_pack_rejects_zero_provider_attempts_for_attempted_deep_dive():
+    reports = _three_reports()
+    reports[1]["v2_005_measurement"]["provider_request_count"] = 0
+
+    with pytest.raises(EvidencePackContractError):
+        build_evidence_pack(reports)
+
+
+def test_evidence_pack_rejects_non_v1_evidence_pool():
+    reports = _three_reports()
+    reports[0]["observation"]["evidence_model_pool"] = ["gemini-3.6-flash"]
 
     with pytest.raises(EvidencePackContractError):
         build_evidence_pack(reports)
@@ -191,7 +231,7 @@ def test_evidence_pack_aggregates_winners_evidence_failures_requests_and_tokens(
     assert pack["evidence_sufficient_count"] == 1
     assert pack["evidence_insufficient_count"] == 1
     assert pack["provider_failure_count"] == 1
-    assert pack["provider_request_count_total"] == 3
+    assert pack["provider_request_count_total"] == 8
     assert pack["provider_usage_observed_run_count"] == 2
     assert pack["provider_usage_totals"] == {
         "prompt_token_count": 190,
