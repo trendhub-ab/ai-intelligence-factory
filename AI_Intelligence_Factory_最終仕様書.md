@@ -4,7 +4,7 @@
 Production最終照合日: **2026-10-17**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`4407dd8e924bee1fcd346e668ca0b9e8ba6457e1c9fc4537b5c8d245bc5df47a`**
+Production Contract Fingerprint: **`28b914d12d439334a95dc8006ceac307ad8f8030bbcc2a2c9a11e14c63fbb1ad`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -193,7 +193,7 @@ Xは **任意Discovery origin**。
 - 監視対象は固定watchlistの **20 unique handles**。1回のbounded Actor runで取得し、上限は **100件 / 1 profileあたり5件 / 直近12時間** とする。
 - Actor inputは `twitterHandles` + `mode=profileTweets` を使い、出力は `rich / camelCase / flat` に固定する。
 - Apifyのrun-level charge capは **`APIFY_MAX_CHARGE_USD=0.05`** を維持する。X discoveryのために無制限のprofile別runを行わない。
-- Xquikのdiagnostic / zero-output rowはSignalへ昇格せず、provider diagnosticsとして記録する。
+- Xquikのdiagnostic rowはSignalへ昇格させない。`zero-output` は直近windowに該当投稿がない正常なempty profileとして数え、provider errorにはしない。それ以外のdiagnosticはprovider errorとして記録する。
 - 旧 `simple.actor~x-profile-posts` はProduction正本ではない。移行中のstale runtime overrideだけはXquikへ安全に読み替え、新規workflowでは使用しない。
 - X投稿本文そのものをEvidenceにしない。
 - 技術的Factはリンク先一次情報で確認する。
