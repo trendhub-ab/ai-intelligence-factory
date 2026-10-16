@@ -252,8 +252,11 @@ NON_MEMBER_MODULES = frozenset((
     "specification_freshness_guard.py",  # canonical spec CI governance, not member/customer copy
     "v2_005_evidence_pack.py",  # V2-005 offline review pack, not member/customer copy
     "v2_005_live_proof.py",  # V2-005 measured shadow proof, not member/customer copy
+    "v2_four_source_live.py",  # V2-005C four-source live shadow bridge, not member/customer copy
     "v2_github_acquisition.py",  # V2-005B read-only GitHub shadow adapter, not member/customer copy
+    "v2_github_live.py",  # V2-005C read-only GitHub releases live reader, not member/customer copy
     "v2_official_vendor_acquisition.py",  # V2-005B read-only vendor shadow adapter, not member/customer copy
+    "v2_official_vendor_live.py",  # V2-005C read-only OfficialVendor live reader, not member/customer copy
     "v2_source_portfolio.py",  # V2-005B bounded shadow portfolio orchestration, not member/customer copy
     "v2_live_shadow_acquisition.py",  # V2-002 read-only shadow acquisition, not member/customer copy
     "v2_shadow_observation.py",  # V2-003 manual zero-model observation, not member/customer copy
