@@ -1,9 +1,9 @@
-"""Canonical four-source live acquisition bridge for V2-005C shadow proof.
+"""Canonical four-source live acquisition bridge for V2 shadow proof.
 
 The bridge composes the reviewed OfficialVendor/GitHub live readers with the
 existing Hacker News/arXiv readers and delegates all portfolio budgeting,
-selection, ranking, and one-shot Evidence authority to ``run_four_source_shadow``.
-It performs no Production mutation.
+semantic screening, selection, ranking, and one-shot Evidence authority to
+``run_four_source_shadow``. It performs no Production mutation.
 """
 from __future__ import annotations
 
@@ -77,6 +77,7 @@ def run_four_source_live(
     github_token: str | None = None,
     v1_reference: str | None = None,
     config: FourSourceLiveConfig | None = None,
+    semantic_screen: Callable[[list[Mapping[str, Any]]], Mapping[str, Mapping[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     """Acquire the exact four approved source families and run canonical shadow selection."""
 
@@ -120,6 +121,7 @@ def run_four_source_live(
             "hacker_news": hacker_news_provider,
             "arxiv": arxiv_provider,
         },
+        semantic_screen=semantic_screen,
         deep_dive=deep_dive,
         shadow_config=ShadowConfig(
             max_candidates_per_provider=max_per_provider,
