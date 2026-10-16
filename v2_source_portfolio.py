@@ -57,6 +57,7 @@ def run_four_source_shadow(
     now: datetime,
     run_id: str,
     v1_reference: str | None = None,
+    semantic_screen: Callable[[list[Mapping[str, Any]]], Mapping[str, Mapping[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     """Run the exact four-source portfolio through the existing shadow path.
 
@@ -65,7 +66,8 @@ def run_four_source_shadow(
     is fixed by ``SOURCE_FAMILY_ORDER`` so allocation is deterministic. If one
     provider raises before returning items, it consumes no total candidate
     budget and the remaining providers still run. The wrapped call delegates
-    ranking and the single Evidence attempt to ``run_shadow_selection``.
+    optional semantic screening, ranking, and the single Evidence attempt to
+    ``run_shadow_selection``.
     """
 
     _validate_source_portfolio(providers)
@@ -97,6 +99,7 @@ def run_four_source_shadow(
 
     report = run_shadow_selection(
         providers=wrapped,
+        semantic_screen=semantic_screen,
         deep_dive=deep_dive,
         config=shadow_config,
         now=now,

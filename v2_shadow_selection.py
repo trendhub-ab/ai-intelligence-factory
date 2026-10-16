@@ -1,10 +1,10 @@
-"""AIIF Rebuild V2-001 shadow-only selection core.
+"""AIIF Rebuild V2 shadow-only selection core.
 
 This module is deliberately isolated from Production authority. It performs
 candidate normalization, deterministic deduplication, provider-free cheap
-screening, a one-shot Deep Dive decision, and read-only V1 comparison. It does
-not import pipeline.py, persistence, article generation, Notion, note delivery,
-or any provider SDK.
+screening, optional injected semantic screening, a one-shot Deep Dive decision,
+and read-only V1 comparison. It does not import pipeline.py, persistence,
+article generation, Notion, note delivery, or any provider SDK.
 """
 
 from __future__ import annotations
@@ -18,11 +18,18 @@ from candidate_identity import canonicalize_url
 
 
 DEFAULT_MIN_SCREENING_SCORE = 40
+MAX_SEMANTIC_SCREEN_CANDIDATES = 20
 DIRECT_CANDIDATE_SOURCE_FAMILIES = frozenset(
     {"official_vendor", "github", "hacker_news", "arxiv"}
 )
 DISCOVERY_ONLY_SOURCE_FAMILIES = frozenset({"x"})
 RETIRED_SOURCE_FAMILIES = frozenset({"product_hunt"})
+_SEMANTIC_BOOLEAN_FIELDS = (
+    "ai_relevant",
+    "decision_value",
+    "change_novelty",
+    "applied_reader_value",
+)
 
 
 def source_family_can_emit_candidate(source_family: str) -> bool:
@@ -33,7 +40,7 @@ def source_family_can_emit_candidate(source_family: str) -> bool:
 
 @dataclass(frozen=True)
 class ShadowConfig:
-    """Bounded defaults for the V2-001 shadow slice."""
+    """Bounded defaults for the V2 shadow slice."""
 
     max_candidates_per_provider: int = 10
     max_deep_dive_attempts: int = 1
@@ -60,7 +67,7 @@ def _timestamp_text(value: Any) -> str | None:
 def _freshness_signal(value: Any, *, now: datetime) -> tuple[int, str | None]:
     """Return a small deterministic freshness bonus without making age a hard gate.
 
-    V2-001 is selection-only, so stale items remain eligible when their other
+    V2 is selection-only, so stale items remain eligible when their other
     evidence is strong. Freshness only influences ordering. Timestamps must be
     timezone-aware ISO-8601 values; malformed or materially future timestamps
     receive no freshness credit.
@@ -99,11 +106,10 @@ def normalize_candidate(
 ) -> dict[str, Any]:
     """Convert a provider payload into the V2 shadow candidate contract.
 
-    V2-001 intentionally requires both a usable URL and title. When either is
+    V2 intentionally requires both a usable URL and title. When either is
     absent, the candidate is rejected rather than inventing an identity.
-    V2-005B also preserves bounded source provenance and rejects source families
-    that are discovery-only, retired, or otherwise not approved for direct
-    candidate emission.
+    Source provenance is preserved and discovery-only or retired source
+    families cannot emit a direct candidate.
     """
 
     if not isinstance(raw, Mapping):
@@ -280,12 +286,26 @@ def score_selection_value(candidate: Mapping[str, Any]) -> tuple[int, list[str]]
     return len(reasons) * 15, reasons
 
 
+def _semantic_selection_value(payload: Mapping[str, Any]) -> tuple[int, list[str]]:
+    """Convert a strict semantic result into the same four Selection Value dimensions."""
+
+    if any(type(payload.get(field)) is not bool for field in _SEMANTIC_BOOLEAN_FIELDS):
+        raise ValueError("semantic result booleans invalid")
+    if payload.get("ai_relevant") is not True:
+        return 0, []
+    reasons = ["ai_relevance"]
+    for field in _SEMANTIC_BOOLEAN_FIELDS[1:]:
+        if payload.get(field) is True:
+            reasons.append(field)
+    return len(reasons) * 15, reasons
+
+
 def screen_candidate(
     candidate: Mapping[str, Any],
     *,
     now: datetime,
 ) -> dict[str, Any]:
-    """Apply deterministic, provider-free V2-001 cheap screening."""
+    """Apply deterministic, provider-free V2 cheap screening."""
 
     result = dict(candidate)
     score = 0
@@ -328,6 +348,17 @@ def screen_candidate(
     return result
 
 
+def _rank_screened(candidates: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(
+        (dict(candidate) for candidate in candidates),
+        key=lambda item: (
+            -int(item.get("selection_value_score") or 0),
+            -int(item.get("screening_score") or 0),
+            str(item.get("candidate_identity") or ""),
+        ),
+    )
+
+
 def rank_candidates(
     candidates: Iterable[Mapping[str, Any]],
     *,
@@ -336,14 +367,7 @@ def rank_candidates(
     """Screen then rank deterministically by selection value, readiness, and identity."""
 
     screened = [screen_candidate(candidate, now=now) for candidate in candidates]
-    return sorted(
-        screened,
-        key=lambda item: (
-            -int(item.get("selection_value_score") or 0),
-            -int(item.get("screening_score") or 0),
-            str(item.get("candidate_identity") or ""),
-        ),
-    )
+    return _rank_screened(screened)
 
 
 def _comparison_identity(value: str | None) -> str | None:
@@ -372,13 +396,15 @@ def run_shadow_selection(
     now: datetime,
     run_id: str,
     v1_reference: str | None = None,
+    semantic_screen: Callable[[list[Mapping[str, Any]]], Mapping[str, Mapping[str, Any]]] | None = None,
 ) -> dict[str, Any]:
-    """Run the V2-001 selection slice without granting Production authority.
+    """Run the V2 selection slice without granting Production authority.
 
-    Provider callables and the Deep Dive callable are injected so the core has
-    no network/provider dependency. A run may call each provider once and may
-    attempt Deep Dive at most once. It never falls back to rank 2 after a Deep
-    Dive failure or evidence-insufficient result.
+    Provider, optional semantic-screen, and Deep Dive callables are injected so
+    the core has no network/provider dependency. Semantic screening is advisory:
+    it can rescue under-detected value but never lowers deterministic Selection
+    Value. A semantic provider failure falls back to the deterministic ranking.
+    Deep Dive remains one-shot and never falls back to rank 2.
     """
 
     max_per_provider = max(0, int(config.max_candidates_per_provider))
@@ -428,6 +454,45 @@ def run_shadow_selection(
     ranked = rank_candidates(deduplicated, now=now)
     for candidate in ranked:
         candidate["eligible"] = int(candidate.get("screening_score") or 0) >= min_score
+
+    semantic_diagnostic: dict[str, Any] | None = None
+    semantic_call_count = 0
+    semantic_candidates = [candidate for candidate in ranked if candidate["eligible"]][
+        :MAX_SEMANTIC_SCREEN_CANDIDATES
+    ]
+    if semantic_screen is not None:
+        if not semantic_candidates:
+            semantic_diagnostic = {"status": "not_attempted_no_eligible", "fallback_used": False}
+        else:
+            semantic_call_count = 1
+            submitted_identities = {
+                str(candidate.get("candidate_identity") or "") for candidate in semantic_candidates
+            }
+            try:
+                raw_semantic = semantic_screen(semantic_candidates)
+                if not isinstance(raw_semantic, Mapping) or set(raw_semantic) != submitted_identities:
+                    raise ValueError("semantic result identities invalid")
+                for candidate in semantic_candidates:
+                    identity = str(candidate["candidate_identity"])
+                    payload = raw_semantic[identity]
+                    if not isinstance(payload, Mapping):
+                        raise ValueError("semantic result item invalid")
+                    semantic_score, semantic_reasons = _semantic_selection_value(payload)
+                    candidate["semantic_screening"] = {
+                        field: bool(payload[field]) for field in _SEMANTIC_BOOLEAN_FIELDS
+                    }
+                    if semantic_score > int(candidate.get("selection_value_score") or 0):
+                        candidate["selection_value_score"] = semantic_score
+                        candidate["selection_value_reasons"] = semantic_reasons
+                ranked = _rank_screened(ranked)
+                semantic_diagnostic = {
+                    "status": "success",
+                    "fallback_used": False,
+                    "submitted_candidate_count": len(semantic_candidates),
+                }
+            except Exception:
+                semantic_diagnostic = {"status": "provider_failure", "fallback_used": True}
+
     eligible = [candidate for candidate in ranked if candidate["eligible"]]
 
     deep_dive_attempted_count = 0
@@ -460,8 +525,9 @@ def run_shadow_selection(
 
     reference_identity = _comparison_identity(v1_reference)
     comparison_status = _comparison_status(winner, v1_reference)
-    screening_summary = [
-        {
+    screening_summary = []
+    for candidate in ranked:
+        summary = {
             "candidate_identity": candidate["candidate_identity"],
             "provider": candidate["provider"],
             "source_family": candidate.get("source_family"),
@@ -471,10 +537,11 @@ def run_shadow_selection(
             "selection_value_reasons": list(candidate["selection_value_reasons"]),
             "eligible": bool(candidate["eligible"]),
         }
-        for candidate in ranked
-    ]
+        if "semantic_screening" in candidate:
+            summary["semantic_screening"] = dict(candidate["semantic_screening"])
+        screening_summary.append(summary)
 
-    return {
+    report = {
         "run_id": str(run_id),
         "timestamp": now.isoformat(),
         "mode": "shadow",
@@ -500,3 +567,7 @@ def run_shadow_selection(
             "deep_dive": deep_dive_attempted_count,
         },
     }
+    if semantic_screen is not None:
+        report["semantic_screening"] = semantic_diagnostic
+        report["actual_calls"]["semantic_screen"] = semantic_call_count
+    return report

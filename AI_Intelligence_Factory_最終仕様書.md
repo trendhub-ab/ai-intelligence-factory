@@ -4,7 +4,7 @@
 Production最終照合日: **2026-10-17**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`28f8bc278ecdae6638ae4dc42809c394a5203c152b7492eede99acdc6b1cdfcf`**
+Production Contract Fingerprint: **`fc2fe2d5827f65ab3b27061302246c2d8013bfcf58730e7537f34c5200e95179`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -124,6 +124,7 @@ Production Dailyは **Manual ONE-SHOT** が正規経路。
 - `/aiif run production_e2e_preflight`
 - `/aiif run local_skills_canary_validation`
 - `/aiif run local_skills_production_validation`
+- `/aiif run v2_shadow_deep_dive`
 - `/aiif note sync`
 - `/aiif note sync <32-hex sync_id>`
 - `/aiif note audit <32-hex sync_id>`
@@ -132,6 +133,8 @@ Production Dailyは **Manual ONE-SHOT** が正規経路。
 - `/aiif ready asset_recovery <32-hex sync_id>`
 
 Control Issue、owner、run_attempt等を認証し、GH_PATで既存manual workflowを1回だけdispatchする。Bridge自身がProduction処理を直接実行しない。exact target commandは32-hex identityを厳格に要求し、別記事へfallbackしない。
+
+`/aiif run v2_shadow_deep_dive` は `.github/workflows/v2-shadow-deep-dive.yml` だけを明示dispatchするV2診断経路であり、V1 Production authorityを変更しない。Notion / note / Ready / publication / delivery ledgerへのProduction mutationを行わず、診断artifactだけを生成する。
 
 `/aiif note audit <32-hex sync_id>` は既存private draftのread-only監査専用で、`.github/workflows/note-private-draft-audit.yml` だけをexact targetへdispatchする。Bridge自身のGemini/model call、draft mutation、Production実行、public releaseはすべて0 / falseとし、監査対象を別記事へfallbackしない。同一Issue commentの再配送・重複eventは、そのcomment IDへのdurable claimをdispatch前に確認し、同じcommentから監査workflowを二重dispatchしない。
 
@@ -229,6 +232,27 @@ Persistent daily budget:
 
 Screeningは大量候補の低コスト選別を担当し、記事本文の最終品質を担わない。Lite laneからFull Flash laneへScreening fallbackしない。
 
+#### 4.1.1 V2 Shadow Semantic Screening / Evidence Variable Fallback
+
+System V2のprovider-backed shadow deep diveは **診断専用** であり、V1 Production authorityを変更しない。明示的なmanual one-shotでのみ、次のbounded sequenceを実行できる。
+
+1. deterministic / provider-free cheap screening
+2. cheap screeningを通過した候補のうち最大20件を1 batchでSemantic Screeningへ送る
+3. Semantic ScreeningはV1と同じLite lane、`gemini-3.5-flash-lite` / `gemini-3.1-flash-lite` をProvider Healthで並べ替え、provider / transport / contract failure時だけ次のdistinct modelへfallbackする。最大2 model requests
+4. Semantic laneが全滅した場合は既存deterministic rankingへ縮退し、Evidenceを阻害しない
+5. Semantic結果はSelection Valueを補助し、deterministicに再rankingする
+6. rank-1候補だけをEvidenceへ送り、V1と同じFull Flash lane、`gemini-3.6-flash` / `gemini-3.5-flash` / `gemini-3.7-flash` / `gemini-3.8-flash` / `gemini-3-flash-preview` をProvider Healthで並べ替え、provider / transport / contract failure時だけ次のdistinct modelへfallbackする。最大5 model requests
+7. 有効なEvidence判定が返った時点で停止する。`evidence_sufficient=false` も正常な判定であり、別modelへ送って判定を覆さない。rank-2 rescueもしない
+8. Evidence laneが全滅した場合だけwinnerなしでFail-Closedする
+
+1回のV2 provider-backed shadow runで許可するmodel HTTP attemptは **最大7回（Lite最大2 + Flash Evidence最大5）**。正常時はSemantic 1回 + Evidence 1回の **2回** で終了する。同一modelへのretryは行わず、distinct-model fallbackだけを許可する。400 / 401 / 403等、modelを変えても解消しない共有設定・認証系errorでは無駄なfallbackを打ち切る。
+
+Semantic Screeningは4つのboolean（AI relevance / decision value / change novelty / applied reader value）だけをstrict JSON contractで返し、結果は **rescue / upside-only** としてdeterministic Selection Valueを下げない。raw Gemini response / prompt / secretをartifactへ保存しない。
+
+V2はV1のProvider Health履歴とlane rankingを **read-only** で参照する。V2自身はhealth historyを書き換えず、Provider障害を記事品質FAILへ混同しない。
+
+このV2 shadow laneはNotion / note / Ready / publication / delivery ledgerを更新せず、`production_mutation_authorized=false` を維持する。V2結果だけでProductionへ昇格・公開しない。
+
 ### 4.2 Deep Dive / Article Models
 
 現行Full ONE-SHOTの明示allowlist:
@@ -258,13 +282,17 @@ Article routingは固定順だけで決めない。
 - health stateは記事本文やpromptを保存しない
 - health stateのread/write失敗は記事生成自体を止めない
 
-履歴が同条件なら、Routerのcold-start tie-breakは概ね **3.6 → 3.5 → 3.7 → 3.8**。ただし実際のmodel setはWorkflow allowlistとquota状態を優先し、`gemini-3-flash-preview` もFull Flash article laneの正規候補になり得る。
+履歴が同条件なら、Routerのcold-start tie-breakは概ね **3.6 → 3.5 → 3.7 → 3.8 → 3 Flash Preview**。ただし実際のmodel setはWorkflow allowlistとquota状態を優先する。
+
+V2 provider-backed shadowも同じProvider Health履歴とlane rankingをread-only参照するが、V2自身はhealth stateを書き換えない。
 
 ### 4.4 503 / Retry ownership
 
 google-genai SDK内部のtransient retryはProductionで無効化し、**Factoryを唯一のretry owner** とする。
 
 provider-verified 503では同一modelへ無駄な再送を重ねず次のdistinct modelへ進む。Quality repairは最大 **2 distinct models**。429 / RPD / RPM / timeout / 404は既存quota・circuit契約に従い、無制限retryしない。
+
+V2 provider-backed shadowでも同一model retryは行わず、各lane内のdistinct-model fallbackだけを許可する。Semantic lane全滅時はdeterministicへ縮退し、Evidence lane全滅時だけwinnerなしでFail-Closedする。
 
 ### 4.5 Product Review
 
@@ -1066,6 +1094,7 @@ Production surfaceが変わるPRでは、**本書の同期をmerge条件**とす
 - **Entry point:** `production_pipeline.py`。
 - **Runtime:** `runtime_layers.py` が正本。
 - **Screening:** Gemini 3.5 Flash-Lite / 3.1 Flash-Liteのみ。
+- **V2 Shadow:** deterministic cheap screening → health-aware Semantic Screening（3.5 Flash-Lite / 3.1 Flash-Lite、最大20候補を1 batch、最大2 model attempts、全滅時はdeterministicへ縮退）→ Selection Value再ranking → rank-1 health-aware Evidence（3.6 / 3.5 / 3.7 / 3.8 / 3 Flash Preview、最大5 model attempts、valid false判定でも停止）。通常model callは2、最悪時上限7、Evidence lane全滅時のみwinnerなしでFail-Closed。V1 Provider Healthをread-only参照し、Production mutationは0。
 - **Article Deep Dive:** Gemini 3.6 / 3.5 / 3.7 / 3.8 / 3 Flash Previewをhealth-aware Full Flash laneで運用。Flash-Liteは公開Writerから除外。
 - **503:** Factory single retry owner + bounded distinct-model fallback。
 - **A+:** Local Skills skeleton + Gemini prose + deterministic Gates + safe local fallback。

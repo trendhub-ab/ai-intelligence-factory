@@ -7,7 +7,12 @@ import pytest
 from v2_005_live_proof import build_live_proof
 from v2_four_source_live import FourSourceLiveConfig
 from v2_shadow_observation import GeminiEvidenceError
-from tests.test_v2_005_live_proof import FakeResponse, NOW, four_source_http_get
+from tests.test_v2_005_live_proof import (
+    FakeResponse,
+    NOW,
+    _semantic_body_from_request,
+    four_source_http_get,
+)
 
 
 def test_live_proof_preserves_allowlisted_evidence_contract_reason_without_raw_text():
@@ -16,6 +21,8 @@ def test_live_proof_preserves_allowlisted_evidence_contract_reason_without_raw_t
     def http_post(url, **kwargs):
         nonlocal post_calls
         post_calls += 1
+        if "flash-lite" in url:
+            return FakeResponse(json_data=_semantic_body_from_request(kwargs))
         return FakeResponse(
             json_data={
                 "candidates": [
@@ -43,9 +50,12 @@ def test_live_proof_preserves_allowlisted_evidence_contract_reason_without_raw_t
         config=FourSourceLiveConfig(hn_limit=1, arxiv_limit=0, max_total_candidates=8),
         http_get=four_source_http_get,
         http_post=http_post,
+        provider_health_history=[],
     )
 
-    assert post_calls == 1
+    assert post_calls == 6
+    assert report["semantic_screening"]["status"] == "success"
+    assert report["v2_005_measurement"]["provider_request_count"] == 5
     assert report["deep_dive_result_category"] == "provider_failure"
     assert report["observation"]["provider_error_category"] == "provider_evidence_contract_invalid"
     assert report["observation"]["evidence_contract_reason"] == "reason_code_invalid"

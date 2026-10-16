@@ -17,6 +17,7 @@ from typing import Any, Callable, Mapping
 
 import requests
 
+from run260_gemini_model_routing import DEFAULT_DEEP_DIVE_POOL
 from v2_live_shadow_acquisition import LiveAcquisitionConfig, run_bounded_live_shadow
 
 
@@ -24,7 +25,8 @@ OBSERVATION_MODE = "manual_zero_model"
 PROVIDER_BACKED_MODE = "provider_backed_one_shot"
 DEFAULT_OUTPUT_PATH = Path("article_audit/v2_shadow_observation.json")
 DEFAULT_DEEP_DIVE_OUTPUT_PATH = Path("article_audit/v2_shadow_deep_dive.json")
-DEFAULT_MODEL = "gemini-3.6-flash"
+EVIDENCE_MODEL_POOL = tuple(DEFAULT_DEEP_DIVE_POOL)
+DEFAULT_MODEL = EVIDENCE_MODEL_POOL[0]
 GEMINI_GENERATE_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 PROVIDER_TIMEOUT_SECONDS = 120.0
 MAX_EVIDENCE_POINTS = 5
@@ -235,7 +237,7 @@ def _classify_provider_http_status(status_code: int) -> str:
 
 
 class GeminiEvidenceProvider:
-    """One-request Gemini adapter with no retry and no model fallback."""
+    """One-request Gemini adapter for one approved V1 full-Flash evidence model."""
 
     def __init__(
         self,
@@ -247,8 +249,8 @@ class GeminiEvidenceProvider:
         key = str(api_key or "").strip()
         if not key:
             raise ValueError("GEMINI_API_KEY is required")
-        if model != DEFAULT_MODEL:
-            raise ValueError("V2-004 permits only gemini-3.6-flash")
+        if model not in EVIDENCE_MODEL_POOL:
+            raise ValueError("V2 evidence permits only the V1 Deep Dive model pool")
         self._api_key = key
         self.model = model
         self._http_post = http_post
