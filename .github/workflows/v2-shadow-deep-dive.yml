@@ -1,4 +1,4 @@
-name: V2 Provider-Backed Shadow Evidence [ONE REQUEST]
+name: V2 Provider-Backed Shadow Semantic+Evidence [MAX TWO REQUESTS]
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - name: Require explicit one-request observation confirmation
+      - name: Require explicit bounded observation confirmation
         run: |
           set -euo pipefail
           test "${{ inputs.confirm }}" = RUN_V2_SHADOW_DEEP_DIVE
@@ -44,12 +44,14 @@ jobs:
           pip install 'pytest==8.4.2' -c requirements-ci-constraints.txt
           python -m pip check
 
-      - name: Prove V2 provider-backed evidence safety
+      - name: Prove V2 provider-backed semantic and evidence safety
         run: |
           python -m pytest -q \
             tests/test_v2_official_vendor_live.py \
             tests/test_v2_github_live.py \
             tests/test_v2_four_source_live.py \
+            tests/test_v2_semantic_screening.py \
+            tests/test_v2_semantic_selection_integration.py \
             tests/test_v2_005_live_proof.py \
             tests/test_v2_005_evidence_pack.py \
             tests/test_v2_live_shadow_acquisition_budget.py \
