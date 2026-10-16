@@ -47,7 +47,11 @@ jobs:
       - name: Prove V2 provider-backed evidence safety
         run: |
           python -m pytest -q \
+            tests/test_v2_official_vendor_live.py \
+            tests/test_v2_github_live.py \
+            tests/test_v2_four_source_live.py \
             tests/test_v2_005_live_proof.py \
+            tests/test_v2_005_evidence_pack.py \
             tests/test_v2_live_shadow_acquisition_budget.py \
             tests/test_v2_shadow_deep_dive.py \
             tests/test_v2_shadow_provider_diagnostics.py \
@@ -57,6 +61,7 @@ jobs:
       - name: Run bounded provider-backed observation
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           python v2_005_live_proof.py \
             --output article_audit/v2_shadow_deep_dive.json \
