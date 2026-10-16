@@ -83,7 +83,7 @@ def four_source_http_get(url, **kwargs):
     raise AssertionError(url)
 
 
-def _provider_body(*, sufficient=True, usage=None):
+def _evidence_body(*, sufficient=True, usage=None):
     evidence = {
         "evidence_sufficient": sufficient,
         "reason_code": "sufficient_source_evidence" if sufficient else "insufficient_source_evidence",
@@ -99,11 +99,36 @@ def _provider_body(*, sufficient=True, usage=None):
     return body
 
 
+def _semantic_body_from_request(kwargs, *, usage=None):
+    prompt = kwargs["json"]["contents"][0]["parts"][0]["text"]
+    candidates = json.loads(prompt.split("Candidates:\n", 1)[1])
+    results = [
+        {
+            "candidate_identity": candidate["candidate_identity"],
+            "ai_relevant": True,
+            "decision_value": True,
+            "change_novelty": True,
+            "applied_reader_value": True,
+        }
+        for candidate in candidates
+    ]
+    body = {
+        "candidates": [
+            {"content": {"parts": [{"text": json.dumps({"results": results})}]}}
+        ]
+    }
+    if usage is not None:
+        body["usageMetadata"] = usage
+    return body
+
+
 def _build(*, post_response):
     post_calls = []
 
     def http_post(url, **kwargs):
         post_calls.append((url, kwargs))
+        if "gemini-3.5-flash-lite" in url:
+            return FakeResponse(json_data=_semantic_body_from_request(kwargs))
         return post_response
 
     report = build_live_proof(
@@ -129,13 +154,13 @@ def test_live_proof_routes_through_four_source_bridge_not_old_two_source_builder
     assert "build_provider_backed_observation" not in source
 
 
-def test_live_proof_records_safe_rank1_measurement_with_one_provider_request():
-    report, post_calls = _build(post_response=FakeResponse(json_data=_provider_body()))
+def test_live_proof_records_safe_rank1_measurement_with_two_bounded_model_requests():
+    report, post_calls = _build(post_response=FakeResponse(json_data=_evidence_body()))
 
-    assert len(post_calls) == 1
-    url, kwargs = post_calls[0]
-    assert "gemini-3.6-flash:generateContent" in url
-    assert kwargs["timeout"] == 120.0
+    assert len(post_calls) == 2
+    assert "gemini-3.5-flash-lite:generateContent" in post_calls[0][0]
+    assert "gemini-3.6-flash:generateContent" in post_calls[1][0]
+    assert post_calls[1][1]["timeout"] == 120.0
     measurement = report["v2_005_measurement"]
     assert report["v2_selected_candidate_identity"] == measurement["evaluated_candidate"]["candidate_identity"]
     assert measurement["proof_version"] == "V2-005"
@@ -149,8 +174,11 @@ def test_live_proof_records_safe_rank1_measurement_with_one_provider_request():
         "screening_score",
         "screening_reasons",
     }
+    assert measurement["semantic_provider_request_count"] == 1
     assert measurement["provider_request_count"] == 1
-    assert measurement["provider_request_count"] == report["actual_calls"]["deep_dive"]
+    assert measurement["total_model_request_count"] == 2
+    assert report["actual_calls"]["semantic_screen"] == 1
+    assert report["actual_calls"]["deep_dive"] == 1
     assert report["live_acquisition"]["source_families"] == [
         "official_vendor",
         "github",
@@ -159,10 +187,10 @@ def test_live_proof_records_safe_rank1_measurement_with_one_provider_request():
     ]
 
 
-def test_live_proof_records_numeric_provider_usage_when_present():
+def test_live_proof_records_numeric_evidence_provider_usage_when_present():
     report, _ = _build(
         post_response=FakeResponse(
-            json_data=_provider_body(
+            json_data=_evidence_body(
                 usage={
                     "promptTokenCount": 123,
                     "candidatesTokenCount": 45,
@@ -176,10 +204,11 @@ def test_live_proof_records_numeric_provider_usage_when_present():
         "candidate_token_count": 45,
         "total_token_count": 168,
     }
+    assert report["v2_005_measurement"]["semantic_provider_usage"] is None
 
 
 def test_live_proof_tolerates_missing_usage_metadata():
-    report, _ = _build(post_response=FakeResponse(json_data=_provider_body()))
+    report, _ = _build(post_response=FakeResponse(json_data=_evidence_body()))
     assert report["deep_dive_result_category"] == "sufficient"
     assert report["v2_005_measurement"]["provider_usage"] is None
 
@@ -187,7 +216,7 @@ def test_live_proof_tolerates_missing_usage_metadata():
 def test_live_proof_tolerates_malformed_usage_metadata():
     report, _ = _build(
         post_response=FakeResponse(
-            json_data=_provider_body(
+            json_data=_evidence_body(
                 usage={
                     "promptTokenCount": 123,
                     "candidatesTokenCount": "45",
@@ -221,7 +250,9 @@ def test_live_proof_does_not_persist_raw_source_html_prompt_key_headers_or_raw_p
         raise AssertionError(url)
 
     def http_post(url, **kwargs):
-        body = _provider_body()
+        if "gemini-3.5-flash-lite" in url:
+            return FakeResponse(json_data=_semantic_body_from_request(kwargs))
+        body = _evidence_body()
         body["providerDebug"] = "SECRET_PROVIDER_BODY"
         return FakeResponse(json_data=body)
 
@@ -238,15 +269,44 @@ def test_live_proof_does_not_persist_raw_source_html_prompt_key_headers_or_raw_p
     assert "SECRET_KEY" not in serialized
     assert "SECRET_PROVIDER_BODY" not in serialized
     assert "x-goog-api-key" not in serialized
+    assert "Candidates:" not in serialized
     assert "Candidate metadata" not in serialized
 
 
-def test_live_proof_preserves_safe_provider_failure_classification_without_retry():
+def test_lite_failure_falls_back_without_blocking_flash_evidence():
+    post_calls = []
+
+    def http_post(url, **kwargs):
+        post_calls.append(url)
+        if "gemini-3.5-flash-lite" in url:
+            return FakeResponse(json_data={"error": "SECRET_LITE_BODY"}, status_code=503)
+        return FakeResponse(json_data=_evidence_body())
+
+    report = build_live_proof(
+        now=NOW,
+        run_id="v2-lite-fallback",
+        api_key="SECRET_KEY",
+        config=FourSourceLiveConfig(hn_limit=1, arxiv_limit=0, max_total_candidates=8),
+        http_get=four_source_http_get,
+        http_post=http_post,
+    )
+
+    assert len(post_calls) == 2
+    assert report["semantic_screening"] == {"status": "provider_failure", "fallback_used": True}
+    assert report["observation"]["semantic_provider_error_category"] == "semantic_provider_http_5xx"
+    assert report["deep_dive_result_category"] == "sufficient"
+    assert report["v2_selected_candidate_identity"] is not None
+    assert "SECRET_LITE_BODY" not in json.dumps(report)
+
+
+def test_live_proof_preserves_safe_evidence_provider_failure_classification_without_retry():
     post_calls = 0
 
     def http_post(url, **kwargs):
         nonlocal post_calls
         post_calls += 1
+        if "gemini-3.5-flash-lite" in url:
+            return FakeResponse(json_data=_semantic_body_from_request(kwargs))
         return FakeResponse(json_data={"error": "SECRET_PROVIDER_BODY"}, status_code=429)
 
     report = build_live_proof(
@@ -257,7 +317,7 @@ def test_live_proof_preserves_safe_provider_failure_classification_without_retry
         http_get=four_source_http_get,
         http_post=http_post,
     )
-    assert post_calls == 1
+    assert post_calls == 2
     assert report["deep_dive_result_category"] == "provider_failure"
     assert report["observation"]["provider_error_category"] == "provider_http_429"
     assert report["v2_selected_candidate_identity"] is None
@@ -266,19 +326,23 @@ def test_live_proof_preserves_safe_provider_failure_classification_without_retry
 
 def test_live_proof_insufficient_rank1_never_rescues_rank2():
     report, post_calls = _build(
-        post_response=FakeResponse(json_data=_provider_body(sufficient=False))
+        post_response=FakeResponse(json_data=_evidence_body(sufficient=False))
     )
-    assert len(post_calls) == 1
+    assert len(post_calls) == 2
     assert report["deep_dive_result_category"] == "insufficient_evidence"
     assert report["v2_selected_candidate_identity"] is None
 
 
 def test_live_proof_keeps_v1_authority_and_diagnostic_only_boundary():
-    report, _ = _build(post_response=FakeResponse(json_data=_provider_body()))
+    report, _ = _build(post_response=FakeResponse(json_data=_evidence_body()))
     assert report["observation"]["mode"] == "provider_backed_one_shot"
     assert report["observation"]["production_authority"] == "v1"
     assert report["observation"]["diagnostic_only"] is True
+    assert report["observation"]["semantic_request_budget"] == 1
+    assert report["observation"]["semantic_model"] == "gemini-3.5-flash-lite"
     assert report["observation"]["request_budget"] == 1
     assert report["observation"]["model"] == "gemini-3.6-flash"
+    assert report["observation"]["total_model_request_budget"] == 2
+    assert report["actual_calls"]["semantic_screen"] <= 1
     assert report["actual_calls"]["deep_dive"] <= 1
     assert report["v2_005_measurement"]["production_mutation_authorized"] is False
