@@ -1,4 +1,4 @@
-name: V2 Provider-Backed Shadow Semantic+Evidence [MAX TWO REQUESTS]
+name: V2 Provider-Backed Shadow Variable Fallback [MAX SEVEN REQUESTS]
 
 on:
   workflow_dispatch:
@@ -52,7 +52,9 @@ jobs:
             tests/test_v2_four_source_live.py \
             tests/test_v2_semantic_screening.py \
             tests/test_v2_semantic_selection_integration.py \
+            tests/test_v2_variable_gemini_fallback.py \
             tests/test_v2_005_live_proof.py \
+            tests/test_v2_005_evidence_contract_diagnostics.py \
             tests/test_v2_005_evidence_pack.py \
             tests/test_v2_live_shadow_acquisition_budget.py \
             tests/test_v2_shadow_deep_dive.py \
