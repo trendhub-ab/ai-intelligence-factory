@@ -55,9 +55,10 @@ def test_v2_workflow_is_manual_read_only_and_exactly_confirmed():
     assert "retention-days: 14" in text
 
 
-def test_v2_workflow_receives_only_model_secret_and_writes_diagnostic_artifact():
+def test_v2_workflow_uses_only_model_secret_and_builtin_readonly_github_token():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}" in text
+    assert "GITHUB_TOKEN: ${{ github.token }}" in text
     for forbidden in (
         "NOTION_API_KEY",
         "NOTION_DATABASE_ID",
@@ -75,10 +76,14 @@ def test_v2_workflow_receives_only_model_secret_and_writes_diagnostic_artifact()
     assert "article_audit/v2_shadow_deep_dive.json" in text
 
 
-def test_v2_workflow_runs_reviewed_v2_005_safety_suite():
+def test_v2_workflow_runs_reviewed_v2_005c_safety_suite():
     text = WORKFLOW.read_text(encoding="utf-8")
     for required_test in (
+        "tests/test_v2_official_vendor_live.py",
+        "tests/test_v2_github_live.py",
+        "tests/test_v2_four_source_live.py",
         "tests/test_v2_005_live_proof.py",
+        "tests/test_v2_005_evidence_pack.py",
         "tests/test_v2_live_shadow_acquisition_budget.py",
         "tests/test_v2_shadow_deep_dive.py",
         "tests/test_v2_shadow_provider_diagnostics.py",
