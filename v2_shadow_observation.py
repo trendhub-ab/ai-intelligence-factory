@@ -175,25 +175,23 @@ def parse_evidence_result(text: str) -> dict[str, Any]:
 
 
 def build_deep_dive_prompt(candidate: Mapping[str, Any]) -> str:
-    """Build a bounded prompt only from metadata already acquired by V2-001/002."""
+    """Build a bounded prompt only from source/provenance metadata already acquired."""
 
     payload = {
-        "candidate_identity": str(candidate.get("candidate_identity") or ""),
         "provider": str(candidate.get("provider") or ""),
         "primary_url": str(candidate.get("primary_url") or ""),
         "title": str(candidate.get("title") or ""),
         "description": str(candidate.get("description") or ""),
         "source_timestamp": candidate.get("source_timestamp"),
-        "screening_score": int(candidate.get("screening_score") or 0),
-        "screening_reasons": list(candidate.get("screening_reasons") or []),
     }
     return (
         "You are the bounded Evidence judge for AIIF V2 shadow evaluation.\n"
-        "Use ONLY the supplied candidate metadata. Do not invent, browse, or infer unsupported facts.\n"
+        "Use ONLY the supplied source/provenance metadata. Do not invent, browse, or infer unsupported facts.\n"
         "Decide whether this metadata alone contains enough concrete evidence to justify a shadow winner.\n"
         "Return JSON only with exactly these keys: evidence_sufficient, reason_code, evidence_points.\n"
         "reason_code must be sufficient_source_evidence when true, otherwise insufficient_source_evidence.\n"
-        "evidence_points must contain 1 to 5 concise factual points grounded only in the supplied metadata.\n"
+        "evidence_points must contain 1 to 5 concise factual source-grounded points from the supplied metadata.\n"
+        "Do not cite AIIF internal scores, rank, selection reasons, screening reasons, or pipeline metadata.\n"
         "Candidate metadata:\n"
         + json.dumps(payload, ensure_ascii=False, sort_keys=True)
     )

@@ -161,12 +161,18 @@ def deduplicate_candidates(candidates: Iterable[Mapping[str, Any]]) -> list[dict
     return deduplicated
 
 
+def _selection_tokens_from_text(text: Any) -> tuple[str, ...]:
+    normalized = "".join(
+        character if character.isalnum() else " "
+        for character in str(text or "").lower()
+    )
+    return tuple(normalized.split())
+
+
 def _selection_tokens(candidate: Mapping[str, Any]) -> tuple[str, ...]:
     title = str(candidate.get("title") or "")
     description = str(candidate.get("description") or "")
-    text = f"{title} {description}".lower()
-    normalized = "".join(character if character.isalnum() else " " for character in text)
-    return tuple(normalized.split())
+    return _selection_tokens_from_text(f"{title} {description}")
 
 
 def _matches_selection_term(tokens: tuple[str, ...], term: str) -> bool:
@@ -185,6 +191,7 @@ def score_selection_value(candidate: Mapping[str, Any]) -> tuple[int, list[str]]
     """Score deterministic AIIF reader/decision value without I/O or model calls."""
 
     tokens = _selection_tokens(candidate)
+    title_tokens = _selection_tokens_from_text(candidate.get("title"))
     ai_terms = (
         "ai",
         "artificial intelligence",
@@ -193,6 +200,10 @@ def score_selection_value(candidate: Mapping[str, Any]) -> tuple[int, list[str]]
         "language model",
         "foundation model",
         "ai model",
+        "gpt",
+        "chatgpt",
+        "claude",
+        "gemini",
         "agent",
         "inference",
         "robotics",
@@ -200,7 +211,7 @@ def score_selection_value(candidate: Mapping[str, Any]) -> tuple[int, list[str]]
         "reasoning",
         "neural network",
     )
-    if not _matches_any_selection_term(tokens, ai_terms):
+    if not _matches_any_selection_term(title_tokens, ai_terms):
         return 0, []
 
     dimensions = (
@@ -225,12 +236,16 @@ def score_selection_value(candidate: Mapping[str, Any]) -> tuple[int, list[str]]
             "change_novelty",
             (
                 "launch",
+                "launched",
+                "launches",
                 "release",
                 "released",
                 "update",
                 "new",
                 "introduces",
                 "introduced",
+                "introducing",
+                "announcing",
                 "acquisition",
                 "partnership",
                 "benchmark",
