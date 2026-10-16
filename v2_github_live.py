@@ -137,18 +137,21 @@ def fetch_all_github_candidates(
     http_get: Callable[..., Any] = requests.get,
     token: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Read all three reviewed repositories in stable order, isolating failures."""
+    """Read all reviewed repositories; raise only when every repository fails."""
 
     rows: list[dict[str, Any]] = []
+    successful_reads = 0
     for repository in GITHUB_REPOSITORIES:
         try:
-            rows.extend(
-                fetch_github_repository_releases(
-                    repository=repository,
-                    http_get=http_get,
-                    token=token,
-                )
+            repository_rows = fetch_github_repository_releases(
+                repository=repository,
+                http_get=http_get,
+                token=token,
             )
         except GitHubLiveError:
             continue
+        successful_reads += 1
+        rows.extend(repository_rows)
+    if successful_reads == 0:
+        raise GitHubLiveError("GitHub", "all_repositories_failed")
     return rows
