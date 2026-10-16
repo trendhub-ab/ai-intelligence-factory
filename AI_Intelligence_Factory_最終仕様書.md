@@ -452,6 +452,7 @@ Source-specific Hookを優先し、一次情報固有の数字・出来事・矛
 - Publication Readiness
 - Final Publication Surface
 - Publication Contract
+
 Human Appealの中核品質が `WEAK` の原稿は最大1回のQuality Retry。Retry後も `WEAK` ならNeeds Editorial Review等の非Readyへ送り、note下書き配送を禁止する。軽微な表面表現だけのSOFT warningは、Human AppealがACCEPTABLEなら警告付きReadyを許可できる。
 
 ### 7.1 Fail-Closed
@@ -671,6 +672,7 @@ Subscription Attribution JSONをGitHubへ保存する場合、readとwriteのbra
 - default branchをGETし別branchへSHAなしPUTする経路は禁止
 
 ---
+
 ## 10. Content Intelligence → Note Delivery Contract
 
 ### 10.1 Content Intelligence DB
