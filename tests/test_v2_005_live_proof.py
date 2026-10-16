@@ -144,6 +144,7 @@ def _build(*, post_response):
         ),
         http_get=four_source_http_get,
         http_post=http_post,
+        provider_health_history=[],
     )
     return report, post_calls
 
@@ -154,7 +155,7 @@ def test_live_proof_routes_through_four_source_bridge_not_old_two_source_builder
     assert "build_provider_backed_observation" not in source
 
 
-def test_live_proof_records_safe_rank1_measurement_with_two_bounded_model_requests():
+def test_live_proof_records_safe_rank1_measurement_with_two_normal_model_requests():
     report, post_calls = _build(post_response=FakeResponse(json_data=_evidence_body()))
 
     assert len(post_calls) == 2
@@ -177,6 +178,8 @@ def test_live_proof_records_safe_rank1_measurement_with_two_bounded_model_reques
     assert measurement["semantic_provider_request_count"] == 1
     assert measurement["provider_request_count"] == 1
     assert measurement["total_model_request_count"] == 2
+    assert measurement["semantic_attempts"] == [{"model": "gemini-3.5-flash-lite", "result": "success"}]
+    assert measurement["evidence_attempts"] == [{"model": "gemini-3.6-flash", "result": "success"}]
     assert report["actual_calls"]["semantic_screen"] == 1
     assert report["actual_calls"]["deep_dive"] == 1
     assert report["live_acquisition"]["source_families"] == [
@@ -263,6 +266,7 @@ def test_live_proof_does_not_persist_raw_source_html_prompt_key_headers_or_raw_p
         config=FourSourceLiveConfig(hn_limit=0, arxiv_limit=0, max_total_candidates=5),
         http_get=secret_http_get,
         http_post=http_post,
+        provider_health_history=[],
     )
     serialized = json.dumps(report, ensure_ascii=False)
     assert "SECRET_VENDOR_HTML" not in serialized
@@ -273,12 +277,12 @@ def test_live_proof_does_not_persist_raw_source_html_prompt_key_headers_or_raw_p
     assert "Candidate metadata" not in serialized
 
 
-def test_lite_failure_falls_back_without_blocking_flash_evidence():
+def test_all_lite_failures_fall_back_to_deterministic_without_blocking_flash_evidence():
     post_calls = []
 
     def http_post(url, **kwargs):
         post_calls.append(url)
-        if "gemini-3.5-flash-lite" in url:
+        if "flash-lite" in url:
             return FakeResponse(json_data={"error": "SECRET_LITE_BODY"}, status_code=503)
         return FakeResponse(json_data=_evidence_body())
 
@@ -289,9 +293,13 @@ def test_lite_failure_falls_back_without_blocking_flash_evidence():
         config=FourSourceLiveConfig(hn_limit=1, arxiv_limit=0, max_total_candidates=8),
         http_get=four_source_http_get,
         http_post=http_post,
+        provider_health_history=[],
     )
 
-    assert len(post_calls) == 2
+    assert len(post_calls) == 3
+    assert "gemini-3.5-flash-lite" in post_calls[0]
+    assert "gemini-3.1-flash-lite" in post_calls[1]
+    assert "gemini-3.6-flash" in post_calls[2]
     assert report["semantic_screening"] == {"status": "provider_failure", "fallback_used": True}
     assert report["observation"]["semantic_provider_error_category"] == "semantic_provider_http_5xx"
     assert report["deep_dive_result_category"] == "sufficient"
@@ -299,13 +307,13 @@ def test_lite_failure_falls_back_without_blocking_flash_evidence():
     assert "SECRET_LITE_BODY" not in json.dumps(report)
 
 
-def test_live_proof_preserves_safe_evidence_provider_failure_classification_without_retry():
+def test_live_proof_exhausts_evidence_lane_on_429_then_fails_closed():
     post_calls = 0
 
     def http_post(url, **kwargs):
         nonlocal post_calls
         post_calls += 1
-        if "gemini-3.5-flash-lite" in url:
+        if "flash-lite" in url:
             return FakeResponse(json_data=_semantic_body_from_request(kwargs))
         return FakeResponse(json_data={"error": "SECRET_PROVIDER_BODY"}, status_code=429)
 
@@ -316,19 +324,23 @@ def test_live_proof_preserves_safe_evidence_provider_failure_classification_with
         config=FourSourceLiveConfig(hn_limit=1, arxiv_limit=0, max_total_candidates=8),
         http_get=four_source_http_get,
         http_post=http_post,
+        provider_health_history=[],
     )
-    assert post_calls == 2
+    assert post_calls == 6
+    assert report["v2_005_measurement"]["provider_request_count"] == 5
+    assert report["v2_005_measurement"]["total_model_request_count"] == 6
     assert report["deep_dive_result_category"] == "provider_failure"
     assert report["observation"]["provider_error_category"] == "provider_http_429"
     assert report["v2_selected_candidate_identity"] is None
     assert "SECRET_PROVIDER_BODY" not in json.dumps(report)
 
 
-def test_live_proof_insufficient_rank1_never_rescues_rank2():
+def test_live_proof_insufficient_rank1_never_rescues_rank2_or_retries_another_model():
     report, post_calls = _build(
         post_response=FakeResponse(json_data=_evidence_body(sufficient=False))
     )
     assert len(post_calls) == 2
+    assert report["v2_005_measurement"]["provider_request_count"] == 1
     assert report["deep_dive_result_category"] == "insufficient_evidence"
     assert report["v2_selected_candidate_identity"] is None
 
@@ -338,11 +350,22 @@ def test_live_proof_keeps_v1_authority_and_diagnostic_only_boundary():
     assert report["observation"]["mode"] == "provider_backed_one_shot"
     assert report["observation"]["production_authority"] == "v1"
     assert report["observation"]["diagnostic_only"] is True
-    assert report["observation"]["semantic_request_budget"] == 1
+    assert report["observation"]["semantic_model_pool"] == [
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite",
+    ]
+    assert report["observation"]["semantic_request_budget"] == 2
     assert report["observation"]["semantic_model"] == "gemini-3.5-flash-lite"
-    assert report["observation"]["request_budget"] == 1
+    assert report["observation"]["evidence_model_pool"] == [
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-3.7-flash",
+        "gemini-3.8-flash",
+        "gemini-3-flash-preview",
+    ]
+    assert report["observation"]["request_budget"] == 5
     assert report["observation"]["model"] == "gemini-3.6-flash"
-    assert report["observation"]["total_model_request_budget"] == 2
+    assert report["observation"]["total_model_request_budget"] == 7
     assert report["actual_calls"]["semantic_screen"] <= 1
     assert report["actual_calls"]["deep_dive"] <= 1
     assert report["v2_005_measurement"]["production_mutation_authorized"] is False
