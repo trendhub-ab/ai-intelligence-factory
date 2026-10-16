@@ -1,0 +1,67 @@
+name: V2-005C Final Fingerprint Sync
+
+on:
+  push:
+    branches:
+      - impl/v2-005c-four-source-live-proof
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: ${{ github.actor == 'trendhub-ab' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: impl/v2-005c-four-source-live-proof
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11.16'
+
+      - name: Remove one-shot workflow and sync final fingerprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/v2-005c-final-fingerprint-sync.yml
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          import specification_freshness_guard as guard
+
+          path = Path(guard.SPEC_PATH)
+          text = path.read_text(encoding="utf-8")
+          fingerprint = guard.production_contract_fingerprint()
+          latest_date = guard.latest_production_commit_date()
+          text, n1 = re.subn(
+              r"^Production Contract Fingerprint:\s*\*\*`[0-9a-f]{64}`\*\*\s*$",
+              f"Production Contract Fingerprint: **`{fingerprint}`**",
+              text,
+              count=1,
+              flags=re.MULTILINE,
+          )
+          text, n2 = re.subn(
+              r"^Production最終照合日:\s*\*\*\d{4}-\d{2}-\d{2}\*\*\s*$",
+              f"Production最終照合日: **{latest_date}**",
+              text,
+              count=1,
+              flags=re.MULTILINE,
+          )
+          if (n1, n2) != (1, 1):
+              raise SystemExit("canonical specification metadata replacement failed")
+          path.write_text(text, encoding="utf-8")
+          print(f"final_fingerprint={fingerprint}")
+          print(f"final_review_date={latest_date}")
+          PY
+          git add AI_Intelligence_Factory_最終仕様書.md
+          git diff --cached --check
+          git commit -m "docs: sync V2-005C final production fingerprint"
+          git push origin HEAD:impl/v2-005c-four-source-live-proof
