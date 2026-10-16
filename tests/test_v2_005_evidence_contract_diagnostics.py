@@ -21,7 +21,7 @@ def test_live_proof_preserves_allowlisted_evidence_contract_reason_without_raw_t
     def http_post(url, **kwargs):
         nonlocal post_calls
         post_calls += 1
-        if "gemini-3.5-flash-lite" in url:
+        if "flash-lite" in url:
             return FakeResponse(json_data=_semantic_body_from_request(kwargs))
         return FakeResponse(
             json_data={
@@ -50,10 +50,12 @@ def test_live_proof_preserves_allowlisted_evidence_contract_reason_without_raw_t
         config=FourSourceLiveConfig(hn_limit=1, arxiv_limit=0, max_total_candidates=8),
         http_get=four_source_http_get,
         http_post=http_post,
+        provider_health_history=[],
     )
 
-    assert post_calls == 2
+    assert post_calls == 6
     assert report["semantic_screening"]["status"] == "success"
+    assert report["v2_005_measurement"]["provider_request_count"] == 5
     assert report["deep_dive_result_category"] == "provider_failure"
     assert report["observation"]["provider_error_category"] == "provider_evidence_contract_invalid"
     assert report["observation"]["evidence_contract_reason"] == "reason_code_invalid"
