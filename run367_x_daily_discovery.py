@@ -23,11 +23,12 @@ from x_discovery.runner import run_ingestion
 
 X_SOURCE = "X"
 X_SOURCE_ROLE = "discovery_signal"
-DEFAULT_ACTOR_ID = "simple.actor~x-profile-posts"
+DEFAULT_ACTOR_ID = "xquik~x-tweet-scraper"
+LEGACY_ACTOR_ID = "simple.actor~x-profile-posts"
 DEFAULT_MAX_CHARGE_USD = 0.05
 DEFAULT_MAX_RECORDS = 100
 DEFAULT_MAX_POSTS_PER_PROFILE = 5
-DEFAULT_LOOKBACK = "12 hours"
+DEFAULT_LOOKBACK = "12h"
 WATCHLIST_PATH = Path(__file__).resolve().parent / "x_discovery" / "watchlists" / "ai_core_20.json"
 _TRACKING_KEYS = {"fbclid", "gclid", "mc_cid", "mc_eid"}
 _REQUIRED_RUNTIME_CAPABILITIES = ("round_robin_candidates", "normalize_item")
@@ -83,12 +84,14 @@ def build_actor_input(handles: Iterable[str]) -> dict:
     if len(handles) != 20 or len({item.casefold() for item in handles}) != 20:
         raise ValueError("X Daily actor input requires exactly 20 unique handles")
     return {
-        "handles": handles,
-        "outputFormat": "profile",
-        "maxPosts": DEFAULT_MAX_POSTS_PER_PROFILE,
-        "onlyPostsNewerThan": DEFAULT_LOOKBACK,
-        "includeRaw": False,
-        "isolateProfiles": True,
+        "twitterHandles": handles,
+        "mode": "profileTweets",
+        "maxItems": DEFAULT_MAX_RECORDS,
+        "maxItemsPerTarget": DEFAULT_MAX_POSTS_PER_PROFILE,
+        "within_time": DEFAULT_LOOKBACK,
+        "outputVariant": "rich",
+        "fieldStyle": "camelCase",
+        "outputPreset": "flat",
     }
 
 
@@ -188,7 +191,14 @@ def acquire_x_candidates(pipeline_module) -> list[dict]:
         log.warning("[X DISCOVERY DEGRADED] APIFY_TOKEN missing; continuing with established sources")
         return []
 
-    actor_id = os.getenv("APIFY_ACTOR_ID", DEFAULT_ACTOR_ID).strip() or DEFAULT_ACTOR_ID
+    configured_actor_id = os.getenv("APIFY_ACTOR_ID", DEFAULT_ACTOR_ID).strip() or DEFAULT_ACTOR_ID
+    if configured_actor_id == LEGACY_ACTOR_ID:
+        # Transitional compatibility for an already-dispatched workflow revision.
+        # Runtime still uses Xquik; workflow literals are migrated separately.
+        log.warning("[X DISCOVERY CONFIG] legacy actor id ignored; using Xquik")
+        actor_id = DEFAULT_ACTOR_ID
+    else:
+        actor_id = configured_actor_id
     if actor_id != DEFAULT_ACTOR_ID:
         log.warning("[X DISCOVERY DEGRADED] unexpected actor id=%s; continuing without X", actor_id)
         return []
