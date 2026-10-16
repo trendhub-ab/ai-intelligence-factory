@@ -107,18 +107,21 @@ def build_live_proof(
     evaluated_candidate: dict[str, Any] | None = None
     provider_result: dict[str, Any] | None = None
     provider_error_category: str | None = None
+    evidence_contract_reason: str | None = None
 
     def recording_deep_dive(candidate: Mapping[str, Any]) -> Mapping[str, Any]:
-        nonlocal evaluated_candidate, provider_result, provider_error_category
+        nonlocal evaluated_candidate, provider_result, provider_error_category, evidence_contract_reason
         evaluated_candidate = _safe_candidate(candidate)
         try:
             raw_result = provider(candidate)
             provider_result = dict(raw_result)
             return provider_result
         except Exception as exc:
-            provider_error_category = (
-                exc.safe_code if isinstance(exc, GeminiEvidenceError) else type(exc).__name__
-            )
+            if isinstance(exc, GeminiEvidenceError):
+                provider_error_category = exc.safe_code
+                evidence_contract_reason = exc.evidence_contract_reason
+            else:
+                provider_error_category = type(exc).__name__
             raise
 
     report = run_four_source_live(
@@ -138,6 +141,7 @@ def build_live_proof(
             "request_budget": 1,
             "provider_result": provider_result,
             "provider_error_category": provider_error_category,
+            "evidence_contract_reason": evidence_contract_reason,
             "production_authority": "v1",
             "diagnostic_only": True,
         },
