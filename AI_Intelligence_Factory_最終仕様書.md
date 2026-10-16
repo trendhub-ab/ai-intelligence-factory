@@ -4,7 +4,7 @@
 Production最終照合日: **2026-10-17**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`28f8bc278ecdae6638ae4dc42809c394a5203c152b7492eede99acdc6b1cdfcf`**
+Production Contract Fingerprint: **`a528c9f18b1ba6f22db6f8c8f308aa562e613fc507b4fb14364ab5d1221b6f83`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -229,6 +229,21 @@ Persistent daily budget:
 
 Screeningは大量候補の低コスト選別を担当し、記事本文の最終品質を担わない。Lite laneからFull Flash laneへScreening fallbackしない。
 
+#### 4.1.1 V2 Shadow Semantic Screening
+
+System V2のprovider-backed shadow deep diveは **診断専用** であり、V1 Production authorityを変更しない。明示的なmanual one-shotでのみ、次のbounded sequenceを実行できる。
+
+1. deterministic / provider-free cheap screening
+2. cheap screeningを通過した候補のうち最大20件を、`gemini-3.5-flash-lite` へ **1 batch / 最大1 request** でSemantic Screening
+3. Semantic結果でSelection Valueを補助し、deterministicに再ranking
+4. rank-1候補だけを既存の `gemini-3.6-flash` Evidenceへ **最大1 request** 送る
+
+1回のV2 provider-backed shadow runで許可するmodel requestは **最大2回（Lite 1 + Flash Evidence 1）**。Semantic Screeningは4つのboolean（AI relevance / decision value / change novelty / applied reader value）だけをstrict JSON contractで返し、raw Gemini textを保存しない。
+
+Semantic結果は **rescue / upside-only** とし、deterministic Selection Valueを下げない。Liteが429 / 5xx / timeout / contract invalid等で失敗した場合は、Liteをretryせず別modelへfallbackもせず、既存deterministic rankingへ縮退してFlash Evidenceを継続する。したがってLite障害をEvidence障害や記事品質FAILへ混同しない。
+
+このV2 shadow laneはNotion / note / Ready / publication / delivery ledgerを更新せず、`production_mutation_authorized=false` を維持する。V2結果だけでProductionへ昇格・公開しない。
+
 ### 4.2 Deep Dive / Article Models
 
 現行Full ONE-SHOTの明示allowlist:
@@ -437,7 +452,6 @@ Source-specific Hookを優先し、一次情報固有の数字・出来事・矛
 - Publication Readiness
 - Final Publication Surface
 - Publication Contract
-
 Human Appealの中核品質が `WEAK` の原稿は最大1回のQuality Retry。Retry後も `WEAK` ならNeeds Editorial Review等の非Readyへ送り、note下書き配送を禁止する。軽微な表面表現だけのSOFT warningは、Human AppealがACCEPTABLEなら警告付きReadyを許可できる。
 
 ### 7.1 Fail-Closed
@@ -657,7 +671,6 @@ Subscription Attribution JSONをGitHubへ保存する場合、readとwriteのbra
 - default branchをGETし別branchへSHAなしPUTする経路は禁止
 
 ---
-
 ## 10. Content Intelligence → Note Delivery Contract
 
 ### 10.1 Content Intelligence DB
@@ -1066,6 +1079,7 @@ Production surfaceが変わるPRでは、**本書の同期をmerge条件**とす
 - **Entry point:** `production_pipeline.py`。
 - **Runtime:** `runtime_layers.py` が正本。
 - **Screening:** Gemini 3.5 Flash-Lite / 3.1 Flash-Liteのみ。
+- **V2 Shadow:** deterministic cheap screening → Gemini 3.5 Flash-Lite Semantic Screening（最大20候補を1 batch / 1 request）→ Selection Value再ranking → rank-1 Gemini 3.6 Flash Evidence（最大1 request）。合計model budgetは最大2、Lite障害時はdeterministic rankingへ縮退しEvidenceを継続、Production mutationは0。
 - **Article Deep Dive:** Gemini 3.6 / 3.5 / 3.7 / 3.8 / 3 Flash Previewをhealth-aware Full Flash laneで運用。Flash-Liteは公開Writerから除外。
 - **503:** Factory single retry owner + bounded distinct-model fallback。
 - **A+:** Local Skills skeleton + Gemini prose + deterministic Gates + safe local fallback。
