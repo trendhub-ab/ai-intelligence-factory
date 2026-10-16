@@ -56,11 +56,7 @@ def test_github_live_reads_releases_only_with_exact_budget():
         calls.append((url, kwargs))
         return _Response(url=url, payload=[RELEASE])
 
-    result = live.fetch_github_repository_releases(
-        repository="openai/openai-python",
-        http_get=http_get,
-    )
-
+    result = live.fetch_github_repository_releases(repository="openai/openai-python", http_get=http_get)
     assert calls == [(
         "https://api.github.com/repos/openai/openai-python/releases",
         {"params": {"per_page": 5}, "timeout": 8.0},
@@ -88,10 +84,7 @@ def test_github_live_rejects_unallowlisted_repository_before_network():
         raise AssertionError("network must not be called")
 
     with pytest.raises(live.GitHubLiveError) as excinfo:
-        live.fetch_github_repository_releases(
-            repository="evil/not-approved",
-            http_get=http_get,
-        )
+        live.fetch_github_repository_releases(repository="evil/not-approved", http_get=http_get)
     assert excinfo.value.category == "repository_unapproved"
     assert calls == []
 
@@ -108,10 +101,7 @@ def test_github_live_drops_malformed_release_rows():
     def http_get(url, **kwargs):
         return _Response(url=url, payload=malformed)
 
-    result = live.fetch_github_repository_releases(
-        repository="openai/openai-python",
-        http_get=http_get,
-    )
+    result = live.fetch_github_repository_releases(repository="openai/openai-python", http_get=http_get)
     assert [row["upstream_id"] for row in result] == ["123"]
 
 
@@ -125,9 +115,7 @@ def test_github_live_token_is_request_only_and_never_returned():
         return _Response(url=url, payload=[RELEASE])
 
     result = live.fetch_github_repository_releases(
-        repository="openai/openai-python",
-        http_get=http_get,
-        token=sentinel,
+        repository="openai/openai-python", http_get=http_get, token=sentinel
     )
     assert seen_headers == [{"Authorization": f"Bearer {sentinel}"}]
     assert sentinel not in repr(result)
@@ -141,9 +129,7 @@ def test_github_live_rejects_redirect_escape_without_secret_leakage():
 
     with pytest.raises(live.GitHubLiveError) as excinfo:
         live.fetch_github_repository_releases(
-            repository="openai/openai-python",
-            http_get=http_get,
-            token="secret-token",
+            repository="openai/openai-python", http_get=http_get, token="secret-token"
         )
     assert excinfo.value.category == "redirect_host_unapproved"
     assert "secret-token" not in str(excinfo.value)
@@ -157,10 +143,7 @@ def test_github_live_invalid_json_has_safe_category():
         return _Response(url=url, payload=ValueError("secret json detail"))
 
     with pytest.raises(live.GitHubLiveError) as excinfo:
-        live.fetch_github_repository_releases(
-            repository="openai/openai-python",
-            http_get=http_get,
-        )
+        live.fetch_github_repository_releases(repository="openai/openai-python", http_get=http_get)
     assert excinfo.value.category == "invalid_json"
     assert "secret json detail" not in str(excinfo.value)
 
@@ -191,3 +174,25 @@ def test_github_live_one_repository_failure_is_isolated():
         "anthropics/anthropic-sdk-python",
         "googleapis/python-genai",
     ]
+
+
+def test_github_live_all_repository_failures_raise_family_failure():
+    live = _live()
+
+    def http_get(url, **kwargs):
+        raise RuntimeError("secret github outage")
+
+    with pytest.raises(live.GitHubLiveError) as excinfo:
+        live.fetch_all_github_candidates(http_get=http_get)
+    assert excinfo.value.repository == "GitHub"
+    assert excinfo.value.category == "all_repositories_failed"
+    assert "secret github outage" not in str(excinfo.value)
+
+
+def test_github_live_successful_empty_repositories_are_not_failures():
+    live = _live()
+
+    def http_get(url, **kwargs):
+        return _Response(url=url, payload=[])
+
+    assert live.fetch_all_github_candidates(http_get=http_get) == []
