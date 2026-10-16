@@ -1,10 +1,10 @@
 # AI Intelligence Factory — 現行Production仕様
 
-仕様最終変更日: **2026-10-15**
-Production最終照合日: **2026-10-16**
+仕様最終変更日: **2026-10-17**
+Production最終照合日: **2026-10-17**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`d8fb161f415dcc19b064bedf31699148da508576013f0614346b1834cb1dd13f`**
+Production Contract Fingerprint: **`4407dd8e924bee1fcd346e668ca0b9e8ba6457e1c9fc4537b5c8d245bc5df47a`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -189,6 +189,12 @@ Fresh acquisitionのProductionポートフォリオは次の4系統。
 Xは **任意Discovery origin**。
 
 - `full` のときだけX discoveryを有効化できる。
+- ProductionのApify Actor正本は **Xquik `xquik~x-tweet-scraper`**。ONE-SHOT workflowとruntimeの双方をこのActorへ固定する。
+- 監視対象は固定watchlistの **20 unique handles**。1回のbounded Actor runで取得し、上限は **100件 / 1 profileあたり5件 / 直近12時間** とする。
+- Actor inputは `twitterHandles` + `mode=profileTweets` を使い、出力は `rich / camelCase / flat` に固定する。
+- Apifyのrun-level charge capは **`APIFY_MAX_CHARGE_USD=0.05`** を維持する。X discoveryのために無制限のprofile別runを行わない。
+- Xquikのdiagnostic / zero-output rowはSignalへ昇格せず、provider diagnosticsとして記録する。
+- 旧 `simple.actor~x-profile-posts` はProduction正本ではない。移行中のstale runtime overrideだけはXquikへ安全に読み替え、新規workflowでは使用しない。
 - X投稿本文そのものをEvidenceにしない。
 - 技術的Factはリンク先一次情報で確認する。
 - 必須4 Sourceの配分をXで置換しない。
@@ -1051,7 +1057,7 @@ Production surfaceが変わるPRでは、**本書の同期をmerge条件**とす
 
 ---
 
-## 18. Current-state Summary — 2026-10-15
+## 18. Current-state Summary — 2026-10-17
 
 現在のFactoryは次を正式基準とする。
 
@@ -1064,7 +1070,7 @@ Production surfaceが変わるPRでは、**本書の同期をmerge条件**とす
 - **503:** Factory single retry owner + bounded distinct-model fallback。
 - **A+:** Local Skills skeleton + Gemini prose + deterministic Gates + safe local fallback。
 - **Active acquisition:** GitHub / HackerNews / ArXiv / OfficialVendor。
-- **X:** Discovery専用。X本文はEvidenceにしない。
+- **X:** Discovery専用。Apify ActorはXquik `xquik~x-tweet-scraper`。20 handlesを1 bounded run、最大100件・5件/profile・12h、charge cap $0.05。X本文はEvidenceにしない。
 - **Product Hunt:** retired。
 - **Dedupe:** URL canonicalization + OfficialVendor revision event identity。
 - **Published Terminal:** delivered/published existing articleは自動再生成しない。pre-publication delivery stateを正に証明できる場合だけ自動Recovery可。
