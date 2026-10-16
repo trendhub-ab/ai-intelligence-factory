@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-16T10:36:09.960528+00:00",
+  "updated_at": "2026-10-16T10:36:59.710901+00:00",
   "items": [
-    {
-      "key": "https://machinelearning.apple.com/research/mlx-distributed-inference",
-      "deferred_at": "2026-10-16T10:36:09.960080+00:00",
-      "expires_at": "2026-12-15T10:36:09.960080+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Local and Distributed Large LLM Inference with MLX and RDMA on Mac Studio",
-        "originalTitle": "Local and Distributed Large LLM Inference with MLX and RDMA on Mac Studio",
-        "displayName": "Local and Distributed Large LLM Inference with MLX and RDMA on Mac Studio",
-        "sourceLanguage": "en",
-        "url": "https://machinelearning.apple.com/research/mlx-distributed-inference",
-        "description": "Local and Distributed Large LLM Inference with MLX and RDMA on Mac Studio",
-        "stargazerCount": 6,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-16T03:34:45Z",
-        "sourceContext": "HN points=6 comments=1 matched_query=LLM",
-        "primaryUrl": "https://machinelearning.apple.com/research/mlx-distributed-inference",
-        "sourceDetails": {
-          "hn_id": "50113743",
-          "hn_url": "https://news.ycombinator.com/item?id=50113743",
-          "external_url": "https://machinelearning.apple.com/research/mlx-distributed-inference",
-          "comments": 1,
-          "matched_query": "LLM",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3fb479ff-dca9-8109-a73b-f7b7d7559dcd",
-      "score": 82,
-      "reason": "ローカル環境での分散推論基盤として極めて実用的。",
-      "commercial_score": 80,
-      "shelf_life_score": 85,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "INFRA",
-      "deep_dive_priority_score": 81.3
-    },
     {
       "key": "https://blog.google/innovation-and-ai/technology/developers-tools/build-with-gemini-4-argon",
       "deferred_at": "2026-10-14T09:11:21.781701+00:00",
