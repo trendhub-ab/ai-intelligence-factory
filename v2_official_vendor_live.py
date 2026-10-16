@@ -1,9 +1,10 @@
 """Bounded GET-only OfficialVendor live reader for V2-005C shadow proof.
 
 This module reads only the exact reviewed vendor collection pages, extracts a
-small set of same-host article links, and delegates normalization to the
-existing V2-005B OfficialVendor adapter. It performs no discovery, crawling,
-article-detail fetch, model call, persistence, or Production mutation.
+small set of same-host article links under reviewed path prefixes, and delegates
+normalization to the existing V2-005B OfficialVendor adapter. It performs no
+discovery, crawling, article-detail fetch, model call, persistence, or Production
+mutation.
 """
 from __future__ import annotations
 
@@ -31,6 +32,7 @@ class VendorSourceConfig:
     provider: str
     collection_url: str
     allowed_hostname: str
+    allowed_path_prefixes: tuple[str, ...]
     max_items: int = 5
     timeout_seconds: float = 8.0
 
@@ -40,16 +42,22 @@ OFFICIAL_VENDOR_SOURCES: tuple[VendorSourceConfig, ...] = (
         provider="OpenAI",
         collection_url="https://openai.com/news",
         allowed_hostname="openai.com",
+        allowed_path_prefixes=("/index/",),
     ),
     VendorSourceConfig(
         provider="Anthropic",
         collection_url="https://www.anthropic.com/news",
         allowed_hostname="www.anthropic.com",
+        allowed_path_prefixes=("/news/",),
     ),
     VendorSourceConfig(
         provider="Google Gemini",
         collection_url="https://blog.google/products-and-platforms/products/gemini/",
         allowed_hostname="blog.google",
+        allowed_path_prefixes=(
+            "/products-and-platforms/products/gemini/",
+            "/innovation-and-ai/models-and-research/gemini-models/",
+        ),
     ),
 )
 
@@ -65,42 +73,60 @@ def _canonical_page_url(value: str) -> str:
 
 
 class _AnchorParser(HTMLParser):
+    _HEADING_TAGS = frozenset({"h1", "h2", "h3", "h4"})
+
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self._href: str | None = None
         self._depth = 0
         self._text: list[str] = []
+        self._heading_depth: int | None = None
+        self._heading_text: list[str] = []
         self.anchors: list[tuple[str, str]] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag.lower() == "a" and self._href is None:
+        lowered = tag.lower()
+        if lowered == "a" and self._href is None:
             href = next((value for key, value in attrs if key.lower() == "href"), None)
             if isinstance(href, str):
                 self._href = href
                 self._depth = 1
                 self._text = []
+                self._heading_depth = None
+                self._heading_text = []
                 return
         if self._href is not None:
             self._depth += 1
+            if lowered in self._HEADING_TAGS and self._heading_depth is None:
+                self._heading_depth = self._depth
 
     def handle_endtag(self, tag: str) -> None:
         if self._href is None:
             return
+        lowered = tag.lower()
+        if self._heading_depth == self._depth and lowered in self._HEADING_TAGS:
+            self._heading_depth = None
         if self._depth > 1:
             self._depth -= 1
             return
-        if tag.lower() == "a":
-            title = _clean_text(" ".join(self._text))
+        if lowered == "a":
+            heading = _clean_text(" ".join(self._heading_text))
+            title = heading or _clean_text(" ".join(self._text))
             self.anchors.append((self._href, title))
             self._href = None
             self._depth = 0
             self._text = []
+            self._heading_text = []
 
     def handle_data(self, data: str) -> None:
-        if self._href is not None:
-            text = _clean_text(data)
-            if text:
-                self._text.append(text)
+        if self._href is None:
+            return
+        text = _clean_text(data)
+        if not text:
+            return
+        self._text.append(text)
+        if self._heading_depth is not None:
+            self._heading_text.append(text)
 
 
 def _same_allowed_host(url: str, allowed_hostname: str) -> bool:
@@ -109,6 +135,14 @@ def _same_allowed_host(url: str, allowed_hostname: str) -> bool:
     except ValueError:
         return False
     return parts.scheme in {"http", "https"} and parts.hostname == allowed_hostname
+
+
+def _approved_article_path(url: str, prefixes: tuple[str, ...]) -> bool:
+    try:
+        path = urlsplit(url).path
+    except ValueError:
+        return False
+    return any(path.startswith(prefix) and path.rstrip("/") != prefix.rstrip("/") for prefix in prefixes)
 
 
 def fetch_official_vendor_source(
@@ -159,6 +193,8 @@ def fetch_official_vendor_source(
             continue
         if _canonical_page_url(absolute) == collection_identity:
             continue
+        if not _approved_article_path(absolute, source.allowed_path_prefixes):
+            continue
         items.append(
             {
                 "id": absolute,
@@ -183,12 +219,17 @@ def fetch_all_official_vendor_candidates(
     *,
     http_get: Callable[..., Any] = requests.get,
 ) -> list[dict[str, Any]]:
-    """Read the three reviewed vendor pages in stable order, isolating failures."""
+    """Read the three reviewed vendor pages; raise only when all three fail."""
 
     rows: list[dict[str, Any]] = []
+    successful_reads = 0
     for source in OFFICIAL_VENDOR_SOURCES:
         try:
-            rows.extend(fetch_official_vendor_source(source=source, http_get=http_get))
+            source_rows = fetch_official_vendor_source(source=source, http_get=http_get)
         except VendorLiveError:
             continue
+        successful_reads += 1
+        rows.extend(source_rows)
+    if successful_reads == 0:
+        raise VendorLiveError("OfficialVendor", "all_sources_failed")
     return rows
