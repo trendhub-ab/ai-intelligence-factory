@@ -259,6 +259,7 @@ NON_MEMBER_MODULES = frozenset((
     "v2_official_vendor_live.py",  # V2-005C read-only OfficialVendor live reader, not member/customer copy
     "v2_source_portfolio.py",  # V2-005B bounded shadow portfolio orchestration, not member/customer copy
     "v2_live_shadow_acquisition.py",  # V2-002 read-only shadow acquisition, not member/customer copy
+    "v2_semantic_screening.py",  # V2 shadow semantic classifier, not member/customer copy
     "v2_shadow_observation.py",  # V2-003 manual zero-model observation, not member/customer copy
     "v2_shadow_selection.py",  # V2-001 shadow-only selector, not member/customer copy
     "run156_decision_review_import.py",
