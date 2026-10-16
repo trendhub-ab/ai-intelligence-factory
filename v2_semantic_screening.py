@@ -1,8 +1,10 @@
 """Bounded Gemini Flash-Lite semantic screening for AIIF V2 shadow only.
 
-This module is intentionally isolated from Production authority. It performs at
-most one batched Gemini request, exposes no persistence hooks, and returns only
-a strict boolean classification contract keyed by candidate identity.
+This module is intentionally isolated from Production authority. Each adapter
+instance performs at most one batched Gemini request, exposes no persistence
+hooks, and returns only a strict boolean classification contract keyed by
+candidate identity. Variable fallback is owned by the V2 live proof wrapper so
+Factory code remains the sole retry owner.
 """
 from __future__ import annotations
 
@@ -11,8 +13,11 @@ from typing import Any, Callable, Mapping, Sequence
 
 import requests
 
+from run260_gemini_model_routing import DEFAULT_SCREENING_POOL
 
-DEFAULT_SEMANTIC_MODEL = "gemini-3.5-flash-lite"
+
+SEMANTIC_MODEL_POOL = tuple(DEFAULT_SCREENING_POOL)
+DEFAULT_SEMANTIC_MODEL = SEMANTIC_MODEL_POOL[0]
 GEMINI_GENERATE_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 SEMANTIC_TIMEOUT_SECONDS = 90.0
 MAX_SEMANTIC_CANDIDATES = 20
@@ -136,7 +141,7 @@ def _classify_http_status(status_code: int) -> str:
 
 
 class GeminiSemanticScreeningProvider:
-    """One-batch Gemini Flash-Lite adapter with no retry and no model fallback."""
+    """One-batch Gemini Flash-Lite adapter for one approved V1 screening model."""
 
     def __init__(
         self,
@@ -148,8 +153,8 @@ class GeminiSemanticScreeningProvider:
         key = str(api_key or "").strip()
         if not key:
             raise ValueError("GEMINI_API_KEY is required")
-        if model != DEFAULT_SEMANTIC_MODEL:
-            raise ValueError("V2 semantic screening permits only gemini-3.5-flash-lite")
+        if model not in SEMANTIC_MODEL_POOL:
+            raise ValueError("V2 semantic screening permits only the V1 Flash-Lite screening pool")
         self._api_key = key
         self.model = model
         self._http_post = http_post
