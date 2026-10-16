@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from PIL import Image, PngImagePlugin
+from PIL import Image, ImageDraw, PngImagePlugin
 
 import editorial_eyecatch as editorial
 import eyecatch_publication_contract as contract
@@ -25,13 +25,25 @@ class EyecatchHeadlineIntegrityTests(unittest.TestCase):
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_long_headline_cannot_be_auto_ellipsized_by_base_renderer(self):
+    def test_long_headline_base_renderer_preserves_full_title_without_ellipsis(self):
+        title = "AIへの指示を最小化するLLM解説を自動で生成する仕組みは、開発現場で何を変えるのか"
         with tempfile.TemporaryDirectory() as directory:
-            with self.assertRaises(ValueError):
-                editorial.generate_note_editorial_eyecatch(
-                    "AIへの指示を最小化するLLM解説を自動で生成する仕組みは、開発現場で何を変えるのか",
-                    "概要", str(Path(directory) / "cover.png"),
-                )
+            image = Path(directory) / "cover.png"
+            editorial.generate_note_editorial_eyecatch(title, "概要", str(image))
+            self.assertEqual(title, contract.verify_image_headline(image, title))
+            with Image.open(image) as generated:
+                self.assertEqual(title, generated.info.get("aiif_expected_headline"))
+                self.assertEqual(title, generated.info.get("aiif_rendered_headline"))
+
+    def test_long_headline_base_renderer_keeps_semantic_chunks_indivisible(self):
+        title = "OpenAIの新しいAIエージェント基盤は、企業の開発現場をどこまで変えるのか"
+        probe = Image.new("RGB", (1280, 670), "white")
+        draw = ImageDraw.Draw(probe)
+        _font, lines = editorial._fit_headline(draw, title, max_width=760, max_lines=3)
+        self.assertEqual(title, "".join(lines))
+        for chunk in editorial._semantic_chunks(title):
+            if len(chunk.strip()) >= 2:
+                self.assertTrue(any(chunk in line for line in lines), (chunk, lines))
 
     def test_model_title_containing_ellipsis_is_rejected_even_when_source_has_one(self):
         self.assertIsNone(semantic._validate_eyecatch_title("調査...続報", "調査..."))
