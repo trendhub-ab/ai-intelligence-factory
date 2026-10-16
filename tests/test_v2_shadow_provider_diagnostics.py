@@ -72,3 +72,45 @@ def test_artifact_report_records_safe_provider_code_not_exception_class_or_text(
     observation = report["observation"]
     assert observation["provider_error_category"] == "provider_response_shape_invalid"
     assert "GeminiEvidenceError" not in str(observation)
+
+
+def test_evidence_contract_failure_preserves_allowlisted_reason_without_raw_provider_text():
+    class InvalidEvidenceResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": (
+                                        '{"evidence_sufficient":true,'
+                                        '"reason_code":"SECRET_UNSAFE_REASON",'
+                                        '"evidence_points":["bounded point"]}'
+                                    )
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+
+    report = build_provider_backed_observation(
+        now=__import__("datetime").datetime(2026, 10, 16, 5, 0, tzinfo=__import__("datetime").timezone.utc),
+        run_id="v2-004-contract-reason",
+        config=LiveAcquisitionConfig(hn_limit=2, arxiv_limit=0, total_candidate_limit=2),
+        http_get=two_candidate_http_get,
+        api_key="test-key",
+        http_post=lambda *args, **kwargs: InvalidEvidenceResponse(),
+    )
+
+    observation = report["observation"]
+    assert report["deep_dive_result_category"] == "provider_failure"
+    assert observation["provider_error_category"] == "provider_evidence_contract_invalid"
+    assert observation["evidence_contract_reason"] == "reason_code_invalid"
+    assert "SECRET_UNSAFE_REASON" not in str(report)

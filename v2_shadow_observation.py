@@ -51,6 +51,18 @@ _SAFE_PROVIDER_ERROR_CODES = {
     "provider_response_shape_invalid",
     "provider_evidence_contract_invalid",
 }
+_SAFE_EVIDENCE_CONTRACT_REASONS = {
+    "result_not_object",
+    "result_keys_invalid",
+    "evidence_sufficient_not_boolean",
+    "reason_code_invalid",
+    "reason_code_contradicts_boolean",
+    "evidence_points_invalid",
+    "evidence_point_not_text",
+    "evidence_point_invalid",
+    "result_not_text",
+    "result_invalid_json",
+}
 
 
 class EvidenceContractError(ValueError):
@@ -60,10 +72,21 @@ class EvidenceContractError(ValueError):
 class GeminiEvidenceError(RuntimeError):
     """Opaque provider-boundary failure safe for structured shadow reporting."""
 
-    def __init__(self, safe_code: str) -> None:
+    def __init__(
+        self,
+        safe_code: str,
+        *,
+        evidence_contract_reason: str | None = None,
+    ) -> None:
         if safe_code not in _SAFE_PROVIDER_ERROR_CODES:
             raise ValueError("unsupported Gemini evidence error code")
+        if evidence_contract_reason is not None:
+            if safe_code != "provider_evidence_contract_invalid":
+                raise ValueError("evidence contract reason requires evidence contract error")
+            if evidence_contract_reason not in _SAFE_EVIDENCE_CONTRACT_REASONS:
+                raise ValueError("unsupported evidence contract reason")
         self.safe_code = safe_code
+        self.evidence_contract_reason = evidence_contract_reason
         super().__init__(safe_code)
 
 
@@ -287,8 +310,13 @@ class GeminiEvidenceProvider:
             raise GeminiEvidenceError("provider_response_shape_invalid") from None
         try:
             return parse_evidence_result(text)
-        except EvidenceContractError:
-            raise GeminiEvidenceError("provider_evidence_contract_invalid") from None
+        except EvidenceContractError as exc:
+            reason = str(exc)
+            safe_reason = reason if reason in _SAFE_EVIDENCE_CONTRACT_REASONS else None
+            raise GeminiEvidenceError(
+                "provider_evidence_contract_invalid",
+                evidence_contract_reason=safe_reason,
+            ) from None
 
 
 def build_provider_backed_observation(
@@ -317,17 +345,20 @@ def build_provider_backed_observation(
 
     provider_result: dict[str, Any] | None = None
     provider_error_category: str | None = None
+    evidence_contract_reason: str | None = None
 
     def audited_deep_dive(candidate: Mapping[str, Any]) -> Mapping[str, Any]:
-        nonlocal provider_result, provider_error_category
+        nonlocal provider_result, provider_error_category, evidence_contract_reason
         try:
             raw_result = provider(candidate)
             provider_result = _validate_evidence_mapping(raw_result)
             return provider_result
         except Exception as exc:
-            provider_error_category = (
-                exc.safe_code if isinstance(exc, GeminiEvidenceError) else type(exc).__name__
-            )
+            if isinstance(exc, GeminiEvidenceError):
+                provider_error_category = exc.safe_code
+                evidence_contract_reason = exc.evidence_contract_reason
+            else:
+                provider_error_category = type(exc).__name__
             raise
 
     report = run_bounded_live_shadow(
@@ -347,6 +378,7 @@ def build_provider_backed_observation(
             "request_budget": 1,
             "provider_result": provider_result,
             "provider_error_category": provider_error_category,
+            "evidence_contract_reason": evidence_contract_reason,
             "production_authority": "v1",
             "diagnostic_only": True,
         },
