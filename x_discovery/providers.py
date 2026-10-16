@@ -306,9 +306,11 @@ class ApifyProvider(XDiscoveryProvider):
         accepted: List[Dict[str, Any]] = []
         for row in self.raw_items:
             if self._is_diagnostic_row(row):
-                self._record_error(row)
-                if str(row.get("status") or "").strip().lower() == "zero-output" and self._row_handle(row) != "unknown":
+                status = str(row.get("status") or "").strip().lower()
+                if status == "zero-output" and self._row_handle(row) != "unknown":
                     self.empty_profile_count += 1
+                else:
+                    self._record_error(row)
                 continue
             self._accept_post(row, accepted)
             if len(accepted) >= int(max_records):
