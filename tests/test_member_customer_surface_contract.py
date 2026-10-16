@@ -58,6 +58,9 @@ class MemberCustomerSurfaceContractTests(unittest.TestCase):
             (root / "member_new_customer_page.py").write_text("def render(): return 'new page'")
             self.assertTrue(any("unclassified" in e for e in contract.validate_repository(root)))
 
+    def test_v2_semantic_screening_is_explicitly_non_member_infrastructure(self):
+        self.assertIn("v2_semantic_screening.py", contract.NON_MEMBER_MODULES)
+
     def test_digest_is_registered_and_has_no_internal_scoring_jargon(self):
         self.assertIn("monthly_digest", contract.SURFACES)
         rows = [
