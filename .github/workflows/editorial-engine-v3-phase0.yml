@@ -1,5 +1,6 @@
 name: Editorial Engine v3 Phase 0
 
+# one-shot ChatOps live trigger; reverted after run starts
 on:
   push:
     branches:
