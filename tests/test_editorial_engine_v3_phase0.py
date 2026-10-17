@@ -127,6 +127,26 @@ def test_editorial_engine_prompts_have_four_explicit_stages_and_no_external_fact
     assert "Evidence / Fact" in stages["Editorial Review"]
 
 
+def test_editorial_review_must_preserve_discovery_and_persona_signal() -> None:
+    prompts = _module("experiments.editorial_engine_v3_phase0.prompts")
+    stages = prompts.build_editorial_stage_prompts(_case("review-preservation"))
+    review = stages["Editorial Review"]
+    bundle = prompts.build_editorial_bundle_prompt(_case("review-preservation"))
+
+    required = (
+        "Initial Reaction",
+        "Question",
+        "Evidence Shift",
+        "Deeper Insight",
+        "Persona Narrative",
+        "無難な解説文",
+        "削除しない",
+    )
+    for marker in required:
+        assert marker in review
+        assert marker in bundle
+
+
 def test_blind_package_contains_only_opaque_labels_and_keeps_mapping_separate() -> None:
     runner = _module("experiments.editorial_engine_v3_phase0.runner")
     outputs = dict(zip(VARIANTS, ("first candidate", "second candidate", "third candidate"), strict=True))
