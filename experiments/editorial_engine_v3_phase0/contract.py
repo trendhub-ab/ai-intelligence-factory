@@ -62,7 +62,7 @@ class Phase0Case:
         if variant == "A_CURRENT_WRITER":
             return ("Current Writer",)
         if variant == "B_PERSONA_ONLY":
-            return ("Article Writing",)
+            return ("Persona Narrative", "Article Writing")
         return EDITORIAL_STAGES
 
     def assert_generated_facts_are_allowed(self, generated_facts: Iterable[str]) -> None:
