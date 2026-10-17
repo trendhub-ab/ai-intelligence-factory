@@ -119,7 +119,7 @@ Writer Reaction、Editorial Discovery、Cognitive Shiftを材料に、成人ビ�
 - unsupported certainty
 - Persona caricature or fabricated experience
 - repeated narrative template
-- obvious AI boilerplate that、Writerの温度を潰さず除去できるか
+- obvious AI boilerplate that Writerの温度を潰さず除去できるか
 
 禁止:
 - 一人称を形式的理由だけで無人称へ変える
