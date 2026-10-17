@@ -48,6 +48,14 @@ def _final_host_is_api_github(url: str) -> bool:
     return parts.scheme == "https" and parts.hostname == "api.github.com"
 
 
+def _live_error_category(category: str) -> str:
+    """Preserve the pre-reliability public error contract; detail lives in diagnostics."""
+
+    if category.startswith("http_"):
+        return "http_failure"
+    return "request_failure"
+
+
 def _release_event(repository: str, raw: object) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
@@ -106,7 +114,7 @@ def fetch_github_repository_releases(
             diagnostic_sink=diagnostic_sink,
         )
     except AcquisitionRequestError as exc:
-        raise GitHubLiveError(repository, exc.category) from None
+        raise GitHubLiveError(repository, _live_error_category(exc.category)) from None
 
     final_url = str(getattr(response, "url", url) or url)
     if not _final_host_is_api_github(final_url):
