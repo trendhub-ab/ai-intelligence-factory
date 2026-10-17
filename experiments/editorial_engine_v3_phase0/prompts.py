@@ -110,13 +110,14 @@ Writer Reaction、Editorial Discovery、Cognitive Shiftを材料に、成人ビ�
 
 Future Imagination または人への含意はEvidenceで支えられる場合だけ残し、発見からTarget Readerの判断へ接続する。
 若者言葉・キャラクター演技・架空体験・過剰なドラマ化を避ける。
-外部Factは追加しない。Evidence / Facts / Sourcesにない背景知識を、常識だからという理由で補わない。Decision、Actionの意味を保持する。
+外部Factは追加しない。Evidence / Facts / Sourcesにない背景知識を、常識だからという理由で補わない。導入・背景説明もFact境界の外へ出ない。Decision、Actionの意味を保持する。
 完成稿のみを出力する。"""
     review = f"""{boundary}
 
 【Fact-Safe Review】
-直前のPersona Article Generationを監査する。Default behaviorは、具体的な欠陥がない限り本文を変更しない。
-欠陥がある場合だけ、最小の局所修正を行い、最終完成稿だけを返す。
+直前のPersona Article Generationを監査する。unchanged判定を先に置かない。まず導入・見出し・背景説明・本文・判断・Actionまで、全稿の factual assertion をEvidence / Facts / Sourcesと照合する。
+導入・背景説明も監査対象であり、読みやすくするための前提説明だからという理由でFact境界を免除しない。
+全文照合の結果、具体的な欠陥がないと確認できた場合だけ本文を変更しない。欠陥がある場合は、最小の局所修正を行い、最終完成稿だけを返す。
 
 Fact監査はEvidence / Facts / Sourcesを唯一の許可境界として行う。一般知識として正しそうでも入力に書かれていない factual assertion は許可しない。
 次は具体的な欠陥として扱う。
@@ -135,6 +136,8 @@ Fact監査はEvidence / Facts / Sourcesを唯一の許可境界として行う�
 - obvious AI boilerplate that Writerの温度を潰さず除去できるか
 
 入力の強さを保存する。入力が『寄与する』『省ける』『不要』までしか言っていない時、より強い断定へ格上げしない。たとえば『低減に寄与→直結』『手間が省け→なくす』『再学習不要→再学習は膨大なコスト』は、入力がその強さや背景理由を明示していない限り stronger-than-input / true-but-unstated として修正する。『可能性』『見込める』『寄与』などのモダリティも入力どおりに保つ。
+
+入力にない背景前提の典型も削除・弱化対象にする。たとえば『一般的だった』『通常は〜が必要』のような業界一般化や、『過去の投資を無駄にするリスク』のような入力から一段進めた事業上の帰結を、入力が明示していないのに追加しない。
 
 禁止:
 - 一人称を形式的理由だけで無人称へ変える
@@ -200,10 +203,11 @@ Writer ReactionとEvidenceの間から、記事の本当の核心を発見する
 成人ビジネス読者向けの完成稿とし、若者言葉、キャラクター演技、架空体験は禁止。
 Future Imagination または人への含意はEvidenceで支えられる場合だけ残す。
 発見をTarget Readerの判断と次のActionへ接続する。
+導入・背景説明もFact境界の外へ出ない。入力にない業界慣行や一般的前提を、文章を滑らかにする目的で補わない。
 
 5. Fact-Safe Review
-Default behaviorは本文を変更しない。ただしEvidence / Facts / Sourcesを唯一のFact境界として、一文ごとの factual assertion が支えられているか確認する。
-次は具体的欠陥なので、最小の局所修正で削除・弱化・問いへの変更を行う。
+unchanged判定を先に置かない。まず導入・見出し・背景説明・本文・判断・Actionまで、全稿の factual assertion をEvidence / Facts / Sourcesと照合する。導入・背景説明も監査対象であり、前提説明だからという理由で免除しない。
+全文照合後に具体的欠陥がないと確認できた場合だけ本文を変更しない。欠陥があれば、最小の局所修正で削除・弱化・問いへの変更を行う。
 - true-but-unstated: 真に見えても入力にない背景知識
 - stronger-than-input: 入力より強い確実性・重要性・リスク評価
 - unsupported causal claim: 入力が支えない因果断定
@@ -211,6 +215,7 @@ Default behaviorは本文を変更しない。ただしEvidence / Facts / Source
 - 数字・固有名詞の変更、Evidence矛盾、decision/action歪曲、Persona caricature、fabricated experience、repeated template、明白なAI boilerplate
 
 入力の強さを保存する。『低減に寄与→直結』『手間が省け→なくす』『再学習不要→再学習は膨大なコスト』のように、入力より強い断定・背景説明へ格上げしない。入力の『可能性』『見込める』『寄与』などのモダリティを維持し、強くなった箇所は最小限に弱化・削除する。
+入力にない『一般的だった』『通常は〜が必要』『過去の投資を無駄にするリスク』のような背景前提・一般化・事業上の帰結も、true-but-unstatedとして削除・弱化する。
 
 Fact修整に不要なのにwriter-owned anchor、Writer Question、before→after、What I Now Find Interesting、一人称、好奇心、specific question、Evidenceに支えられたFuture Imaginationを削除・平坦化しない。
 
@@ -224,5 +229,5 @@ Markdownフェンスや前置きは付けず、次の5キーだけを持つ有�
   "Editorial Discovery": "Surface / Interesting Tension / Evidence Pivot / Deeper Insight / Editorial Thesis / Narrative Pathを含む成果物",
   "Cognitive Shift": "Before View / Evidence Encounter / After View / What I Now Find Interestingを含む成果物",
   "Persona Article Generation": "writer-owned anchor / Writer Question / before→after / What I Now Find Interestingを自然に残し、Narrative Path固有の構成で書いた初稿全文",
-  "Fact-Safe Review": "必要ならFact境界と入力の強さだけを最小修正した最終記事全文。修正不要なら初稿をそのまま返す"
+  "Fact-Safe Review": "全稿のFact境界を照合し、必要なら入力外の背景説明と強すぎる断定だけを最小修正した最終記事全文。修正不要と確認できた場合だけ初稿をそのまま返す"
 }}"""
