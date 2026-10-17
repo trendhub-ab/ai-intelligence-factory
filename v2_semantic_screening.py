@@ -27,6 +27,7 @@ _SEMANTIC_BOOLEAN_FIELDS = (
     "change_novelty",
     "applied_reader_value",
 )
+SEMANTIC_FIELDS = _SEMANTIC_BOOLEAN_FIELDS
 _REQUIRED_ITEM_KEYS = {"candidate_identity", *_SEMANTIC_BOOLEAN_FIELDS}
 _SAFE_ERROR_CODES = {
     "semantic_provider_request_failed",
@@ -42,6 +43,16 @@ _SAFE_ERROR_CODES = {
     "semantic_provider_contract_invalid",
     "semantic_provider_uninformative_saturated",
 }
+_GOLD_TOP_LEVEL_KEYS = {"benchmark_version", "label_contract", "cases"}
+_GOLD_CASE_KEYS = {
+    "case_id",
+    "title",
+    "description",
+    "source_family",
+    "gold",
+    "rationale",
+    "label_provenance",
+}
 
 
 class SemanticScreeningContractError(ValueError):
@@ -56,6 +67,147 @@ class SemanticScreeningError(RuntimeError):
             raise ValueError("unsupported semantic screening error code")
         self.safe_code = safe_code
         super().__init__(safe_code)
+
+
+class GoldBenchmarkContractError(ValueError):
+    """Offline Gold benchmark input did not satisfy the strict contract."""
+
+
+def validate_gold_dataset(payload: Any) -> list[dict[str, Any]]:
+    """Validate and copy the human-authored V2 Semantic Gold dataset."""
+
+    if not isinstance(payload, Mapping) or set(payload) != _GOLD_TOP_LEVEL_KEYS:
+        raise GoldBenchmarkContractError("gold_dataset_shape_invalid")
+    if payload.get("benchmark_version") != "v1":
+        raise GoldBenchmarkContractError("gold_benchmark_version_invalid")
+    if payload.get("label_contract") != "v2_semantic_screening":
+        raise GoldBenchmarkContractError("gold_label_contract_invalid")
+    cases = payload.get("cases")
+    if not isinstance(cases, list):
+        raise GoldBenchmarkContractError("gold_cases_invalid")
+
+    seen: set[str] = set()
+    validated: list[dict[str, Any]] = []
+    for case in cases:
+        if not isinstance(case, Mapping) or set(case) != _GOLD_CASE_KEYS:
+            raise GoldBenchmarkContractError("gold_case_shape_invalid")
+        case_id = case.get("case_id")
+        if not isinstance(case_id, str) or not case_id.strip() or case_id in seen:
+            raise GoldBenchmarkContractError("gold_case_id_invalid")
+        for key in ("title", "description", "source_family", "rationale", "label_provenance"):
+            if not isinstance(case.get(key), str):
+                raise GoldBenchmarkContractError(f"gold_case_{key}_invalid")
+        if not str(case.get("rationale") or "").strip() or not str(case.get("label_provenance") or "").strip():
+            raise GoldBenchmarkContractError("gold_case_review_metadata_invalid")
+        gold = case.get("gold")
+        if not isinstance(gold, Mapping) or set(gold) != set(SEMANTIC_FIELDS):
+            raise GoldBenchmarkContractError("gold_vector_shape_invalid")
+        if any(type(gold.get(field)) is not bool for field in SEMANTIC_FIELDS):
+            raise GoldBenchmarkContractError("gold_vector_boolean_invalid")
+        seen.add(case_id)
+        validated.append(
+            {
+                "case_id": case_id,
+                "title": case["title"],
+                "description": case["description"],
+                "source_family": case["source_family"],
+                "gold": {field: gold[field] for field in SEMANTIC_FIELDS},
+                "rationale": case["rationale"],
+                "label_provenance": case["label_provenance"],
+            }
+        )
+    return validated
+
+
+def _validate_gold_predictions(
+    gold_cases: Sequence[Mapping[str, Any]],
+    predictions: Any,
+) -> dict[str, dict[str, bool]]:
+    if not isinstance(predictions, Mapping):
+        raise GoldBenchmarkContractError("prediction_shape_invalid")
+    case_ids = [str(case.get("case_id") or "") for case in gold_cases]
+    if set(predictions) != set(case_ids) or len(predictions) != len(case_ids):
+        raise GoldBenchmarkContractError("prediction_case_ids_invalid")
+    validated: dict[str, dict[str, bool]] = {}
+    for case_id in case_ids:
+        row = predictions.get(case_id)
+        if not isinstance(row, Mapping) or set(row) != set(SEMANTIC_FIELDS):
+            raise GoldBenchmarkContractError("prediction_vector_shape_invalid")
+        if any(type(row.get(field)) is not bool for field in SEMANTIC_FIELDS):
+            raise GoldBenchmarkContractError("prediction_vector_boolean_invalid")
+        validated[case_id] = {field: row[field] for field in SEMANTIC_FIELDS}
+    return validated
+
+
+def _safe_ratio(numerator: int, denominator: int) -> float:
+    return float(numerator / denominator) if denominator else 0.0
+
+
+def evaluate_gold_predictions(
+    gold_cases: Sequence[Mapping[str, Any]],
+    predictions: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Evaluate predictions against reviewed Gold labels without provider calls."""
+
+    cases = list(gold_cases)
+    validated_predictions = _validate_gold_predictions(cases, predictions)
+    dimensions: dict[str, dict[str, int | float]] = {}
+    exact_matches = 0
+    all_positive = 0
+
+    for field in SEMANTIC_FIELDS:
+        tp = fp = tn = fn = 0
+        for case in cases:
+            case_id = str(case.get("case_id") or "")
+            gold = case.get("gold")
+            if not isinstance(gold, Mapping) or type(gold.get(field)) is not bool:
+                raise GoldBenchmarkContractError("gold_cases_not_validated")
+            expected = gold[field]
+            predicted = validated_predictions[case_id][field]
+            if expected and predicted:
+                tp += 1
+            elif not expected and predicted:
+                fp += 1
+            elif not expected and not predicted:
+                tn += 1
+            else:
+                fn += 1
+        precision = _safe_ratio(tp, tp + fp)
+        recall = _safe_ratio(tp, tp + fn)
+        f1 = _safe_ratio(2 * precision * recall, precision + recall)
+        dimensions[field] = {
+            "tp": tp,
+            "fp": fp,
+            "tn": tn,
+            "fn": fn,
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+        }
+
+    for case in cases:
+        case_id = str(case.get("case_id") or "")
+        gold = case.get("gold")
+        if not isinstance(gold, Mapping):
+            raise GoldBenchmarkContractError("gold_cases_not_validated")
+        predicted = validated_predictions[case_id]
+        if all(predicted[field] is gold[field] for field in SEMANTIC_FIELDS):
+            exact_matches += 1
+        if all(predicted[field] is True for field in SEMANTIC_FIELDS):
+            all_positive += 1
+
+    sample_count = len(cases)
+    macro = {
+        metric: sum(float(dimensions[field][metric]) for field in SEMANTIC_FIELDS) / len(SEMANTIC_FIELDS)
+        for metric in ("precision", "recall", "f1")
+    }
+    return {
+        "sample_count": sample_count,
+        "dimensions": dimensions,
+        "macro": macro,
+        "exact_match_accuracy": _safe_ratio(exact_matches, sample_count),
+        "all_positive_saturation_rate": _safe_ratio(all_positive, sample_count),
+    }
 
 
 def _safe_candidate(candidate: Mapping[str, Any]) -> dict[str, Any]:
@@ -134,13 +286,7 @@ def parse_semantic_screening_result(
 
 
 def _is_uninformative_positive_saturation(parsed: Mapping[str, Mapping[str, Any]]) -> bool:
-    """Reject a large batch when almost every row is indiscriminately all-positive.
-
-    V2 deliberately mixes source families. For batches of at least four candidates,
-    >=90% all-positive classifications are treated as a semantic quality failure so
-    the existing Lite-lane fallback can try the alternate model. Small batches are
-    exempt because they can legitimately be uniformly high-value.
-    """
+    """Reject a large batch when almost every row is indiscriminately all-positive."""
 
     rows = [row for row in parsed.values() if isinstance(row, Mapping)]
     if len(rows) < 4:
