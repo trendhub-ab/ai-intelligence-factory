@@ -10,12 +10,12 @@ from local_skills.compiler import compile_snapshot
 
 from .cases import READY_CASES, ReplayCase
 from .contract import EDITORIAL_STAGES
-from .prompts import build_editorial_stage_prompts, build_persona_only_prompt
+from .prompts import build_editorial_bundle_prompt, build_persona_only_prompt
 from .runner import build_blind_package, build_current_writer_snapshot
 
 DEFAULT_MODEL = "gemini-3.6-flash"
 B_CALLS_PER_CASE = 1
-C_CALLS_PER_CASE = 4
+C_CALLS_PER_CASE = 1
 EXPECTED_CASES = 3
 MAX_PROVIDER_CALLS = EXPECTED_CASES * (B_CALLS_PER_CASE + C_CALLS_PER_CASE)
 
@@ -43,45 +43,38 @@ def _persona_only_article(client: Any, *, model: str, item: ReplayCase) -> str:
     return _provider_text(client, model=model, prompt=build_persona_only_prompt(item.case))
 
 
+def _strip_json_fence(text: str) -> str:
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        first_newline = cleaned.find("\n")
+        if first_newline >= 0:
+            cleaned = cleaned[first_newline + 1 :]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+    return cleaned.strip()
+
+
+def _parse_editorial_bundle(text: str) -> tuple[str, dict[str, str]]:
+    try:
+        payload = json.loads(_strip_json_fence(text))
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("invalid editorial bundle JSON") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("invalid editorial bundle: object required")
+
+    stages: dict[str, str] = {}
+    for stage in EDITORIAL_STAGES:
+        value = str(payload.get(stage) or "").strip()
+        if not value:
+            raise RuntimeError(f"invalid editorial bundle: missing stage {stage}")
+        stages[stage] = value
+
+    return stages["Editorial Review"], stages
+
+
 def _editorial_article(client: Any, *, model: str, item: ReplayCase) -> tuple[str, dict[str, str]]:
-    prompts = build_editorial_stage_prompts(item.case)
-    outputs: dict[str, str] = {}
-
-    discovery = _provider_text(client, model=model, prompt=prompts["Editorial Discovery"])
-    outputs["Editorial Discovery"] = discovery
-
-    narrative_prompt = (
-        prompts["Persona Narrative"]
-        + "\n\n【Editorial Discovery Output】\n"
-        + discovery
-        + "\n\nこのDiscoveryを事実として増幅せず、認識変化の設計材料としてのみ使う。"
-    )
-    narrative = _provider_text(client, model=model, prompt=narrative_prompt)
-    outputs["Persona Narrative"] = narrative
-
-    writing_prompt = (
-        prompts["Article Writing"]
-        + "\n\n【Editorial Discovery Output】\n"
-        + discovery
-        + "\n\n【Persona Narrative Output】\n"
-        + narrative
-    )
-    draft = _provider_text(client, model=model, prompt=writing_prompt)
-    outputs["Article Writing"] = draft
-
-    review_prompt = (
-        prompts["Editorial Review"]
-        + "\n\n【Editorial Discovery Output】\n"
-        + discovery
-        + "\n\n【Persona Narrative Output】\n"
-        + narrative
-        + "\n\n【Review対象の完成稿】\n"
-        + draft
-    )
-    reviewed = _provider_text(client, model=model, prompt=review_prompt)
-    outputs["Editorial Review"] = reviewed
-    assert tuple(outputs) == EDITORIAL_STAGES
-    return reviewed, outputs
+    bundle = _provider_text(client, model=model, prompt=build_editorial_bundle_prompt(item.case))
+    return _parse_editorial_bundle(bundle)
 
 
 def _input_digest(item: ReplayCase) -> str:
