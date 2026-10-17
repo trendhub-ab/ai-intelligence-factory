@@ -16,9 +16,25 @@ on:
         required: true
         default: false
         type: boolean
+      model_candidates:
+        description: 'Ordered non-Lite Gemini candidates; first successful model is locked for the whole experiment'
+        required: true
+        default: 'gemini-3.8-flash,gemini-3.6-flash'
+        type: string
+      case_cooldown_seconds:
+        description: 'Cooldown between completed cases'
+        required: true
+        default: '45'
+        type: string
+      resume_run_id:
+        description: 'Optional prior Phase 0 run ID whose checkpoint artifact should be resumed'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   contract:
@@ -44,7 +60,7 @@ jobs:
     needs: contract
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_live == true }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     concurrency:
       group: ai-intelligence-gemini-budget
       cancel-in-progress: false
@@ -53,19 +69,28 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Restore prior Phase 0 checkpoint
+        if: ${{ inputs.resume_run_id != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: editorial-engine-v3-phase0-checkpoint
+          path: phase0_artifacts
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.resume_run_id }}
       - name: Install isolated Gemini client
         run: python -m pip install --disable-pip-version-check 'google-genai>=1.56.0,<2.0.0'
       - name: Run bounded three-case replay
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          AIIF_PHASE0_MODEL: gemini-3-flash-preview
+          AIIF_PHASE0_MODELS: ${{ inputs.model_candidates }}
+          AIIF_PHASE0_CASE_COOLDOWN_SECONDS: ${{ inputs.case_cooldown_seconds }}
           AIIF_PHASE0_OUTPUT_DIR: phase0_artifacts
         run: python -m experiments.editorial_engine_v3_phase0.live
-      - name: Upload blind evaluation artifacts
-        if: success()
+      - name: Upload checkpoint and blind evaluation artifacts
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: editorial-engine-v3-phase0
+          name: editorial-engine-v3-phase0-checkpoint
           path: phase0_artifacts
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
