@@ -9,6 +9,16 @@ import pytest
 from experiments.editorial_engine_v3_phase0.contract import EDITORIAL_STAGES
 
 
+def _reaction_first_payload(*, final: str = "reviewed final article") -> dict[str, str]:
+    return {
+        "Writer Reaction": "Reaction: curious\nCuriosity: why\nQuestion: really?\nFuture Imagination: what changes\nEmotion Intensity: MEDIUM",
+        "Editorial Discovery": "Surface: update\nInteresting Tension: tension\nEvidence Pivot: evidence\nDeeper Insight: deeper\nEditorial Thesis: thesis",
+        "Cognitive Shift": "Before View: before\nEvidence Encounter: evidence\nAfter View: after\nWhat I Now Find Interesting: discovery",
+        "Persona Article Generation": "draft with writer-owned reaction and cognitive movement",
+        "Fact-Safe Review": final,
+    }
+
+
 def test_live_module_exists_and_uses_variable_non_lite_model_candidates() -> None:
     spec = importlib.util.find_spec("experiments.editorial_engine_v3_phase0.live")
     assert spec is not None
@@ -29,33 +39,22 @@ def test_live_experiment_has_exact_expected_logical_call_budget() -> None:
     assert live.C_ONLY_MAX_PROVIDER_CALLS == 3
 
 
-def test_editorial_bundle_requires_all_four_stages_and_uses_review_as_final() -> None:
+def test_editorial_bundle_requires_all_five_stages_and_uses_fact_safe_review_as_final() -> None:
     from experiments.editorial_engine_v3_phase0 import live
 
-    payload = json.dumps(
-        {
-            "Editorial Discovery": "discovery",
-            "Persona Narrative": "narrative",
-            "Article Writing": "draft",
-            "Editorial Review": "reviewed final article",
-        },
-        ensure_ascii=False,
-    )
-    final, stages = live._parse_editorial_bundle(payload)
+    final, stages = live._parse_editorial_bundle(json.dumps(_reaction_first_payload(), ensure_ascii=False))
     assert tuple(stages) == EDITORIAL_STAGES
     assert final == "reviewed final article"
+    assert stages["Writer Reaction"]
+    assert stages["Cognitive Shift"]
+    assert stages["Persona Article Generation"]
 
 
 @pytest.mark.parametrize("missing_stage", EDITORIAL_STAGES)
 def test_editorial_bundle_fails_closed_when_a_stage_is_missing(missing_stage: str) -> None:
     from experiments.editorial_engine_v3_phase0 import live
 
-    payload = {
-        "Editorial Discovery": "discovery",
-        "Persona Narrative": "narrative",
-        "Article Writing": "draft",
-        "Editorial Review": "reviewed final article",
-    }
+    payload = _reaction_first_payload()
     payload.pop(missing_stage)
     with pytest.raises(RuntimeError, match="editorial bundle"):
         live._parse_editorial_bundle(json.dumps(payload, ensure_ascii=False))
@@ -145,7 +144,7 @@ def test_case_cooldown_is_configurable_and_non_negative(monkeypatch: pytest.Monk
         live._case_cooldown_seconds()
 
 
-def test_c_only_refinement_reuses_a_b_and_spends_three_calls(tmp_path: Path) -> None:
+def test_c_only_refinement_reuses_a_b_records_five_stages_and_spends_three_calls(tmp_path: Path) -> None:
     from experiments.editorial_engine_v3_phase0 import live
 
     calls: list[str] = []
@@ -153,12 +152,7 @@ def test_c_only_refinement_reuses_a_b_and_spends_three_calls(tmp_path: Path) -> 
     class Models:
         def generate_content(self, *, model: str, contents: str):
             calls.append(model)
-            payload = {
-                "Editorial Discovery": "discovery",
-                "Persona Narrative": "narrative",
-                "Article Writing": "draft with recognition shift",
-                "Editorial Review": f"reviewed-{len(calls)}",
-            }
+            payload = _reaction_first_payload(final=f"reviewed-{len(calls)}")
             return type("Response", (), {"text": json.dumps(payload, ensure_ascii=False)})()
 
     cases = []
@@ -204,3 +198,4 @@ def test_c_only_refinement_reuses_a_b_and_spends_three_calls(tmp_path: Path) -> 
         assert case["outputs"]["A_CURRENT_WRITER"].startswith("A-")
         assert case["outputs"]["B_PERSONA_ONLY"].startswith("B-")
         assert case["outputs"]["C_EDITORIAL_ENGINE"] == f"reviewed-{index}"
+        assert tuple(case["editorial_stage_outputs"]) == EDITORIAL_STAGES
