@@ -7,7 +7,7 @@ no write, discovery, tag fallback, model, persistence, or Production authority.
 from __future__ import annotations
 
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
 
 import requests
@@ -80,6 +80,7 @@ def fetch_github_repository_releases(
     timeout_seconds: float = 8.0,
     max_events: int = 5,
     sleep_fn: Callable[[float], None] = time.sleep,
+    diagnostic_sink: Callable[[Mapping[str, object]], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch one exact allowlisted repository releases collection."""
 
@@ -102,6 +103,7 @@ def fetch_github_repository_releases(
             timeout=float(timeout_seconds),
             request_kwargs=request_kwargs,
             sleep_fn=sleep_fn,
+            diagnostic_sink=diagnostic_sink,
         )
     except AcquisitionRequestError as exc:
         raise GitHubLiveError(repository, exc.category) from None
@@ -136,6 +138,7 @@ def fetch_all_github_candidates(
     http_get: Callable[..., Any] = requests.get,
     token: str | None = None,
     sleep_fn: Callable[[float], None] = time.sleep,
+    diagnostic_sink: Callable[[Mapping[str, object]], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Read all reviewed repositories; raise only when every repository fails."""
 
@@ -148,6 +151,7 @@ def fetch_all_github_candidates(
                 http_get=http_get,
                 token=token,
                 sleep_fn=sleep_fn,
+                diagnostic_sink=diagnostic_sink,
             )
         except GitHubLiveError:
             continue
