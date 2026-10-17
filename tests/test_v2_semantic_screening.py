@@ -107,6 +107,24 @@ def test_prompt_exposes_source_metadata_but_not_internal_scores_or_reasons():
     assert "screening_reasons" not in prompt
 
 
+def test_prompt_requires_conservative_evidence_boundaries_for_discrimination():
+    prompt = build_semantic_screening_prompt(
+        [
+            _candidate(
+                "https://example.com/roadster",
+                title="Tesla Roadster",
+                description="HN score=900; comments=400",
+            )
+        ]
+    )
+
+    assert "When evidence is missing, ambiguous, or merely plausible, classify that dimension false." in prompt
+    assert "Provider or source identity alone is not evidence" in prompt
+    assert "engagement metadata such as scores or comment counts is not semantic evidence" in prompt
+    assert "If ai_relevant is false, the other three dimensions must also be false." in prompt
+    assert "Do not make every candidate positive merely because this is an AI screening task." in prompt
+
+
 def test_provider_batches_candidates_into_exactly_one_request():
     calls = []
 
