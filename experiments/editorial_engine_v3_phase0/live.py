@@ -385,14 +385,26 @@ def _run_c_only_refinement(
     state["c_refinement_provider_calls_total"] = cumulative_calls
     state["c_refinement_provider_attempts_total"] = cumulative_attempts
     session.provider_attempts = 0
-    ordered_cases = [baseline_by_id[item.case.case_id] for item in READY_CASES]
+
+    ordered_cases: list[dict[str, Any]] = []
+    for item in READY_CASES:
+        case = dict(baseline_by_id[item.case.case_id])
+        if item.case.case_id not in reusable_completed:
+            outputs = dict(case.get("outputs") or {})
+            outputs.pop("C_EDITORIAL_ENGINE", None)
+            case["outputs"] = outputs
+            case["editorial_stage_outputs"] = {}
+        ordered_cases.append(case)
+
     state["cases"] = ordered_cases
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Persist the resume contract before the first provider call so a later 429/503
-    # can safely continue from any cases that completed before the interruption.
+    # Normalize all human-facing artifacts before the first provider call. If the
+    # first call fails, no stale C from an older fingerprint remains reviewable.
+    _rebuild_blind_state(state)
     _write_checkpoint(out_dir, state)
+    _write_evaluation_artifacts(out_dir, state)
 
     missing = [
         (index, item)
@@ -418,6 +430,7 @@ def _run_c_only_refinement(
             state["provider_attempts"] = session.provider_attempts
             state["c_refinement_provider_attempts_total"] = cumulative_attempts + attempts_accounted + attempt_delta
             _write_checkpoint(out_dir, state)
+            _write_evaluation_artifacts(out_dir, state)
             raise
 
         attempt_delta = session.provider_attempts - attempts_before
