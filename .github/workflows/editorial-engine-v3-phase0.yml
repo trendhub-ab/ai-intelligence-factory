@@ -9,6 +9,7 @@ on:
       - 'tests/test_editorial_engine_v3_phase0.py'
       - 'tests/test_editorial_engine_v3_phase0_live.py'
       - 'tests/test_editorial_engine_v3_phase0_quality_contract.py'
+      - 'tests/test_editorial_engine_v3_phase0_proof.py'
       - '.github/workflows/editorial-engine-v3-phase0.yml'
   workflow_dispatch:
     inputs:
@@ -60,7 +61,8 @@ jobs:
           python -m pytest -q \
             tests/test_editorial_engine_v3_phase0.py \
             tests/test_editorial_engine_v3_phase0_live.py \
-            tests/test_editorial_engine_v3_phase0_quality_contract.py
+            tests/test_editorial_engine_v3_phase0_quality_contract.py \
+            tests/test_editorial_engine_v3_phase0_proof.py
 
   live-proof:
     name: Phase 0 bounded Gemini replay
@@ -91,6 +93,9 @@ jobs:
           exit 1
       - name: Install isolated Gemini client
         run: python -m pip install --disable-pip-version-check 'google-genai>=1.56.0,<2.0.0'
+      - name: Snapshot restored A/B baseline
+        if: ${{ inputs.regenerate_c_only == true }}
+        run: python -m experiments.editorial_engine_v3_phase0.proof snapshot-baseline --output-dir phase0_artifacts
       - name: Run bounded three-case replay
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -99,6 +104,11 @@ jobs:
           AIIF_PHASE0_REGENERATE_C_ONLY: ${{ inputs.regenerate_c_only }}
           AIIF_PHASE0_OUTPUT_DIR: phase0_artifacts
         run: python -m experiments.editorial_engine_v3_phase0.live
+      - name: Verify C-only structural proof
+        if: ${{ always() && inputs.regenerate_c_only == true }}
+        env:
+          AIIF_PHASE0_MODELS: ${{ inputs.model_candidates }}
+        run: python -m experiments.editorial_engine_v3_phase0.proof verify --output-dir phase0_artifacts
       - name: Upload checkpoint and blind evaluation artifacts
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
