@@ -26,6 +26,7 @@ def test_live_experiment_has_exact_expected_logical_call_budget() -> None:
     assert live.C_CALLS_PER_CASE == 1
     assert live.EXPECTED_CASES == 3
     assert live.MAX_PROVIDER_CALLS == 6
+    assert live.C_ONLY_MAX_PROVIDER_CALLS == 3
 
 
 def test_editorial_bundle_requires_all_four_stages_and_uses_review_as_final() -> None:
@@ -142,3 +143,64 @@ def test_case_cooldown_is_configurable_and_non_negative(monkeypatch: pytest.Monk
     monkeypatch.setenv("AIIF_PHASE0_CASE_COOLDOWN_SECONDS", "-1")
     with pytest.raises(RuntimeError, match="cooldown"):
         live._case_cooldown_seconds()
+
+
+def test_c_only_refinement_reuses_a_b_and_spends_three_calls(tmp_path: Path) -> None:
+    from experiments.editorial_engine_v3_phase0 import live
+
+    calls: list[str] = []
+
+    class Models:
+        def generate_content(self, *, model: str, contents: str):
+            calls.append(model)
+            payload = {
+                "Editorial Discovery": "discovery",
+                "Persona Narrative": "narrative",
+                "Article Writing": "draft with recognition shift",
+                "Editorial Review": f"reviewed-{len(calls)}",
+            }
+            return type("Response", (), {"text": json.dumps(payload, ensure_ascii=False)})()
+
+    cases = []
+    for item in live.READY_CASES:
+        cases.append(
+            {
+                "case_id": item.case.case_id,
+                "theme": item.theme,
+                "input_digest": live._input_digest(item),
+                "outputs": {
+                    "A_CURRENT_WRITER": f"A-{item.case.case_id}",
+                    "B_PERSONA_ONLY": f"B-{item.case.case_id}",
+                    "C_EDITORIAL_ENGINE": f"old-C-{item.case.case_id}",
+                },
+                "editorial_stage_outputs": {},
+            }
+        )
+    state = {
+        "selected_model": "m1",
+        "provider_calls": 6,
+        "provider_attempts": 7,
+        "cases": cases,
+        "blind_packages": [],
+        "blind_mapping": {},
+    }
+    client = type("Client", (), {"models": Models()})()
+    session = live.ModelSession(candidates=("m1",), locked_model="m1")
+
+    refined = live._run_c_only_refinement(
+        client,
+        session=session,
+        state=state,
+        output_dir=tmp_path,
+        cooldown=0,
+        sleep_fn=lambda _: None,
+    )
+
+    assert len(calls) == 3
+    assert refined["provider_calls"] == 3
+    assert refined["provider_attempts"] == 3
+    assert refined["mode"] == "C_ONLY_REFINEMENT"
+    for index, case in enumerate(refined["cases"], start=1):
+        assert case["outputs"]["A_CURRENT_WRITER"].startswith("A-")
+        assert case["outputs"]["B_PERSONA_ONLY"].startswith("B-")
+        assert case["outputs"]["C_EDITORIAL_ENGINE"] == f"reviewed-{index}"
