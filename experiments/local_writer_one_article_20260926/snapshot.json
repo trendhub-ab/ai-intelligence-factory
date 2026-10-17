@@ -1,0 +1,25 @@
+{
+  "schema": "aiif_local_writer_snapshot_v1",
+  "captured_from": "AIIF Notion structured records",
+  "canonical_entity_id": "arxiv:2608.27364",
+  "name": "Sophistication in GenAI Use: Field Evidence from a Large Firm",
+  "reader_title": "全社にAIを配っても使いこなせない？ 大手企業70万件のログが明かす「熟練度」の壁。",
+  "source": "ArXiv",
+  "source_summary": "KPMGのバックオフィス社員約4,000人・8ヶ月間で71万件を超えるプロンプトデータを分析し、企業内における生成AI利用の「熟練度（Sophistication）」を定量評価した論文。",
+  "what": "役職が高い社員ほど生成AIを高度に活用する傾向が見られ、職種間の格差も大きかった。追跡期間中や公式研修の実施後にも、熟練度の持続的な向上は観察されなかった。",
+  "why_important": "この研究だけでAI投資のROI（投資対効果）への影響までは断定できない。ただ、利用回数だけでなく、使い方の質や業務文脈まで見る必要性を示している。",
+  "decision": "TRY",
+  "decision_score": 72,
+  "decision_reason": "自社内のプロンプト利用ログの定性分析に着手し、ドメイン知識を持つ高熟練層（シニア層・戦略部署）のノウハウを仕組み化・テンプレート化するアプローチを試すべきである。",
+  "action": "社内AIツールの利用ログから高熟練ケースを抽出し、一律研修ではなく業務別の文脈を組み込んだプロンプト共有の仕組みを検証する。",
+  "primary_risk": "単一企業バックオフィスデータに基づく分析のため一般化可能性に制限があり、公式なAIトレーニング後も習熟度の持続的改善が観察されなかった点。",
+  "best_for": "組織内の生成AI利用実態やプロンプト習熟度の計測手法・ベンチマーク指標の参考。",
+  "avoid_for": "短期的なAI研修のみによる全社プロンプト習熟度の持続的向上を前提とした導入計画の策定。",
+  "evidence_confidence": "HIGH",
+  "production_readiness": "LOW",
+  "evidence_urls": [
+    "https://arxiv.org/abs/2608.27364v1",
+    "https://arxiv.org/pdf/2608.27364.pdf",
+    "https://replicate.com/docs/arxiv/about"
+  ]
+}
