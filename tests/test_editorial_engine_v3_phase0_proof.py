@@ -52,16 +52,20 @@ def _complete_current_refinement(live, state: dict) -> None:
     live._rebuild_blind_state(state)
 
 
-def test_c_only_structural_proof_verdict_passes_for_complete_current_fingerprint(tmp_path: Path) -> None:
-    from experiments.editorial_engine_v3_phase0 import live, proof
-
+def _write_complete_current_state(live, proof, tmp_path: Path) -> dict:
     state = _baseline_state(live)
     live._write_checkpoint(tmp_path, state)
     proof.snapshot_ab_baseline(tmp_path)
-
     _complete_current_refinement(live, state)
     live._write_checkpoint(tmp_path, state)
     live._write_evaluation_artifacts(tmp_path, state)
+    return state
+
+
+def test_c_only_structural_proof_verdict_passes_for_complete_current_fingerprint(tmp_path: Path) -> None:
+    from experiments.editorial_engine_v3_phase0 import live, proof
+
+    _write_complete_current_state(live, proof, tmp_path)
 
     report = proof.evaluate_c_only_proof(tmp_path, model_candidates=("gemini-3.8-flash",))
 
@@ -107,3 +111,44 @@ def test_c_only_structural_proof_verdict_fails_when_cumulative_calls_are_not_exa
 
     assert report["status"] == "FAIL"
     assert report["checks"]["cumulative_provider_calls_exact"] is False
+
+
+def test_c_only_structural_proof_verdict_rejects_stale_blind_article_body(tmp_path: Path) -> None:
+    from experiments.editorial_engine_v3_phase0 import live, proof
+
+    state = _write_complete_current_state(live, proof, tmp_path)
+    case_id = state["cases"][0]["case_id"]
+    c_label = next(
+        label
+        for label, variant in state["blind_mapping"][case_id].items()
+        if variant == "C_EDITORIAL_ENGINE"
+    )
+    packages_path = tmp_path / "blind_packages.json"
+    packages = json.loads(packages_path.read_text(encoding="utf-8"))
+    candidate = next(
+        candidate
+        for candidate in packages[0]["candidates"]
+        if candidate["label"] == c_label
+    )
+    candidate["article"] = "stale-C-from-an-older-proof"
+    packages_path.write_text(json.dumps(packages, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    report = proof.evaluate_c_only_proof(tmp_path, model_candidates=("gemini-3.8-flash",))
+
+    assert report["status"] == "FAIL"
+    assert report["checks"]["blind_articles_current"] is False
+
+
+def test_c_only_structural_proof_verdict_rejects_stale_raw_result_body(tmp_path: Path) -> None:
+    from experiments.editorial_engine_v3_phase0 import live, proof
+
+    _write_complete_current_state(live, proof, tmp_path)
+    raw_path = tmp_path / "raw_results.json"
+    raw = json.loads(raw_path.read_text(encoding="utf-8"))
+    raw["cases"][0]["outputs"]["C_EDITORIAL_ENGINE"] = "stale-C-from-an-older-proof"
+    raw_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    report = proof.evaluate_c_only_proof(tmp_path, model_candidates=("gemini-3.8-flash",))
+
+    assert report["status"] == "FAIL"
+    assert report["checks"]["raw_results_current"] is False
