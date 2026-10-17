@@ -3,7 +3,7 @@ from __future__ import annotations
 import requests
 import pytest
 
-from v2_acquisition_reliability import AcquisitionRequestError, bounded_get
+from v2_live_shadow_acquisition import AcquisitionRequestError, bounded_get
 
 
 class FakeResponse:
