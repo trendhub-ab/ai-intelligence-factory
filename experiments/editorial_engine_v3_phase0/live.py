@@ -162,7 +162,7 @@ def _parse_editorial_bundle(text: str) -> tuple[str, dict[str, str]]:
             raise RuntimeError(f"invalid editorial bundle: missing stage {stage}")
         stages[stage] = value
 
-    return stages["Editorial Review"], stages
+    return stages["Fact-Safe Review"], stages
 
 
 def _editorial_article(
