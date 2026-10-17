@@ -87,3 +87,47 @@ Editorial Discovery、Editorial Thesis、Persona Narrativeを材料に、Target 
 外部Factは追加しない。新しい数字・固有名詞・性能・比較・条件を足さない。
 修正後の最終完成稿のみを出力する。"""
     return dict(zip(EDITORIAL_STAGES, (discovery, narrative, writing, review), strict=True))
+
+
+def build_editorial_bundle_prompt(case: Phase0Case) -> str:
+    """Run the four explicit editorial deliverables in one provider generation."""
+    return f"""{_evidence_block(case)}
+
+【Writer Persona】
+{PERSONA}
+
+以下の4つの編集成果物を、この順序で作成する。内部思考の説明は不要で、各工程の成果物だけを簡潔に出力する。
+
+1. Editorial Discovery
+- Surface: 表面的には何の話か
+- Initial Reaction: 最初に何に反応するか
+- Question: 何を疑うべきか
+- Evidence Shift: Evidenceで最初の印象がどう変わるか
+- Deeper Insight: 表面情報より一段深い意味
+- Editorial Thesis: 記事全体を貫く一文
+本文はまだ書かない。
+
+2. Persona Narrative
+Editorial Discoveryを受けて、Writerの自然な認識変化を設計する。
+固定の『すごい→でも待って』型を避け、テーマ固有の好奇心・疑問・発見を作る。
+女子高生口調の演技、若者言葉、架空体験は使わない。
+
+3. Article Writing
+DiscoveryとNarrativeを材料に、Target Readerが最後まで読みたくなる日本語の完成稿を書く。
+タイトル、導入、見出し、本文、判断、次のActionまで自然につなぐ。
+説明の羅列にせず、途中で核心を発見できる流れにする。
+
+4. Editorial Review
+Article Writingを編集者として監査し、必要な修正を反映した最終完成稿を作る。
+Evidence / Factを落とさず、外部Factを追加せず、AI臭・定型Narrative・過度な軽さを抑える。
+Editorial Thesisが元情報の単なる言い換えでなく、一段深いか確認する。
+
+【出力形式】
+Markdownフェンスや前置きは付けず、次の4キーだけを持つ有効なJSON objectで返す。
+{{
+  "Editorial Discovery": "編集成果物",
+  "Persona Narrative": "編集成果物",
+  "Article Writing": "初稿全文",
+  "Editorial Review": "修正済み最終記事全文"
+}}
+4キーは必須・空欄禁止。外部Factは全工程で追加しない。"""
