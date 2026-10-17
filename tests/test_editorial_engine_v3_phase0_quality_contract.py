@@ -59,3 +59,20 @@ def test_fact_safe_review_preserves_input_strength_not_only_fact_presence() -> N
             "再学習不要→再学習は膨大なコスト",
         ):
             assert marker in prompt
+
+
+def test_fact_safe_review_audits_background_framing_before_returning_unchanged() -> None:
+    case = _case()
+    stages = build_editorial_stage_prompts(case)
+    review = stages["Fact-Safe Review"]
+    bundle = build_editorial_bundle_prompt(case)
+
+    for prompt in (review, bundle):
+        for marker in (
+            "unchanged判定を先に置かない",
+            "導入・背景説明も監査対象",
+            "一般的だった",
+            "通常は〜が必要",
+            "過去の投資を無駄にするリスク",
+        ):
+            assert marker in prompt
