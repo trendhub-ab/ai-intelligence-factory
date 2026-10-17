@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from . import live
+from .runner import build_blind_package
 
 BASELINE_AB_DIGESTS_NAME = "baseline_ab_digests.json"
 PROOF_VERDICT_NAME = "proof_verdict.json"
@@ -104,6 +105,20 @@ def _artifact_case_ids(packages: Any) -> list[str]:
     return result
 
 
+def _expected_blind_artifacts(cases: dict[str, dict[str, Any]], canonical_ids: list[str]) -> tuple[list[dict[str, Any]], dict[str, dict[str, str]]] | None:
+    packages: list[dict[str, Any]] = []
+    mapping: dict[str, dict[str, str]] = {}
+    try:
+        for case_id in canonical_ids:
+            outputs = dict(cases[case_id].get("outputs") or {})
+            blind, case_mapping = build_blind_package(case_id, outputs)
+            packages.append(blind)
+            mapping[case_id] = case_mapping
+    except (KeyError, ValueError):
+        return None
+    return packages, mapping
+
+
 def _model_allowed(selected_model: str, model_candidates: Iterable[str] | None) -> bool:
     if not selected_model or "lite" in selected_model.lower():
         return False
@@ -126,7 +141,6 @@ def evaluate_c_only_proof(
     raw_results = _read_json(out_dir / "raw_results.json", {})
 
     canonical_ids = _canonical_case_ids()
-    canonical_set = set(canonical_ids)
     canonical_digests = _canonical_input_digests()
     cases = _case_map(state)
     case_ids = list(cases)
@@ -175,12 +189,20 @@ def evaluate_c_only_proof(
     disk_package_ids = _artifact_case_ids(disk_packages)
     state_mapping = state.get("blind_mapping", {})
     blind_case_set_exact = state_package_ids == canonical_ids and disk_package_ids == canonical_ids
+
+    expected_blind = _expected_blind_artifacts(cases, canonical_ids) if exact_case_set else None
+    expected_packages, expected_mapping = expected_blind if expected_blind is not None else ([], {})
     blind_mapping_set_exact = (
         isinstance(state_mapping, dict)
         and isinstance(disk_mapping, dict)
-        and list(state_mapping) == canonical_ids
-        and list(disk_mapping) == canonical_ids
-        and state_mapping == disk_mapping
+        and state_mapping == expected_mapping
+        and disk_mapping == expected_mapping
+    )
+    blind_articles_current = (
+        isinstance(state.get("blind_packages", []), list)
+        and isinstance(disk_packages, list)
+        and state.get("blind_packages", []) == expected_packages
+        and disk_packages == expected_packages
     )
 
     raw_case_ids = _artifact_case_ids(raw_results.get("cases", []) if isinstance(raw_results, dict) else [])
@@ -191,6 +213,12 @@ def evaluate_c_only_proof(
         and str(raw_results.get("mode") or "") == "C_ONLY_REFINEMENT"
         and [str(case_id) for case_id in raw_results.get("c_completed_case_ids", [])] == canonical_ids
         and int(raw_results.get("c_refinement_provider_calls_total", -1) or -1) == live.C_ONLY_MAX_PROVIDER_CALLS
+    )
+    raw_results_current = (
+        raw_results_consistent
+        and raw_results.get("cases") == state.get("cases")
+        and str(raw_results.get("c_refinement_fingerprint") or "")
+        == str(state.get("c_refinement_fingerprint") or "")
     )
 
     checks = {
@@ -207,7 +235,9 @@ def evaluate_c_only_proof(
         "final_matches_fact_safe_review": final_matches_fact_safe_review,
         "blind_case_set_exact": blind_case_set_exact,
         "blind_mapping_set_exact": blind_mapping_set_exact,
+        "blind_articles_current": blind_articles_current,
         "raw_results_consistent": raw_results_consistent,
+        "raw_results_current": raw_results_current,
     }
 
     report = {
