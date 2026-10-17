@@ -96,7 +96,7 @@ Writer Reaction、Editorial Discovery、Cognitive Shiftを材料に、成人ビ�
 - writer-owned anchor: Writer自身が何に反応したのかが、誰の感覚か分かる形で本文に残る
 - Writer Question: Writer Reactionで生まれた具体的Questionを、Genericな問いへ薄めず意味を保つ
 - before→after: Evidence EncounterによってBefore ViewからAfter Viewへ見方が動いたことを、読者が本文から追える形で残す
-- What I Now Find Interesting: Cognitive Shift後にWriterが最終的に何を面白いと発見したのかを残す
+- What I Now Find Interesting / discovery: Cognitive Shift後にWriterが最終的に何を面白いと発見したのかを残す
 
 一人称単数は自然なら使ってよいが必須ではない。ただし、writer-owned anchorが誰の反応か分からない無人称表現へ消えてはいけない。
 次の表現そのものを全面禁止するのではなく、Writer自身のReaction / Question / Shiftを消す置換として使ってはいけない。
