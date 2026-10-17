@@ -1,0 +1,168 @@
+{
+  "benchmark_version": "v1",
+  "label_contract": "v2_semantic_screening",
+  "cases": [
+    {
+      "case_id": "non_ai_tesla_roadster",
+      "title": "Tesla Roadster production specifications",
+      "description": "Electric sports car range, acceleration, battery, and delivery specifications.",
+      "source_family": "calibration",
+      "gold": {"ai_relevant": false, "decision_value": false, "change_novelty": false, "applied_reader_value": false},
+      "rationale": "The supplied text is about an electric vehicle and contains no material AI subject.",
+      "label_provenance": "v2_semantic_contract_2026-10-17"
+    },
+    {
+      "case_id": "low_info_hn_ai",
+      "title": "AI startup discussion",
+      "description": "HN score=214; comments=96",
+      "source_family": "hacker_news",
+      "gold": {"ai_relevant": true, "decision_value": false, "change_novelty": false, "applied_reader_value": false},
+      "rationale": "AI is the core title subject, but engagement metadata provides no decision, change, or application evidence.",
+      "label_provenance": "v2_semantic_contract_2026-10-17"
+    },
+    {
+      "case_id": "non_ai_ecdsa_history",
+      "title": "Twenty years of ECDSA implementation lessons",
+      "description": "A historical review of elliptic-curve signature implementations and cryptographic failures.",
+      "source_family": "calibration",
+      "gold": {"ai_relevant": false, "decision_value": false, "change_novelty": false, "applied_reader_value": false},
+      "rationale": "Cryptography is the core subject and no AI or ML topic is stated.",
+      "label_provenance": "v2_semantic_contract_2026-10-17"
+    },
+    {
+      "case_id": "openai_sdk_release",
+      "title": "OpenAI Python SDK v3.33 released",
+      "description": "The release adds Responses API streaming controls, deployment compatibility updates, and new integration examples.",
+      "source_family": "github",
+      "gold": {"ai_relevant": true, "decision_value": true, "change_novelty": true, "applied_reader_value": true},
+      "rationale": "An AI SDK release states concrete API/deployment changes and direct implementation value.",
+      "label_provenance": "v2_semantic_contract_2026-10-17"
+    },
+    {
+      "case_id": "anthropic_sdk_security_release",
+      "title": "Anthropic SDK security and timeout update",
+      "description": "A new SDK release changes authentication handling, request timeouts, and retry configuration for Claude API deployments.",
+      "source_family": "github",
+      "gold": {"ai_relevant": true, "decision_value": true, "change_novelty": true, "applied_reader_value": true},
+      "rationale": "The text states an AI API release with security, configuration, and deployment implications.",
+      "label_provenance": "v2_semantic_contract_2026-10-17"
+    },
+    {
+      "case_id": "gemini_pricing_update",
+      "title": "Gemini API pricing updated",
+      "description": "Google announced new input and output token prices for Gemini models effective next month.",
+      "source_family": "official_vendor",
+      "gold": {"ai_relevant": true, "decision_value": true, "change_novelty": true, "applied_reader_value": false},
+      "rationale": "Pricing is a concrete AI decision lever and the change is explicit, but no implementation/workflow implication is stated.",
+      "label_provenance": "v2_semantic_contract_2026-10-17"
+    },
+    {
+      "case_id": "ai_safety_policy_update",
+      "title": "Updated safety policy for high-risk AI use",
+      "description": "The policy now restricts specified high-risk model deployments and changes enterprise eligibility requirements.",
+      "source_family": "official_vendor",
+      "gold": {"ai_relevant": true, "decision_value": true, "change_novelty": true, "applied_reader_value": false},
+      "rationale": "The text directly states AI policy and eligibility changes but not a workflow or implementation method.",
+      "label_provenance": "v2_semantic_contract_2026-10-17"
+    },
+    {
+      "case_id": "ai_education_program",
+      "title": "New AI education program launches for universities",
+      "description": "The program becomes available to accredited universities with institution-level access requirements.",
+      "source_family": "official_vendor",
+      "gold": {"ai_relevant": true, "decision_value": true, "change_novelty": true, "applied_reader_value": false},
+      "rationale": "Availability and eligibility are concrete decision levers and the launch is explicit, but applied workflow value is not stated.",
+      "label_provenance": "v2_semantic_contract_2026-10-17"
+    },
+    {
+      "case_id": "research_new_benchmark",
+      "title": "A new benchmark for long-context language models",
+      "description": "The paper introduces a benchmark for evaluating long-context reasoning across several language models.",
+      "source_family": "arxiv",
+      "gold": {"ai_relevant": true, "decision_value": true, "change_novelty": true, "applied_reader_value": false},
+      "rationale": "Language models are central, measurable performance is a decision signal, and a new benchmark is introduced; no direct implementation use is stated.",
+      "label_provenance": "v2_semantic_contract_2026-10-17"
+    },
+    {
+      "case_id": "robotics_deployment_toolkit",
+      "title": "AI robotics deployment toolkit released",
+      "description": "The toolkit adds model deployment, sensor integration, workflow automation, and production monitoring for warehouse robots.",
+      "source_family": "official_vendor",
+      "gold": {"ai_relevant": true, "decision_value": true, "change_novelty": true, "applied_reader_value": true},
+      "rationale": "AI robotics, a release, deployment capabilities, and direct workflow implementation are explicitly stated.",
+      "label_provenance": "v2_semantic_contract_2026-10-17"
+    },
+    {
+      "case_id": "generic_ai_opinion",
+      "title": "AI will change everything",
+      "description": "An opinion piece argues that artificial intelligence will matter to businesses in the future.",
+      "source_family": "hacker_news",
+      "gold": {"ai_relevant": true, "decision_value": false, "change_novelty": false, "applied_reader_value": false},
+      "rationale": "AI is central, but the text gives no concrete decision lever, explicit change, or supported implementation implication.",
+      "label_provenance": "v2_semantic_contract_2026-10-17"
+    },
+    {
+      "case_id": "non_ai_database_hn",
+      "title": "A new embedded database engine",
+      "description": "HN score=341; comments=122",
+      "source_family": "hacker_news",
+      "gold": {"ai_relevant": false, "decision_value": false, "change_novelty": false, "applied_reader_value": false},
+      "rationale": "The title is not about AI and engagement counts are not semantic evidence.",
+      "label_provenance": "v2_semantic_contract_2026-10-17"
+    },
+    {
+      "case_id": "non_ai_cloud_cost",
+      "title": "Reducing cloud storage costs with lifecycle rules",
+      "description": "A guide to object storage retention policies and archive tiers without AI or ML features.",
+      "source_family": "hacker_news",
+      "gold": {"ai_relevant": false, "decision_value": false, "change_novelty": false, "applied_reader_value": false},
+      "rationale": "The supplied text explicitly concerns non-AI cloud storage operations.",
+      "label_provenance": "v2_semantic_contract_2026-10-17"
+    },
+    {
+      "case_id": "llm_inference_japan",
+      "title": "LLM inference API launches in Japan",
+      "description": "The service is now available in Japan with data residency controls, published pricing, and SDK integration guidance.",
+      "source_family": "official_vendor",
+      "gold": {"ai_relevant": true, "decision_value": true, "change_novelty": true, "applied_reader_value": true},
+      "rationale": "AI inference, availability, pricing, compliance, launch, and SDK integration are directly stated.",
+      "label_provenance": "v2_semantic_contract_2026-10-17"
+    },
+    {
+      "case_id": "ai_model_performance_benchmark",
+      "title": "AI model benchmark reports a five percent reasoning gain",
+      "description": "A new evaluation reports a five percent improvement over the previous model on a reasoning benchmark.",
+      "source_family": "arxiv",
+      "gold": {"ai_relevant": true, "decision_value": true, "change_novelty": true, "applied_reader_value": false},
+      "rationale": "The model and measurable performance change are explicit, but no implementation or workflow use is provided.",
+      "label_provenance": "v2_semantic_contract_2026-10-17"
+    },
+    {
+      "case_id": "agent_workflow_tutorial",
+      "title": "Building an AI agent approval workflow",
+      "description": "A tutorial shows how to integrate tool calls, human approval, and task automation into an agent workflow.",
+      "source_family": "official_vendor",
+      "gold": {"ai_relevant": true, "decision_value": false, "change_novelty": false, "applied_reader_value": true},
+      "rationale": "AI agents and direct workflow implementation are stated, but there is no launch/change or concrete decision lever such as pricing, availability, security, or measurable performance.",
+      "label_provenance": "v2_semantic_contract_2026-10-17"
+    },
+    {
+      "case_id": "agent_library_security_fix",
+      "title": "Critical security fix released for AI agent library",
+      "description": "The release fixes credential leakage in tool execution and requires production users to upgrade before the next deployment.",
+      "source_family": "github",
+      "gold": {"ai_relevant": true, "decision_value": true, "change_novelty": true, "applied_reader_value": true},
+      "rationale": "AI agent software, a security release, an upgrade decision, and direct deployment action are explicit.",
+      "label_provenance": "v2_semantic_contract_2026-10-17"
+    },
+    {
+      "case_id": "brand_only_openai_news",
+      "title": "OpenAI news",
+      "description": "Latest updates from the company.",
+      "source_family": "official_vendor",
+      "gold": {"ai_relevant": false, "decision_value": false, "change_novelty": false, "applied_reader_value": false},
+      "rationale": "Brand/source identity alone is not semantic evidence under the conservative contract.",
+      "label_provenance": "v2_semantic_contract_2026-10-17"
+    }
+  ]
+}

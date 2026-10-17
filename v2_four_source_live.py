@@ -14,7 +14,11 @@ from typing import Any, Callable, Mapping
 import requests
 
 from v2_github_live import fetch_all_github_candidates
-from v2_live_shadow_acquisition import fetch_arxiv_candidates, fetch_hacker_news_candidates
+from v2_live_shadow_acquisition import (
+    SourceAcquisitionError,
+    fetch_arxiv_candidates,
+    fetch_hacker_news_candidates,
+)
 from v2_official_vendor_live import fetch_all_official_vendor_candidates
 from v2_shadow_selection import ShadowConfig
 from v2_source_portfolio import SourcePortfolioConfig, run_four_source_shadow
@@ -68,6 +72,32 @@ def _with_source_family(rows: list[dict[str, Any]], source_family: str) -> list[
     return result
 
 
+def _aggregate_diagnostics(events: list[Mapping[str, object]]) -> dict[str, object]:
+    first_failure: str | None = None
+    final_failure: str | None = None
+    attempts = 0
+    retry_used = False
+    for event in events:
+        try:
+            attempts += max(0, int(event.get("attempt_count") or 0))
+        except (TypeError, ValueError, OverflowError):
+            pass
+        retry_used = retry_used or event.get("retry_used") is True
+        first = event.get("first_failure_category")
+        final = event.get("final_failure_category")
+        if first_failure is None and isinstance(first, str) and first:
+            first_failure = first
+        if isinstance(final, str) and final:
+            final_failure = final
+    return {
+        "logical_read_count": len(events),
+        "http_attempt_count": attempts,
+        "retry_used": retry_used,
+        "first_failure_category": first_failure,
+        "final_failure_category": final_failure,
+    }
+
+
 def run_four_source_live(
     *,
     deep_dive: Callable[[Mapping[str, Any]], Mapping[str, Any]],
@@ -82,13 +112,31 @@ def run_four_source_live(
     """Acquire the exact four approved source families and run canonical shadow selection."""
 
     bounded = (config or FourSourceLiveConfig()).bounded()
+    diagnostic_events: dict[str, list[Mapping[str, object]]] = {
+        "OfficialVendor": [],
+        "GitHub": [],
+        "HackerNews": [],
+        "ArXiv": [],
+    }
+
+    def sink(name: str) -> Callable[[Mapping[str, object]], None]:
+        def record(event: Mapping[str, object]) -> None:
+            diagnostic_events[name].append(dict(event))
+        return record
 
     def vendor_provider() -> list[dict[str, Any]]:
-        rows = fetch_all_official_vendor_candidates(http_get=http_get)
+        rows = fetch_all_official_vendor_candidates(
+            http_get=http_get,
+            diagnostic_sink=sink("OfficialVendor"),
+        )
         return _with_source_family(rows[: bounded.vendor_limit], "official_vendor")
 
     def github_provider() -> list[dict[str, Any]]:
-        rows = fetch_all_github_candidates(http_get=http_get, token=github_token)
+        rows = fetch_all_github_candidates(
+            http_get=http_get,
+            token=github_token,
+            diagnostic_sink=sink("GitHub"),
+        )
         return _with_source_family(rows[: bounded.github_limit], "github")
 
     def hacker_news_provider() -> list[dict[str, Any]]:
@@ -96,6 +144,7 @@ def run_four_source_live(
             http_get=http_get,
             limit=bounded.hn_limit,
             timeout_seconds=bounded.timeout_seconds,
+            diagnostic_sink=sink("HackerNews"),
         )
         return _with_source_family(rows, "hacker_news")
 
@@ -104,6 +153,7 @@ def run_four_source_live(
             http_get=http_get,
             limit=bounded.arxiv_limit,
             timeout_seconds=bounded.timeout_seconds,
+            diagnostic_sink=sink("ArXiv"),
         )
         return _with_source_family(rows, "arxiv")
 
@@ -143,5 +193,9 @@ def run_four_source_live(
         "arxiv_limit": bounded.arxiv_limit,
         "timeout_seconds": bounded.timeout_seconds,
         "max_total_candidates": bounded.max_total_candidates,
+    }
+    report["source_acquisition_diagnostics"] = {
+        name: _aggregate_diagnostics(events)
+        for name, events in diagnostic_events.items()
     }
     return report

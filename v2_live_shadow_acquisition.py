@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
+import time
 from typing import Any, Callable, Mapping
 import xml.etree.ElementTree as ET
 
@@ -31,6 +32,148 @@ MAX_ARXIV_ITEMS = 8
 MAX_TOTAL_CANDIDATES = 12
 MAX_TIMEOUT_SECONDS = 8.0
 MIN_TIMEOUT_SECONDS = 0.1
+MAX_RETRY_DELAY_SECONDS = 3.0
+_RETRYABLE_CATEGORIES = frozenset({"timeout", "connection", "http_429", "http_5xx"})
+
+
+@dataclass(frozen=True)
+class AcquisitionDiagnostics:
+    """Safe diagnostics for one bounded logical HTTP read."""
+
+    attempt_count: int
+    retry_used: bool
+    first_failure_category: str | None
+    final_failure_category: str | None
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "attempt_count": self.attempt_count,
+            "retry_used": self.retry_used,
+            "first_failure_category": self.first_failure_category,
+            "final_failure_category": self.final_failure_category,
+        }
+
+
+class AcquisitionRequestError(RuntimeError):
+    """Opaque bounded transport/HTTP failure safe for diagnostics."""
+
+    def __init__(self, category: str, diagnostics: AcquisitionDiagnostics) -> None:
+        self.category = str(category)
+        self.diagnostics = diagnostics
+        super().__init__(self.category)
+
+
+def _transport_category(exc: BaseException) -> str:
+    if isinstance(exc, (requests.Timeout, TimeoutError)):
+        return "timeout"
+    if isinstance(exc, (requests.ConnectionError, ConnectionError)):
+        return "connection"
+    return "request_failure"
+
+
+def _status_category(status_code: int) -> str:
+    if status_code == 429:
+        return "http_429"
+    if 500 <= status_code <= 599:
+        return "http_5xx"
+    if 400 <= status_code <= 499:
+        return "http_4xx"
+    return "request_failure"
+
+
+def _bounded_retry_delay(value: Any) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    if number != number:
+        return 0.0
+    return max(0.0, min(number, MAX_RETRY_DELAY_SECONDS))
+
+
+def _acquisition_diagnostics(
+    *,
+    attempt_count: int,
+    first_failure_category: str | None,
+    final_failure_category: str | None,
+) -> AcquisitionDiagnostics:
+    return AcquisitionDiagnostics(
+        attempt_count=attempt_count,
+        retry_used=attempt_count > 1,
+        first_failure_category=first_failure_category,
+        final_failure_category=final_failure_category,
+    )
+
+
+def _emit_diagnostic(
+    diagnostic_sink: Callable[[Mapping[str, object]], None] | None,
+    diagnostics: AcquisitionDiagnostics,
+) -> None:
+    if diagnostic_sink is None:
+        return
+    try:
+        diagnostic_sink(dict(diagnostics.as_dict()))
+    except Exception:
+        return
+
+
+def bounded_get(
+    *,
+    http_get: Callable[..., Any],
+    url: str,
+    timeout: float,
+    request_kwargs: Mapping[str, Any] | None = None,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    retry_delay_seconds: float = 0.25,
+    diagnostic_sink: Callable[[Mapping[str, object]], None] | None = None,
+) -> tuple[Any, AcquisitionDiagnostics]:
+    """Perform one logical GET with at most one retry for transient failures."""
+
+    kwargs = dict(request_kwargs or {})
+    kwargs.pop("timeout", None)
+    delay = _bounded_retry_delay(retry_delay_seconds)
+    first_failure: str | None = None
+
+    for attempt in (1, 2):
+        try:
+            response = http_get(url, timeout=timeout, **kwargs)
+        except Exception as exc:
+            category = _transport_category(exc)
+        else:
+            status_code = getattr(response, "status_code", None)
+            if isinstance(status_code, int) and status_code >= 400:
+                category = _status_category(status_code)
+            else:
+                try:
+                    raise_for_status = getattr(response, "raise_for_status", None)
+                    if callable(raise_for_status):
+                        raise_for_status()
+                except Exception:
+                    category = "request_failure"
+                else:
+                    diagnostics = _acquisition_diagnostics(
+                        attempt_count=attempt,
+                        first_failure_category=first_failure,
+                        final_failure_category=None,
+                    )
+                    _emit_diagnostic(diagnostic_sink, diagnostics)
+                    return response, diagnostics
+
+        if first_failure is None:
+            first_failure = category
+        if category in _RETRYABLE_CATEGORIES and attempt == 1:
+            sleep_fn(delay)
+            continue
+
+        diagnostics = _acquisition_diagnostics(
+            attempt_count=attempt,
+            first_failure_category=first_failure,
+            final_failure_category=category,
+        )
+        _emit_diagnostic(diagnostic_sink, diagnostics)
+        raise AcquisitionRequestError(category, diagnostics) from None
+
+    raise AssertionError("bounded acquisition loop exhausted unexpectedly")
 
 
 class SourceAcquisitionError(RuntimeError):
@@ -77,7 +220,7 @@ def _bounded_timeout(value: Any) -> float:
         number = float(value)
     except (TypeError, ValueError, OverflowError):
         return MIN_TIMEOUT_SECONDS
-    if number != number:  # NaN
+    if number != number:
         return MIN_TIMEOUT_SECONDS
     return max(MIN_TIMEOUT_SECONDS, min(number, MAX_TIMEOUT_SECONDS))
 
@@ -142,6 +285,8 @@ def fetch_hacker_news_candidates(
     http_get: Callable[..., Any] = requests.get,
     limit: int = 5,
     timeout_seconds: float = 5.0,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    diagnostic_sink: Callable[[Mapping[str, object]], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch bounded public Hacker News stories using GET only.
 
@@ -155,12 +300,20 @@ def fetch_hacker_news_candidates(
         return []
 
     try:
-        top_response = http_get(HN_TOPSTORIES_URL, timeout=timeout)
+        top_response, _top_diagnostics = bounded_get(
+            http_get=http_get,
+            url=HN_TOPSTORIES_URL,
+            timeout=timeout,
+            sleep_fn=sleep_fn,
+            diagnostic_sink=diagnostic_sink,
+        )
         top_ids = _response_json(top_response, source="HackerNews")
+    except AcquisitionRequestError as exc:
+        raise SourceAcquisitionError("HackerNews", exc.category) from None
     except SourceAcquisitionError:
         raise
-    except Exception as exc:
-        raise SourceAcquisitionError("HackerNews", "request_failure") from exc
+    except Exception:
+        raise SourceAcquisitionError("HackerNews", "request_failure") from None
 
     if not isinstance(top_ids, list):
         raise SourceAcquisitionError("HackerNews", "invalid_payload")
@@ -172,7 +325,13 @@ def fetch_hacker_news_candidates(
         except (TypeError, ValueError, OverflowError):
             continue
         try:
-            item_response = http_get(HN_ITEM_URL.format(item_id=item_id), timeout=timeout)
+            item_response, _item_diagnostics = bounded_get(
+                http_get=http_get,
+                url=HN_ITEM_URL.format(item_id=item_id),
+                timeout=timeout,
+                sleep_fn=sleep_fn,
+                diagnostic_sink=diagnostic_sink,
+            )
             item = _response_json(item_response, source="HackerNews")
         except Exception:
             continue
@@ -211,6 +370,8 @@ def fetch_arxiv_candidates(
     http_get: Callable[..., Any] = requests.get,
     limit: int = 5,
     timeout_seconds: float = 5.0,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    diagnostic_sink: Callable[[Mapping[str, object]], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch bounded newest AI/ML arXiv metadata using GET only."""
 
@@ -227,17 +388,27 @@ def fetch_arxiv_candidates(
         "sortOrder": "descending",
     }
     try:
-        response = http_get(ARXIV_API_URL, params=params, timeout=timeout)
+        response, _diagnostics = bounded_get(
+            http_get=http_get,
+            url=ARXIV_API_URL,
+            timeout=timeout,
+            request_kwargs={"params": params},
+            sleep_fn=sleep_fn,
+            retry_delay_seconds=3.0,
+            diagnostic_sink=diagnostic_sink,
+        )
         xml_text = _response_text(response, source="ArXiv")
+    except AcquisitionRequestError as exc:
+        raise SourceAcquisitionError("ArXiv", exc.category) from None
     except SourceAcquisitionError:
         raise
-    except Exception as exc:
-        raise SourceAcquisitionError("ArXiv", "request_failure") from exc
+    except Exception:
+        raise SourceAcquisitionError("ArXiv", "request_failure") from None
 
     try:
         root = ET.fromstring(xml_text)
-    except (ET.ParseError, TypeError, ValueError) as exc:
-        raise SourceAcquisitionError("ArXiv", "invalid_xml") from exc
+    except (ET.ParseError, TypeError, ValueError):
+        raise SourceAcquisitionError("ArXiv", "invalid_xml") from None
 
     ns = {"atom": "http://www.w3.org/2005/Atom"}
     candidates: list[dict[str, Any]] = []

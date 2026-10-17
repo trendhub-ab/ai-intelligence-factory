@@ -4,7 +4,7 @@
 Production最終照合日: **2026-10-17**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`f12e7d9d4d86d984913c3aaeef8becc504735e45de8a878a519c762481c381c7`**
+Production Contract Fingerprint: **`c6117137b4fa09843a818f0812574b138ec4032514756e42088610b43e7111a4`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -248,6 +248,10 @@ System V2のprovider-backed shadow deep diveは **診断専用** であり、V1 
 1回のV2 provider-backed shadow runで許可するmodel HTTP attemptは **最大7回（Lite最大2 + Flash Evidence最大5）**。正常時はSemantic 1回 + Evidence 1回の **2回** で終了する。同一modelへのretryは行わず、distinct-model fallbackだけを許可する。400 / 401 / 403等、modelを変えても解消しない共有設定・認証系errorでは無駄なfallbackを打ち切る。
 
 Semantic Screeningは4つのboolean（AI relevance / decision value / change novelty / applied reader value）だけをstrict JSON contractで返し、結果は **rescue / upside-only** としてdeterministic Selection Valueを下げない。raw Gemini response / prompt / secretをartifactへ保存しない。
+
+V2のRequired 4 Source（OfficialVendor / GitHub / HackerNews / ArXiv）のlive acquisitionは、外部HTTPの一時障害をSource固有の場当たり的処理ではなく共通のbounded reliability契約で扱う。通常は1 GETで終了し、`timeout` / `connection` / HTTP 429 / HTTP 5xxだけ同一logical readを最大1回retryする。429以外の4xx、invalid JSON/XML等の非transient failureはretryしない。1 Source familyの失敗で他Source familyを停止させず、OfficialVendorの複数vendor、GitHubの複数repository等の既存冗長性も維持する。Artifactへはattempt count、retry有無、safe failure category等の診断だけを残し、URL query、raw response、secretを保存しない。既存live readerの公開error category互換は維持し、`http_5xx` 等の詳細分類はdiagnostics側のauthorityとする。
+
+Semantic Screeningの識別性能は、provider-freeのGold-label benchmarkで回帰評価できる。Gold labelは人間が固定し、モデル出力で正解ラベルを書き換えない。4 boolean dimensionごとにTP / FP / FN / TN、Precision / Recall / F1を計算し、macro指標、exact-match、all-positive saturation率も出力する。CIのGold benchmarkはGeminiを呼ばず、同じGold corpusと予測JSONを使うoffline evaluator / CLIだけを検証する。したがってPromptやmodel routingを変更しても、同一正解セット上で性能差を比較できる。
 
 V2はV1のProvider Health履歴とlane rankingを **read-only** で参照する。V2自身はhealth historyを書き換えず、Provider障害を記事品質FAILへ混同しない。
 
@@ -1095,6 +1099,8 @@ Production surfaceが変わるPRでは、**本書の同期をmerge条件**とす
 - **Runtime:** `runtime_layers.py` が正本。
 - **Screening:** Gemini 3.5 Flash-Lite / 3.1 Flash-Liteのみ。
 - **V2 Shadow:** deterministic cheap screening → health-aware Semantic Screening（3.5 Flash-Lite / 3.1 Flash-Lite、最大20候補を1 batch、最大2 model attempts、全滅時はdeterministicへ縮退）→ Selection Value再ranking → rank-1 health-aware Evidence（3.6 / 3.5 / 3.7 / 3.8 / 3 Flash Preview、最大5 model attempts、valid false判定でも停止）。通常model callは2、最悪時上限7、Evidence lane全滅時のみwinnerなしでFail-Closed。V1 Provider Healthをread-only参照し、Production mutationは0。
+- **V2 Acquisition Reliability:** OfficialVendor / GitHub / HackerNews / ArXivの一時障害は共通bounded GET契約で扱い、timeout / connection / 429 / 5xxだけ最大1回retry。非transient failureは再送せず、Source failureを他Sourceへ波及させない。safe attempt diagnosticsをartifactへ残す。
+- **V2 Gold Benchmark:** human-labeled Gold corpusを用いたprovider-free評価で4 Semantic dimensionsのPrecision / Recall / F1、macro、exact-match、saturationを算出。CIではGemini call 0。
 - **Article Deep Dive:** Gemini 3.6 / 3.5 / 3.7 / 3.8 / 3 Flash Previewをhealth-aware Full Flash laneで運用。Flash-Liteは公開Writerから除外。
 - **503:** Factory single retry owner + bounded distinct-model fallback。
 - **A+:** Local Skills skeleton + Gemini prose + deterministic Gates + safe local fallback。
