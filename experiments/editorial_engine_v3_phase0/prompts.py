@@ -68,6 +68,16 @@ Editorial Discoveryの結果を前提に、Writerの自然な認識変化を設�
 Editorial Discovery、Editorial Thesis、Persona Narrativeを材料に、Target Readerが最後まで読みたくなる完成稿を書く。
 タイトル、導入、見出し、本文、判断、次のActionまで一つの記事として自然につなぐ。
 説明の羅列ではなく、読者が途中で核心を発見できる流れにする。
+
+Article Writingの目的は無難な解説文に整えることではない。Editorial Discoveryで得た認識変化を、読者が本文の流れとして体験できる形で必ず運ぶ。
+事実関係の修正に必要な場合を除き、以下の編集信号を削除しない。
+- Initial Reaction: 読者が最初に反応する入口
+- Question: そのテーマ固有の素朴な疑問
+- Evidence Shift: Evidenceによって最初の見方が変わる転換
+- Deeper Insight: 表面的な要約を越えた一段深い意味
+- Persona Narrative: 好奇心・疑問・発見として現れる自然な認識変化
+これらをラベルとして本文に列挙するのではなく、自然な文章の流れとして埋め込む。
+
 若者言葉・キャラクター演技・架空体験・過剰なドラマ化を避ける。
 外部Factは追加しない。Evidence / Fact、Decision、Actionの意味を保持する。
 完成稿のみを出力し、作業過程や注釈は出力しない。"""
@@ -127,6 +137,8 @@ Editorial Discoveryを受けて、Writerの自然な認識変化を設計する�
 DiscoveryとNarrativeを材料に、Target Readerが最後まで読みたくなる日本語の完成稿を書く。
 タイトル、導入、見出し、本文、判断、次のActionまで自然につなぐ。
 説明の羅列にせず、途中で核心を発見できる流れにする。
+無難な解説文に整えることを目的にしない。事実関係の修正に必要な場合を除き、Initial Reaction / Question / Evidence Shift / Deeper Insight / Persona Narrativeを削除しない。
+これらをラベルとして並べず、読者が『最初の見方→疑問→Evidenceによる転換→一段深い理解』を自然に体験できる文章として埋め込む。
 
 4. Editorial Review
 Article Writingを編集者として監査し、必要な修正を反映した最終完成稿を作る。
