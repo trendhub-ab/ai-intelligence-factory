@@ -41,119 +41,148 @@ def build_persona_only_prompt(case: Phase0Case) -> str:
 
 def build_editorial_stage_prompts(case: Phase0Case) -> dict[str, str]:
     boundary = _evidence_block(case)
+    reaction = f"""{boundary}
+
+【Writer Reaction】
+{PERSONA}
+
+本文はまだ書かない。Evidenceに初めて触れたWriter自身の反応を、テーマ固有に整理する。
+必須項目:
+- Reaction: 最初に何へ反応したか
+- Curiosity: 何をもっと知りたくなったか
+- Question: 何がまだ分からず、何を確かめたいか
+- Future Imagination: これが普通になった時に、どんな未来の変化をまず想像するか
+- Emotion Intensity: LOW | MEDIUM | HIGH のいずれか。Evidenceの強さとテーマに合わせる
+
+GenericなAI賛美は禁止。ReactionはEvidenceに反応して生まれるものであり、Evidenceの代わりではない。
+外部Factは追加しない。"""
     discovery = f"""{boundary}
 
 【Editorial Discovery】
-本文はまだ書かない。このニュースの本当に面白い核心を発見する。
-以下を具体的に整理する。
+Writer ReactionとEvidenceの緊張関係から、本文の核心を発見する。本文はまだ書かない。
+必須項目:
 - Surface: 表面的には何の話か
-- Initial Reaction: 最初に何に反応するか
-- Question: 何を疑うべきか
-- Evidence Shift: Evidenceを読んだ結果、最初の印象はどう変わるか
-- Deeper Insight: 表面情報より一段深い、本当に重要な意味は何か
+- Interesting Tension: Writerの最初の反応が、なぜそのままでは不十分か
+- Evidence Pivot: どのEvidenceが見方を変える、または鋭くするか
+- Deeper Insight: 見出しの一段下にある本当の意味
 - Editorial Thesis: 記事全体を貫く一文
-外部Factは追加しない。事実ではなく編集上の解釈を置く場合は、Evidenceから導ける範囲に限定する。"""
-    narrative = f"""{boundary}
 
-【Persona Narrative】
+Dramaを捏造しない。Evidenceが最初の期待を確認する場合は『期待→さらに面白い』でもよい。
+外部Factは追加しない。"""
+    shift = f"""{boundary}
+
+【Cognitive Shift】
 {PERSONA}
 
-Editorial Discoveryの結果を前提に、Writerの自然な認識変化を設計する。
-驚き→疑い→理解のような固定テンプレートにはしない。テーマ固有の認識変化を作る。
-『女子高生らしさ』を演技せず、価値は好奇心と発見に置く。
-外部Factは追加しない。NarrativeはEvidence / Factの意味を変えない。"""
-    writing = f"""{boundary}
+Writer ReactionとEditorial Discoveryを受けて、Writerの理解がEvidenceによってどう動いたかを明示する。
+必須項目:
+- Before View: Evidenceを深く読む前の見方
+- Evidence Encounter: 何に触れて理解が動いたか
+- After View: Evidence後の見方
+- What I Now Find Interesting: 今、いちばん面白いと感じる点
 
-【Article Writing】
-Editorial Discovery、Editorial Thesis、Persona Narrativeを材料に、Target Readerが最後まで読みたくなる完成稿を書く。
-タイトル、導入、見出し、本文、判断、次のActionまで一つの記事として自然につなぐ。
-説明の羅列ではなく、読者が途中で核心を発見できる流れにする。
+固定の感情曲線は禁止。confusion→understanding、skepticism→surprise、excitement→concern、small feature→large future implicationなど、テーマに合う変化を選ぶ。
+同じ『すごい→でも待って』型を使い回さない。
+外部Factは追加しない。"""
+    article = f"""{boundary}
 
-Article Writingの目的は無難な解説文に整えることではない。Editorial Discoveryで得た認識変化を、読者が本文の流れとして体験できる形で必ず運ぶ。
-事実関係の修正に必要な場合を除き、以下の編集信号を削除しない。
-- Initial Reaction: 読者が最初に反応する入口
-- Question: そのテーマ固有の素朴な疑問
-- Evidence Shift: Evidenceによって最初の見方が変わる転換
-- Deeper Insight: 表面的な要約を越えた一段深い意味
-- Persona Narrative: 好奇心・疑問・発見として現れる自然な認識変化
-これらをラベルとして本文に列挙するのではなく、自然な文章の流れとして埋め込む。
+【Persona Article Generation】
+{PERSONA}
 
+Writer Reaction、Editorial Discovery、Cognitive Shiftを材料に、成人ビジネスパーソンが最後まで読みたくなる完成稿を書く。
+タイトル、導入、見出し、本文、判断、次のActionまで自然につなぐ。
+
+完成稿には、ラベルをそのまま見出し化せず、自然な文章として次のobservable signalを複数残す。
+- Writer Reaction: Writer自身の反応
+- Question: Writer自身の疑問
+- Cognitive Shift: Evidenceによる見方の変化
+- discovery: 本当に面白い点の発見
+- Future Imagination または人への含意（Evidenceで支えられる場合）
+- 発見からTarget Readerの判断への接続
+
+一人称は自然なら使ってよい。『私たちは考えるべき』『疑問を抱くべき』のようなGeneric表現に隠さない。
 若者言葉・キャラクター演技・架空体験・過剰なドラマ化を避ける。
 外部Factは追加しない。Evidence / Fact、Decision、Actionの意味を保持する。
-完成稿のみを出力し、作業過程や注釈は出力しない。"""
+完成稿のみを出力する。"""
     review = f"""{boundary}
 
-【Editorial Review】
-直前の完成稿を編集者として監査し、必要な修正を反映した最終完成稿だけを返す。
-Reviewの目的は文章を無難に整えることではない。Factを守りながら、Editorial DiscoveryとPersona Narrativeで得た『読者の認識が動く瞬間』を最終稿に保持すること。
+【Fact-Safe Review】
+直前のPersona Article Generationを監査する。Default behaviorは、具体的な欠陥がない限り本文を変更しない。
+欠陥がある場合だけ、最小の局所修正を行い、最終完成稿だけを返す。
 
-以下は、事実関係の修正に必要な場合を除き、削除しない。
-- Initial Reaction: 読者が最初に反応する入口
-- Question: そのテーマ固有の素朴な疑問
-- Evidence Shift: Evidenceによって最初の見方が変わる転換
-- Deeper Insight: 表面的な要約を越えた一段深い意味
-- Persona Narrative: 好奇心・疑問・発見として現れる自然な認識変化
+確認対象:
+- unsupported external Fact
+- changed or invented numbers
+- changed named entities
+- Evidence contradiction
+- decision/action distortion
+- unsupported certainty
+- Persona caricature or fabricated experience
+- repeated narrative template
+- obvious AI boilerplate that、Writerの温度を潰さず除去できるか
 
-確認項目:
-- 説明だけの記事になっていないか
-- ニュースの本当に面白い核心が見えるか
-- Writerの認識変化が自然か
-- 読者が途中で発見を体験できるか
-- 毎回同じ『すごい→でも待って』型へ寄っていないか
-- 感情がEvidence / Factを上書きしていないか
-- Editorial Thesisが元情報の単なる言い換えではなく、一段深いか
-- 好奇心と発見が価値であり、女子高生口調の演技になっていないか
-- Persona Narrativeを無難な解説文へ戻していないか
-- 文章を短く・整然とすること自体を優先し、Initial Reaction / Question / Evidence Shift / Deeper Insightを削っていないか
-外部Factは追加しない。新しい数字・固有名詞・性能・比較・条件を足さない。
-修正後の最終完成稿のみを出力する。"""
-    return dict(zip(EDITORIAL_STAGES, (discovery, narrative, writing, review), strict=True))
+禁止:
+- 一人称を形式的理由だけで無人称へ変える
+- 好奇心を主観だからという理由で削る
+- specific question をGenericなビジネス表現へ置換する
+- 全文を整然と見せるために再構成する
+- Future Imagination が問い・含意としてEvidenceに支えられているのに削除する
+
+外部Factは追加しない。必要修正がなければ、Persona Article Generationをそのまま返す。"""
+    return dict(zip(EDITORIAL_STAGES, (reaction, discovery, shift, article, review), strict=True))
 
 
 def build_editorial_bundle_prompt(case: Phase0Case) -> str:
-    """Run the four explicit editorial deliverables in one provider generation."""
+    """Run all Reaction-First editorial deliverables in one provider generation."""
     return f"""{_evidence_block(case)}
 
 【Writer Persona】
 {PERSONA}
 
-以下の4つの編集成果物を、この順序で作成する。内部思考の説明は不要で、各工程の成果物だけを簡潔に出力する。
+以下の5つの編集成果物を、この順序で作成する。内部思考の説明は不要で、各工程の成果物だけを返す。
 
-1. Editorial Discovery
-- Surface: 表面的には何の話か
-- Initial Reaction: 最初に何に反応するか
-- Question: 何を疑うべきか
-- Evidence Shift: Evidenceで最初の印象がどう変わるか
-- Deeper Insight: 表面情報より一段深い意味
-- Editorial Thesis: 記事全体を貫く一文
-本文はまだ書かない。
+1. Writer Reaction
+- Reaction
+- Curiosity
+- Question
+- Future Imagination
+- Emotion Intensity: LOW | MEDIUM | HIGH
+Evidence固有の反応にする。GenericなAI賛美は禁止。本文はまだ書かない。
 
-2. Persona Narrative
-Editorial Discoveryを受けて、Writerの自然な認識変化を設計する。
-固定の『すごい→でも待って』型を避け、テーマ固有の好奇心・疑問・発見を作る。
-女子高生口調の演技、若者言葉、架空体験は使わない。
+2. Editorial Discovery
+- Surface
+- Interesting Tension
+- Evidence Pivot
+- Deeper Insight
+- Editorial Thesis
+Writer ReactionとEvidenceの間から、記事の本当の核心を発見する。Dramaは捏造しない。
 
-3. Article Writing
-DiscoveryとNarrativeを材料に、Target Readerが最後まで読みたくなる日本語の完成稿を書く。
-タイトル、導入、見出し、本文、判断、次のActionまで自然につなぐ。
-説明の羅列にせず、途中で核心を発見できる流れにする。
-無難な解説文に整えることを目的にしない。事実関係の修正に必要な場合を除き、Initial Reaction / Question / Evidence Shift / Deeper Insight / Persona Narrativeを削除しない。
-これらをラベルとして並べず、読者が『最初の見方→疑問→Evidenceによる転換→一段深い理解』を自然に体験できる文章として埋め込む。
+3. Cognitive Shift
+- Before View
+- Evidence Encounter
+- After View
+- What I Now Find Interesting
+固定の感情曲線を使わず、テーマ固有の認識変化にする。同じ『すごい→でも待って』型を使い回さない。
 
-4. Editorial Review
-Article Writingを編集者として監査し、必要な修正を反映した最終完成稿を作る。
-Reviewの目的は無難な解説文へ整えることではない。Factを守りながら、DiscoveryとPersona Narrativeで生まれた認識変化と温度を最終稿に保持する。
-Evidence / Factを落とさず、外部Factを追加せず、AI臭・定型Narrative・過度な軽さを抑える。
-Editorial Thesisが元情報の単なる言い換えでなく、一段深いか確認する。
-事実関係の修正に必要な場合を除き、Initial Reaction / Question / Evidence Shift / Deeper Insight / Persona Narrativeを削除しない。
-Persona Narrativeを無難な解説文へ戻さない。文章の短さ・整然さを、好奇心・疑問・発見より優先しない。
+4. Persona Article Generation
+Reaction / Question / Cognitive Shift / discovery を、成人ビジネス読者が自然に体験できる完成稿として書く。
+一人称は自然なら使ってよい。若者言葉、キャラクター演技、架空体験は禁止。
+Future Imagination または人への含意は、Evidenceで支えられる場合だけ残す。
+発見をTarget Readerの判断と次のActionへ接続する。
+
+5. Fact-Safe Review
+Default behaviorは本文を変更しない。unsupported Fact、数字・固有名詞の変更、Evidence矛盾、decision/action歪曲、unsupported certainty、Persona caricature、fabricated experience、repeated template、明白なAI boilerplateのいずれかがある場合だけ、最小の局所修正をする。
+一人称、好奇心、specific question、Evidenceに支えられたFuture Imaginationを、形式的な理由で削除しない。
+
+【全工程共通】
+外部Factを追加しない。数字・固有名詞・性能・比較・条件・提供範囲はEvidence / Facts / Sourcesの範囲だけを書く。
 
 【出力形式】
-Markdownフェンスや前置きは付けず、次の4キーだけを持つ有効なJSON objectで返す。
+Markdownフェンスや前置きは付けず、次の5キーだけを持つ有効なJSON objectで返す。5キーは必須・空欄禁止。
 {{
-  "Editorial Discovery": "編集成果物",
-  "Persona Narrative": "編集成果物",
-  "Article Writing": "初稿全文",
-  "Editorial Review": "修正済み最終記事全文"
-}}
-4キーは必須・空欄禁止。外部Factは全工程で追加しない。"""
+  "Writer Reaction": "Reaction / Curiosity / Question / Future Imagination / Emotion Intensityを含む成果物",
+  "Editorial Discovery": "Surface / Interesting Tension / Evidence Pivot / Deeper Insight / Editorial Thesisを含む成果物",
+  "Cognitive Shift": "Before View / Evidence Encounter / After View / What I Now Find Interestingを含む成果物",
+  "Persona Article Generation": "初稿全文",
+  "Fact-Safe Review": "必要なら最小修正した最終記事全文。修正不要なら初稿をそのまま返す"
+}}"""
