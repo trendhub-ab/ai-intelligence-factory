@@ -21,6 +21,7 @@ B_CALLS_PER_CASE = 1
 C_CALLS_PER_CASE = 1
 EXPECTED_CASES = 3
 MAX_PROVIDER_CALLS = EXPECTED_CASES * (B_CALLS_PER_CASE + C_CALLS_PER_CASE)
+C_ONLY_MAX_PROVIDER_CALLS = EXPECTED_CASES * C_CALLS_PER_CASE
 LOCKED_MODEL_ATTEMPTS = 2
 BACKOFF_BASE_SECONDS = 20.0
 DEFAULT_CASE_COOLDOWN_SECONDS = 45.0
@@ -53,6 +54,10 @@ def _case_cooldown_seconds() -> float:
     if value < 0:
         raise RuntimeError("Phase 0 case cooldown must be non-negative")
     return value
+
+
+def _env_truthy(name: str) -> bool:
+    return str(os.environ.get(name) or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _is_transient_error(exc: BaseException) -> bool:
@@ -160,8 +165,19 @@ def _parse_editorial_bundle(text: str) -> tuple[str, dict[str, str]]:
     return stages["Editorial Review"], stages
 
 
-def _editorial_article(client: Any, *, session: ModelSession, item: ReplayCase) -> tuple[str, dict[str, str]]:
-    bundle = _provider_text_resilient(client, session=session, prompt=build_editorial_bundle_prompt(item.case))
+def _editorial_article(
+    client: Any,
+    *,
+    session: ModelSession,
+    item: ReplayCase,
+    sleep_fn: Callable[[float], None] = time.sleep,
+) -> tuple[str, dict[str, str]]:
+    bundle = _provider_text_resilient(
+        client,
+        session=session,
+        prompt=build_editorial_bundle_prompt(item.case),
+        sleep_fn=sleep_fn,
+    )
     return _parse_editorial_bundle(bundle)
 
 
@@ -210,8 +226,11 @@ def _completed_case_ids(checkpoint: dict[str, Any] | None) -> set[str]:
 def _write_evaluation_artifacts(output_dir: Path, state: dict[str, Any]) -> None:
     raw = {
         "model": state.get("selected_model"),
+        "mode": state.get("mode", "FULL"),
         "provider_calls": state.get("provider_calls", 0),
         "provider_attempts": state.get("provider_attempts", 0),
+        "baseline_provider_calls": state.get("baseline_provider_calls", 0),
+        "baseline_provider_attempts": state.get("baseline_provider_attempts", 0),
         "case_count": len(state.get("cases", [])),
         "cases": state.get("cases", []),
     }
@@ -246,6 +265,84 @@ def _validate_checkpoint(checkpoint: dict[str, Any] | None) -> None:
         seen.add(case_id)
 
 
+def _rebuild_blind_state(state: dict[str, Any]) -> None:
+    packages: list[dict[str, Any]] = []
+    mapping: dict[str, dict[str, str]] = {}
+    for case in state.get("cases", []):
+        outputs = dict(case.get("outputs") or {})
+        if set(outputs) != {"A_CURRENT_WRITER", "B_PERSONA_ONLY", "C_EDITORIAL_ENGINE"}:
+            raise RuntimeError("C-only refinement requires complete A/B/C baseline outputs")
+        blind, case_mapping = build_blind_package(str(case["case_id"]), outputs)
+        packages.append(blind)
+        mapping[str(case["case_id"])] = case_mapping
+    state["blind_packages"] = packages
+    state["blind_mapping"] = mapping
+
+
+def _run_c_only_refinement(
+    client: Any,
+    *,
+    session: ModelSession,
+    state: dict[str, Any],
+    output_dir: str | Path,
+    cooldown: float,
+    sleep_fn: Callable[[float], None] = time.sleep,
+) -> dict[str, Any]:
+    if len(state.get("cases", [])) != EXPECTED_CASES:
+        raise RuntimeError("C-only refinement requires a complete three-case baseline checkpoint")
+    if not session.locked_model:
+        raise RuntimeError("C-only refinement requires the baseline locked model")
+
+    baseline_by_id = {str(case.get("case_id") or ""): dict(case) for case in state["cases"]}
+    if set(baseline_by_id) != {item.case.case_id for item in READY_CASES}:
+        raise RuntimeError("C-only refinement baseline cases do not match current Phase 0 cases")
+
+    state["mode"] = "C_ONLY_REFINEMENT"
+    state["baseline_provider_calls"] = int(state.get("provider_calls", 0))
+    state["baseline_provider_attempts"] = int(state.get("provider_attempts", 0))
+    state["provider_calls"] = 0
+    state["provider_attempts"] = 0
+    session.provider_attempts = 0
+    ordered_cases = [baseline_by_id[item.case.case_id] for item in READY_CASES]
+    state["cases"] = ordered_cases
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    for index, item in enumerate(READY_CASES):
+        baseline_case = ordered_cases[index]
+        outputs = dict(baseline_case.get("outputs") or {})
+        if not outputs.get("A_CURRENT_WRITER") or not outputs.get("B_PERSONA_ONLY"):
+            raise RuntimeError("C-only refinement requires preserved A and B outputs")
+
+        editorial, stages = _editorial_article(
+            client,
+            session=session,
+            item=item,
+            sleep_fn=sleep_fn,
+        )
+        outputs["C_EDITORIAL_ENGINE"] = editorial
+        ordered_cases[index] = {
+            "case_id": item.case.case_id,
+            "theme": item.theme,
+            "input_digest": _input_digest(item),
+            "outputs": outputs,
+            "editorial_stage_outputs": stages,
+        }
+        state["provider_calls"] = index + 1
+        state["provider_attempts"] = session.provider_attempts
+        state["cases"] = ordered_cases
+        _rebuild_blind_state(state)
+        _write_checkpoint(out_dir, state)
+        _write_evaluation_artifacts(out_dir, state)
+
+        if index + 1 < EXPECTED_CASES and cooldown:
+            sleep_fn(cooldown)
+
+    if int(state.get("provider_calls", 0)) != C_ONLY_MAX_PROVIDER_CALLS:
+        raise RuntimeError(f"unexpected C-only provider call count: {state.get('provider_calls', 0)}")
+    return state
+
+
 def run_phase0(output_dir: str | Path) -> dict[str, Any]:
     api_key = str(os.environ.get("GEMINI_API_KEY") or "").strip()
     if not api_key:
@@ -262,8 +359,31 @@ def run_phase0(output_dir: str | Path) -> dict[str, Any]:
     candidates = _model_candidates()
     selected_model = str((checkpoint or {}).get("selected_model") or "").strip() or None
     session = ModelSession(candidates=candidates, locked_model=selected_model)
+    client = genai.Client(api_key=api_key)
+    cooldown = _case_cooldown_seconds()
+
+    if _env_truthy("AIIF_PHASE0_REGENERATE_C_ONLY"):
+        if not checkpoint:
+            raise RuntimeError("C-only refinement requires a restored baseline checkpoint")
+        state = _run_c_only_refinement(
+            client,
+            session=session,
+            state=checkpoint,
+            output_dir=out_dir,
+            cooldown=cooldown,
+        )
+        return {
+            "model": state.get("selected_model"),
+            "mode": state.get("mode"),
+            "provider_calls": state.get("provider_calls", 0),
+            "provider_attempts": state.get("provider_attempts", 0),
+            "case_count": len(state["cases"]),
+            "cases": state["cases"],
+        }
+
     state: dict[str, Any] = checkpoint or {
         "selected_model": None,
+        "mode": "FULL",
         "provider_calls": 0,
         "provider_attempts": 0,
         "cases": [],
@@ -272,10 +392,8 @@ def run_phase0(output_dir: str | Path) -> dict[str, Any]:
     }
     session.provider_attempts = int(state.get("provider_attempts", 0))
     completed = _completed_case_ids(state)
-    client = genai.Client(api_key=api_key)
-    cooldown = _case_cooldown_seconds()
-
     remaining = [item for item in READY_CASES if item.case.case_id not in completed]
+
     for index, item in enumerate(remaining):
         current = _current_writer_article(item)
         persona = _persona_only_article(client, session=session, item=item)
@@ -318,6 +436,7 @@ def run_phase0(output_dir: str | Path) -> dict[str, Any]:
 
     raw = {
         "model": state.get("selected_model"),
+        "mode": state.get("mode", "FULL"),
         "provider_calls": state.get("provider_calls", 0),
         "provider_attempts": state.get("provider_attempts", 0),
         "case_count": len(state["cases"]),
@@ -330,7 +449,7 @@ def main() -> None:
     output_dir = os.environ.get("AIIF_PHASE0_OUTPUT_DIR", "phase0_artifacts")
     result = run_phase0(output_dir)
     print(
-        f"Phase 0 live proof complete: cases={result['case_count']} "
+        f"Phase 0 live proof complete: mode={result.get('mode', 'FULL')} cases={result['case_count']} "
         f"provider_calls={result['provider_calls']} attempts={result['provider_attempts']} model={result['model']}"
     )
 
