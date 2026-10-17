@@ -52,11 +52,11 @@ jobs:
       - name: Run bounded three-case replay
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          AIIF_PHASE0_MODEL: gemini-3.6-flash
+          AIIF_PHASE0_MODEL: gemini-3.5-flash
           AIIF_PHASE0_OUTPUT_DIR: phase0_artifacts
         run: python -m experiments.editorial_engine_v3_phase0.live
       - name: Upload blind evaluation artifacts
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: editorial-engine-v3-phase0
