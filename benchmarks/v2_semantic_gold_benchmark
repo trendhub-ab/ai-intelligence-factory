@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""Offline CLI for scoring V2 Semantic Screening predictions against Gold labels."""
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from v2_semantic_screening import (  # noqa: E402
+    GoldBenchmarkContractError,
+    evaluate_gold_predictions,
+    validate_gold_dataset,
+)
+
+
+def _load_json(path: Path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise GoldBenchmarkContractError("benchmark_json_invalid") from exc
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Score provider-external V2 Semantic predictions")
+    parser.add_argument("--gold", required=True)
+    parser.add_argument("--predictions", required=True)
+    parser.add_argument("--output")
+    args = parser.parse_args(argv)
+
+    try:
+        gold_payload = _load_json(Path(args.gold))
+        gold_cases = validate_gold_dataset(gold_payload)
+        prediction_payload = _load_json(Path(args.predictions))
+        if not isinstance(prediction_payload, dict) or set(prediction_payload) != {"predictions"}:
+            raise GoldBenchmarkContractError("prediction_file_shape_invalid")
+        report = evaluate_gold_predictions(gold_cases, prediction_payload["predictions"])
+    except GoldBenchmarkContractError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    output = json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    if args.output:
+        Path(args.output).write_text(output, encoding="utf-8")
+    else:
+        sys.stdout.write(output)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
