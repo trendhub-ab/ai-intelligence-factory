@@ -206,7 +206,7 @@ def _bounded_timeout(value: Any) -> float:
         number = float(value)
     except (TypeError, ValueError, OverflowError):
         return MIN_TIMEOUT_SECONDS
-    if number != number:  # NaN
+    if number != number:
         return MIN_TIMEOUT_SECONDS
     return max(MIN_TIMEOUT_SECONDS, min(number, MAX_TIMEOUT_SECONDS))
 
@@ -271,6 +271,7 @@ def fetch_hacker_news_candidates(
     http_get: Callable[..., Any] = requests.get,
     limit: int = 5,
     timeout_seconds: float = 5.0,
+    sleep_fn: Callable[[float], None] = time.sleep,
 ) -> list[dict[str, Any]]:
     """Fetch bounded public Hacker News stories using GET only.
 
@@ -284,12 +285,19 @@ def fetch_hacker_news_candidates(
         return []
 
     try:
-        top_response = http_get(HN_TOPSTORIES_URL, timeout=timeout)
+        top_response, _top_diagnostics = bounded_get(
+            http_get=http_get,
+            url=HN_TOPSTORIES_URL,
+            timeout=timeout,
+            sleep_fn=sleep_fn,
+        )
         top_ids = _response_json(top_response, source="HackerNews")
+    except AcquisitionRequestError as exc:
+        raise SourceAcquisitionError("HackerNews", exc.category) from None
     except SourceAcquisitionError:
         raise
-    except Exception as exc:
-        raise SourceAcquisitionError("HackerNews", "request_failure") from exc
+    except Exception:
+        raise SourceAcquisitionError("HackerNews", "request_failure") from None
 
     if not isinstance(top_ids, list):
         raise SourceAcquisitionError("HackerNews", "invalid_payload")
@@ -301,7 +309,12 @@ def fetch_hacker_news_candidates(
         except (TypeError, ValueError, OverflowError):
             continue
         try:
-            item_response = http_get(HN_ITEM_URL.format(item_id=item_id), timeout=timeout)
+            item_response, _item_diagnostics = bounded_get(
+                http_get=http_get,
+                url=HN_ITEM_URL.format(item_id=item_id),
+                timeout=timeout,
+                sleep_fn=sleep_fn,
+            )
             item = _response_json(item_response, source="HackerNews")
         except Exception:
             continue
@@ -340,6 +353,7 @@ def fetch_arxiv_candidates(
     http_get: Callable[..., Any] = requests.get,
     limit: int = 5,
     timeout_seconds: float = 5.0,
+    sleep_fn: Callable[[float], None] = time.sleep,
 ) -> list[dict[str, Any]]:
     """Fetch bounded newest AI/ML arXiv metadata using GET only."""
 
@@ -356,17 +370,26 @@ def fetch_arxiv_candidates(
         "sortOrder": "descending",
     }
     try:
-        response = http_get(ARXIV_API_URL, params=params, timeout=timeout)
+        response, _diagnostics = bounded_get(
+            http_get=http_get,
+            url=ARXIV_API_URL,
+            timeout=timeout,
+            request_kwargs={"params": params},
+            sleep_fn=sleep_fn,
+            retry_delay_seconds=3.0,
+        )
         xml_text = _response_text(response, source="ArXiv")
+    except AcquisitionRequestError as exc:
+        raise SourceAcquisitionError("ArXiv", exc.category) from None
     except SourceAcquisitionError:
         raise
-    except Exception as exc:
-        raise SourceAcquisitionError("ArXiv", "request_failure") from exc
+    except Exception:
+        raise SourceAcquisitionError("ArXiv", "request_failure") from None
 
     try:
         root = ET.fromstring(xml_text)
-    except (ET.ParseError, TypeError, ValueError) as exc:
-        raise SourceAcquisitionError("ArXiv", "invalid_xml") from exc
+    except (ET.ParseError, TypeError, ValueError):
+        raise SourceAcquisitionError("ArXiv", "invalid_xml") from None
 
     ns = {"atom": "http://www.w3.org/2005/Atom"}
     candidates: list[dict[str, Any]] = []
