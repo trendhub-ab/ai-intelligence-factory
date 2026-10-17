@@ -105,6 +105,18 @@ def _acquisition_diagnostics(
     )
 
 
+def _emit_diagnostic(
+    diagnostic_sink: Callable[[Mapping[str, object]], None] | None,
+    diagnostics: AcquisitionDiagnostics,
+) -> None:
+    if diagnostic_sink is None:
+        return
+    try:
+        diagnostic_sink(dict(diagnostics.as_dict()))
+    except Exception:
+        return
+
+
 def bounded_get(
     *,
     http_get: Callable[..., Any],
@@ -113,6 +125,7 @@ def bounded_get(
     request_kwargs: Mapping[str, Any] | None = None,
     sleep_fn: Callable[[float], None] = time.sleep,
     retry_delay_seconds: float = 0.25,
+    diagnostic_sink: Callable[[Mapping[str, object]], None] | None = None,
 ) -> tuple[Any, AcquisitionDiagnostics]:
     """Perform one logical GET with at most one retry for transient failures."""
 
@@ -138,11 +151,13 @@ def bounded_get(
                 except Exception:
                     category = "request_failure"
                 else:
-                    return response, _acquisition_diagnostics(
+                    diagnostics = _acquisition_diagnostics(
                         attempt_count=attempt,
                         first_failure_category=first_failure,
                         final_failure_category=None,
                     )
+                    _emit_diagnostic(diagnostic_sink, diagnostics)
+                    return response, diagnostics
 
         if first_failure is None:
             first_failure = category
@@ -150,14 +165,13 @@ def bounded_get(
             sleep_fn(delay)
             continue
 
-        raise AcquisitionRequestError(
-            category,
-            _acquisition_diagnostics(
-                attempt_count=attempt,
-                first_failure_category=first_failure,
-                final_failure_category=category,
-            ),
-        ) from None
+        diagnostics = _acquisition_diagnostics(
+            attempt_count=attempt,
+            first_failure_category=first_failure,
+            final_failure_category=category,
+        )
+        _emit_diagnostic(diagnostic_sink, diagnostics)
+        raise AcquisitionRequestError(category, diagnostics) from None
 
     raise AssertionError("bounded acquisition loop exhausted unexpectedly")
 
@@ -272,6 +286,7 @@ def fetch_hacker_news_candidates(
     limit: int = 5,
     timeout_seconds: float = 5.0,
     sleep_fn: Callable[[float], None] = time.sleep,
+    diagnostic_sink: Callable[[Mapping[str, object]], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch bounded public Hacker News stories using GET only.
 
@@ -290,6 +305,7 @@ def fetch_hacker_news_candidates(
             url=HN_TOPSTORIES_URL,
             timeout=timeout,
             sleep_fn=sleep_fn,
+            diagnostic_sink=diagnostic_sink,
         )
         top_ids = _response_json(top_response, source="HackerNews")
     except AcquisitionRequestError as exc:
@@ -314,6 +330,7 @@ def fetch_hacker_news_candidates(
                 url=HN_ITEM_URL.format(item_id=item_id),
                 timeout=timeout,
                 sleep_fn=sleep_fn,
+                diagnostic_sink=diagnostic_sink,
             )
             item = _response_json(item_response, source="HackerNews")
         except Exception:
@@ -354,6 +371,7 @@ def fetch_arxiv_candidates(
     limit: int = 5,
     timeout_seconds: float = 5.0,
     sleep_fn: Callable[[float], None] = time.sleep,
+    diagnostic_sink: Callable[[Mapping[str, object]], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch bounded newest AI/ML arXiv metadata using GET only."""
 
@@ -377,6 +395,7 @@ def fetch_arxiv_candidates(
             request_kwargs={"params": params},
             sleep_fn=sleep_fn,
             retry_delay_seconds=3.0,
+            diagnostic_sink=diagnostic_sink,
         )
         xml_text = _response_text(response, source="ArXiv")
     except AcquisitionRequestError as exc:
