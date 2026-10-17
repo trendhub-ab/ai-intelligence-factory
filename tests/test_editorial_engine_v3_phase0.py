@@ -129,7 +129,7 @@ def test_editorial_engine_prompts_have_four_explicit_stages_and_no_external_fact
 
 def test_blind_package_contains_only_opaque_labels_and_keeps_mapping_separate() -> None:
     runner = _module("experiments.editorial_engine_v3_phase0.runner")
-    outputs = {variant: f"article for {variant}" for variant in VARIANTS}
+    outputs = dict(zip(VARIANTS, ("first candidate", "second candidate", "third candidate"), strict=True))
     package, mapping = runner.build_blind_package("case-x", outputs)
     serialized_package = json.dumps(package, ensure_ascii=False)
     assert all(variant not in serialized_package for variant in VARIANTS)
