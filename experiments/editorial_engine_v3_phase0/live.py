@@ -290,7 +290,15 @@ def _validate_checkpoint(checkpoint: dict[str, Any] | None) -> None:
 def _rebuild_blind_state(state: dict[str, Any]) -> None:
     packages: list[dict[str, Any]] = []
     mapping: dict[str, dict[str, str]] = {}
-    for case in state.get("cases", []):
+    cases = list(state.get("cases", []))
+    if state.get("mode") == "C_ONLY_REFINEMENT":
+        completed = {str(case_id) for case_id in state.get("c_completed_case_ids", []) if str(case_id)}
+        known = {str(case.get("case_id") or "") for case in cases if case.get("case_id")}
+        if not completed.issubset(known):
+            raise RuntimeError("C-only refinement completed cases do not match checkpoint cases")
+        cases = [case for case in cases if str(case.get("case_id") or "") in completed]
+
+    for case in cases:
         outputs = dict(case.get("outputs") or {})
         if set(outputs) != {"A_CURRENT_WRITER", "B_PERSONA_ONLY", "C_EDITORIAL_ENGINE"}:
             raise RuntimeError("C-only refinement requires complete A/B/C baseline outputs")
