@@ -146,6 +146,37 @@ def test_reaction_first_stage_prompts_have_five_explicit_stages_and_fact_boundar
         assert marker in review
 
 
+def test_persona_article_generation_explicitly_preserves_writer_owned_anchors() -> None:
+    prompts = _module("experiments.editorial_engine_v3_phase0.prompts")
+    article = prompts.build_editorial_stage_prompts(_case("preservation"))["Persona Article Generation"]
+
+    for marker in (
+        "writer-owned anchor",
+        "Writer Question",
+        "before→after",
+        "What I Now Find Interesting",
+        "私たちは〜",
+        "疑問が生じます",
+        "〜ではないでしょうか",
+        "置換しない",
+    ):
+        assert marker in article
+
+
+def test_fact_safe_review_rejects_true_but_unstated_and_stronger_assertions() -> None:
+    prompts = _module("experiments.editorial_engine_v3_phase0.prompts")
+    review = prompts.build_editorial_stage_prompts(_case("strict-facts"))["Fact-Safe Review"]
+
+    for marker in (
+        "true-but-unstated",
+        "stronger-than-input",
+        "unsupported causal claim",
+        "unsupported generalization",
+        "Evidence / Facts / Sources",
+    ):
+        assert marker in review
+
+
 def test_reaction_first_bundle_requires_exact_stage_keys_and_preservation_policy() -> None:
     prompts = _module("experiments.editorial_engine_v3_phase0.prompts")
     bundle = prompts.build_editorial_bundle_prompt(_case("bundle"))
@@ -170,6 +201,25 @@ def test_reaction_first_bundle_requires_exact_stage_keys_and_preservation_policy
 
     assert "Persona Narrative" not in bundle
     assert "Editorial Review" not in bundle
+
+
+def test_reaction_first_bundle_carries_persona_anchors_and_strict_fact_review_into_one_call() -> None:
+    prompts = _module("experiments.editorial_engine_v3_phase0.prompts")
+    bundle = prompts.build_editorial_bundle_prompt(_case("bundle-preservation"))
+
+    for marker in (
+        "writer-owned anchor",
+        "Writer Question",
+        "before→after",
+        "私たちは〜",
+        "疑問が生じます",
+        "〜ではないでしょうか",
+        "true-but-unstated",
+        "stronger-than-input",
+        "unsupported causal claim",
+        "unsupported generalization",
+    ):
+        assert marker in bundle
 
 
 def test_blind_package_contains_only_opaque_labels_and_keeps_mapping_separate() -> None:
