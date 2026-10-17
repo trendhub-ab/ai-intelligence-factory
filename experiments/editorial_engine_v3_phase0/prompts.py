@@ -92,17 +92,21 @@ Writer ReactionとEditorial Discoveryを受けて、Writerの理解がEvidence�
 Writer Reaction、Editorial Discovery、Cognitive Shiftを材料に、成人ビジネスパーソンが最後まで読みたくなる完成稿を書く。
 タイトル、導入、見出し、本文、判断、次のActionまで自然につなぐ。
 
-完成稿には、ラベルをそのまま見出し化せず、自然な文章として次のobservable signalを複数残す。
-- Writer Reaction: Writer自身の反応
-- Question: Writer自身の疑問
-- Cognitive Shift: Evidenceによる見方の変化
-- discovery: 本当に面白い点の発見
-- Future Imagination または人への含意（Evidenceで支えられる場合）
-- 発見からTarget Readerの判断への接続
+この工程の最重要契約は、前段で生まれたWriter自身の知的な動きを最終稿で消さないこと。完成稿にはラベルをそのまま見出し化せず、次の4つを意味として必ず生存させる。
+- writer-owned anchor: Writer自身が何に反応したのかが、誰の感覚か分かる形で本文に残る
+- Writer Question: Writer Reactionで生まれた具体的Questionを、Genericな問いへ薄めず意味を保つ
+- before→after: Evidence EncounterによってBefore ViewからAfter Viewへ見方が動いたことを、読者が本文から追える形で残す
+- What I Now Find Interesting: Cognitive Shift後にWriterが最終的に何を面白いと発見したのかを残す
 
-一人称は自然なら使ってよい。『私たちは考えるべき』『疑問を抱くべき』のようなGeneric表現に隠さない。
+一人称単数は自然なら使ってよいが必須ではない。ただし、writer-owned anchorが誰の反応か分からない無人称表現へ消えてはいけない。
+次の表現そのものを全面禁止するのではなく、Writer自身のReaction / Question / Shiftを消す置換として使ってはいけない。
+- 『私たちは〜』へ置換しない。Writer個人の反応をGenericな集団意見に変えない
+- 『疑問が生じます』『関心が生じます』へ置換しない。具体的なWriter Questionを抽象名詞へ変えない
+- 『〜ではないでしょうか』へ置換しない。Writer自身の発見や疑問を読者向けレトリックへ逃がさない
+
+Future Imagination または人への含意はEvidenceで支えられる場合だけ残し、発見からTarget Readerの判断へ接続する。
 若者言葉・キャラクター演技・架空体験・過剰なドラマ化を避ける。
-外部Factは追加しない。Evidence / Fact、Decision、Actionの意味を保持する。
+外部Factは追加しない。Evidence / Facts / Sourcesにない背景知識を、常識だからという理由で補わない。Decision、Actionの意味を保持する。
 完成稿のみを出力する。"""
     review = f"""{boundary}
 
@@ -110,13 +114,18 @@ Writer Reaction、Editorial Discovery、Cognitive Shiftを材料に、成人ビ�
 直前のPersona Article Generationを監査する。Default behaviorは、具体的な欠陥がない限り本文を変更しない。
 欠陥がある場合だけ、最小の局所修正を行い、最終完成稿だけを返す。
 
-確認対象:
+Fact監査はEvidence / Facts / Sourcesを唯一の許可境界として行う。一般知識として正しそうでも入力に書かれていない factual assertion は許可しない。
+次は具体的な欠陥として扱う。
 - unsupported external Fact
+- true-but-unstated: 一般常識・業界常識・モデル知識として真でもEvidence / Facts / Sourcesにない背景説明
 - changed or invented numbers
 - changed named entities
 - Evidence contradiction
 - decision/action distortion
 - unsupported certainty
+- stronger-than-input: 入力より強い確実性・重要性・因果・リスク評価への書き換え
+- unsupported causal claim: 入力が直接支えていない原因→結果の断定
+- unsupported generalization: 個別Evidenceを業界全体・人間一般・通常の実務へ広げた断定
 - Persona caricature or fabricated experience
 - repeated narrative template
 - obvious AI boilerplate that Writerの温度を潰さず除去できるか
@@ -127,6 +136,7 @@ Writer Reaction、Editorial Discovery、Cognitive Shiftを材料に、成人ビ�
 - specific question をGenericなビジネス表現へ置換する
 - 全文を整然と見せるために再構成する
 - Future Imagination が問い・含意としてEvidenceに支えられているのに削除する
+- writer-owned anchor / Writer Question / before→after / What I Now Find Interesting を、Fact修整に不要なのに平坦化する
 
 外部Factは追加しない。必要修正がなければ、Persona Article Generationをそのまま返す。"""
     return dict(zip(EDITORIAL_STAGES, (reaction, discovery, shift, article, review), strict=True))
@@ -165,17 +175,35 @@ Writer ReactionとEvidenceの間から、記事の本当の核心を発見する
 固定の感情曲線を使わず、テーマ固有の認識変化にする。同じ『すごい→でも待って』型を使い回さない。
 
 4. Persona Article Generation
-Reaction / Question / Cognitive Shift / discovery を、成人ビジネス読者が自然に体験できる完成稿として書く。
-一人称は自然なら使ってよい。若者言葉、キャラクター演技、架空体験は禁止。
-Future Imagination または人への含意は、Evidenceで支えられる場合だけ残す。
+前の3工程を単なる下書きメモとして捨てない。最終稿には、自然な文章として次の4つを必ず意味的に生存させる。
+- writer-owned anchor: Writer自身が何に反応したかが分かること
+- Writer Question: Writer Reactionの具体的QuestionをGeneric化せず保つこと
+- before→after: Evidence EncounterでBefore View→After Viewへ認識が動いたことが読めること
+- What I Now Find Interesting: 最後にWriterが本当に面白いと発見した点が分かること
+
+一人称単数は自然なら使ってよいが、WriterのReaction / Question / Shiftを次のGeneric表現へ置換しない。
+- 『私たちは〜』へ置換しない
+- 『疑問が生じます』『関心が生じます』へ置換しない
+- 『〜ではないでしょうか』へ置換しない
+これらの語形自体の禁止ではなく、writer-ownedな知的動きを消す代替表現として使わないという意味である。
+
+成人ビジネス読者向けの完成稿とし、若者言葉、キャラクター演技、架空体験は禁止。
+Future Imagination または人への含意はEvidenceで支えられる場合だけ残す。
 発見をTarget Readerの判断と次のActionへ接続する。
 
 5. Fact-Safe Review
-Default behaviorは本文を変更しない。unsupported Fact、数字・固有名詞の変更、Evidence矛盾、decision/action歪曲、unsupported certainty、Persona caricature、fabricated experience、repeated template、明白なAI boilerplateのいずれかがある場合だけ、最小の局所修正をする。
-一人称、好奇心、specific question、Evidenceに支えられたFuture Imaginationを、形式的な理由で削除しない。
+Default behaviorは本文を変更しない。ただしEvidence / Facts / Sourcesを唯一のFact境界として、一文ごとの factual assertion が支えられているか確認する。
+次は具体的欠陥なので、最小の局所修正で削除・弱化・問いへの変更を行う。
+- true-but-unstated: 真に見えても入力にない背景知識
+- stronger-than-input: 入力より強い確実性・重要性・リスク評価
+- unsupported causal claim: 入力が支えない因果断定
+- unsupported generalization: 個別Evidenceから一般論へ広げた断定
+- 数字・固有名詞の変更、Evidence矛盾、decision/action歪曲、Persona caricature、fabricated experience、repeated template、明白なAI boilerplate
+
+Fact修整に不要なのにwriter-owned anchor、Writer Question、before→after、What I Now Find Interesting、一人称、好奇心、specific question、Evidenceに支えられたFuture Imaginationを削除・平坦化しない。
 
 【全工程共通】
-外部Factを追加しない。数字・固有名詞・性能・比較・条件・提供範囲はEvidence / Facts / Sourcesの範囲だけを書く。
+外部Factを追加しない。数字・固有名詞・性能・比較・条件・提供範囲・背景説明・因果説明はEvidence / Facts / Sourcesの範囲だけを書く。
 
 【出力形式】
 Markdownフェンスや前置きは付けず、次の5キーだけを持つ有効なJSON objectで返す。5キーは必須・空欄禁止。
@@ -183,6 +211,6 @@ Markdownフェンスや前置きは付けず、次の5キーだけを持つ有�
   "Writer Reaction": "Reaction / Curiosity / Question / Future Imagination / Emotion Intensityを含む成果物",
   "Editorial Discovery": "Surface / Interesting Tension / Evidence Pivot / Deeper Insight / Editorial Thesisを含む成果物",
   "Cognitive Shift": "Before View / Evidence Encounter / After View / What I Now Find Interestingを含む成果物",
-  "Persona Article Generation": "初稿全文",
-  "Fact-Safe Review": "必要なら最小修正した最終記事全文。修正不要なら初稿をそのまま返す"
+  "Persona Article Generation": "writer-owned anchor / Writer Question / before→after / What I Now Find Interestingを自然に残した初稿全文",
+  "Fact-Safe Review": "必要ならFact境界だけを最小修正した最終記事全文。修正不要なら初稿をそのまま返す"
 }}"""
