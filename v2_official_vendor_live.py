@@ -10,11 +10,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from html.parser import HTMLParser
+import time
 from typing import Any, Callable
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import requests
 
+from v2_live_shadow_acquisition import AcquisitionRequestError, bounded_get
 from v2_official_vendor_acquisition import acquire_official_vendor_candidates
 
 
@@ -149,26 +151,23 @@ def fetch_official_vendor_source(
     *,
     source: VendorSourceConfig,
     http_get: Callable[..., Any] = requests.get,
+    sleep_fn: Callable[[float], None] = time.sleep,
 ) -> list[dict[str, Any]]:
     """Fetch one exact allowlisted vendor collection page and normalize <=5 links."""
 
     try:
-        response = http_get(source.collection_url, timeout=source.timeout_seconds)
-    except Exception:
-        raise VendorLiveError(source.provider, "request_failure") from None
+        response, _diagnostics = bounded_get(
+            http_get=http_get,
+            url=source.collection_url,
+            timeout=source.timeout_seconds,
+            sleep_fn=sleep_fn,
+        )
+    except AcquisitionRequestError as exc:
+        raise VendorLiveError(source.provider, exc.category) from None
 
     final_url = str(getattr(response, "url", source.collection_url) or source.collection_url)
     if not _same_allowed_host(final_url, source.allowed_hostname):
         raise VendorLiveError(source.provider, "redirect_host_unapproved")
-
-    try:
-        raise_for_status = getattr(response, "raise_for_status", None)
-        if callable(raise_for_status):
-            raise_for_status()
-        elif int(getattr(response, "status_code", 200) or 200) >= 400:
-            raise RuntimeError("HTTP failure")
-    except Exception:
-        raise VendorLiveError(source.provider, "http_failure") from None
 
     html = getattr(response, "text", None)
     if not isinstance(html, str):
@@ -218,6 +217,7 @@ def fetch_official_vendor_source(
 def fetch_all_official_vendor_candidates(
     *,
     http_get: Callable[..., Any] = requests.get,
+    sleep_fn: Callable[[float], None] = time.sleep,
 ) -> list[dict[str, Any]]:
     """Read the three reviewed vendor pages; raise only when all three fail."""
 
@@ -225,7 +225,11 @@ def fetch_all_official_vendor_candidates(
     successful_reads = 0
     for source in OFFICIAL_VENDOR_SOURCES:
         try:
-            source_rows = fetch_official_vendor_source(source=source, http_get=http_get)
+            source_rows = fetch_official_vendor_source(
+                source=source,
+                http_get=http_get,
+                sleep_fn=sleep_fn,
+            )
         except VendorLiveError:
             continue
         successful_reads += 1
