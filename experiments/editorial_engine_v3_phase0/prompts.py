@@ -66,8 +66,10 @@ Writer ReactionとEvidenceの緊張関係から、本文の核心を発見する
 - Evidence Pivot: どのEvidenceが見方を変える、または鋭くするか
 - Deeper Insight: 見出しの一段下にある本当の意味
 - Editorial Thesis: 記事全体を貫く一文
+- Narrative Path: このEvidenceとテーマに最も合う読み進め方。どこから入り、何を後で明かすかを決める
 
 Dramaを捏造しない。Evidenceが最初の期待を確認する場合は『期待→さらに面白い』でもよい。
+構成順は固定しない。同じ骨格を別テーマへ使い回さない。導入・見出し・段落順は、Reaction / Question / Shift のラベル順ではなく、そのテーマで最も自然なNarrative Pathにする。
 外部Factは追加しない。"""
     shift = f"""{boundary}
 
@@ -97,6 +99,8 @@ Writer Reaction、Editorial Discovery、Cognitive Shiftを材料に、成人ビ�
 - Writer Question: Writer Reactionで生まれた具体的Questionを、Genericな問いへ薄めず意味を保つ
 - before→after: Evidence EncounterによってBefore ViewからAfter Viewへ見方が動いたことを、読者が本文から追える形で残す
 - What I Now Find Interesting / discovery: Cognitive Shift後にWriterが最終的に何を面白いと発見したのかを残す
+
+上の4要素は意味として残すが、planning artifactをそのまま直列化しない。Reaction→Question→before→after→What I Now Find Interesting→判断 という順序を記事の固定テンプレートにしない。この順序をなぞらない。Editorial Discoveryで選んだNarrative Pathに従い、テーマごとに導入・見出し・段落順を変える。
 
 一人称単数は自然なら使ってよいが必須ではない。ただし、writer-owned anchorが誰の反応か分からない無人称表現へ消えてはいけない。
 次の表現そのものを全面禁止するのではなく、Writer自身のReaction / Question / Shiftを消す置換として使ってはいけない。
@@ -129,6 +133,8 @@ Fact監査はEvidence / Facts / Sourcesを唯一の許可境界として行う�
 - Persona caricature or fabricated experience
 - repeated narrative template
 - obvious AI boilerplate that Writerの温度を潰さず除去できるか
+
+入力の強さを保存する。入力が『寄与する』『省ける』『不要』までしか言っていない時、より強い断定へ格上げしない。たとえば『低減に寄与→直結』『手間が省け→なくす』『再学習不要→再学習は膨大なコスト』は、入力がその強さや背景理由を明示していない限り stronger-than-input / true-but-unstated として修正する。『可能性』『見込める』『寄与』などのモダリティも入力どおりに保つ。
 
 禁止:
 - 一人称を形式的理由だけで無人称へ変える
@@ -165,7 +171,9 @@ Evidence固有の反応にする。GenericなAI賛美は禁止。本文はまだ
 - Evidence Pivot
 - Deeper Insight
 - Editorial Thesis
+- Narrative Path: このEvidenceとテーマに合う読み進め方を決める
 Writer ReactionとEvidenceの間から、記事の本当の核心を発見する。Dramaは捏造しない。
+構成順は固定しない。同じ骨格を別テーマへ使い回さない。導入・見出し・段落順を、Reaction / Question / Shift のラベル順へ機械的に揃えない。
 
 3. Cognitive Shift
 - Before View
@@ -180,6 +188,8 @@ Writer ReactionとEvidenceの間から、記事の本当の核心を発見する
 - Writer Question: Writer Reactionの具体的QuestionをGeneric化せず保つこと
 - before→after: Evidence EncounterでBefore View→After Viewへ認識が動いたことが読めること
 - What I Now Find Interesting: 最後にWriterが本当に面白いと発見した点が分かること
+
+ただしplanning artifactをそのまま記事構造にしない。Reaction→Question→before→after→What I Now Find Interesting→判断 という順序を固定テンプレートにせず、この順序をなぞらない。Narrative Pathに合わせて、テーマごとに導入・見出し・段落順を変える。
 
 一人称単数は自然なら使ってよいが、WriterのReaction / Question / Shiftを次のGeneric表現へ置換しない。
 - 『私たちは〜』へ置換しない
@@ -200,6 +210,8 @@ Default behaviorは本文を変更しない。ただしEvidence / Facts / Source
 - unsupported generalization: 個別Evidenceから一般論へ広げた断定
 - 数字・固有名詞の変更、Evidence矛盾、decision/action歪曲、Persona caricature、fabricated experience、repeated template、明白なAI boilerplate
 
+入力の強さを保存する。『低減に寄与→直結』『手間が省け→なくす』『再学習不要→再学習は膨大なコスト』のように、入力より強い断定・背景説明へ格上げしない。入力の『可能性』『見込める』『寄与』などのモダリティを維持し、強くなった箇所は最小限に弱化・削除する。
+
 Fact修整に不要なのにwriter-owned anchor、Writer Question、before→after、What I Now Find Interesting、一人称、好奇心、specific question、Evidenceに支えられたFuture Imaginationを削除・平坦化しない。
 
 【全工程共通】
@@ -209,8 +221,8 @@ Fact修整に不要なのにwriter-owned anchor、Writer Question、before→aft
 Markdownフェンスや前置きは付けず、次の5キーだけを持つ有効なJSON objectで返す。5キーは必須・空欄禁止。
 {{
   "Writer Reaction": "Reaction / Curiosity / Question / Future Imagination / Emotion Intensityを含む成果物",
-  "Editorial Discovery": "Surface / Interesting Tension / Evidence Pivot / Deeper Insight / Editorial Thesisを含む成果物",
+  "Editorial Discovery": "Surface / Interesting Tension / Evidence Pivot / Deeper Insight / Editorial Thesis / Narrative Pathを含む成果物",
   "Cognitive Shift": "Before View / Evidence Encounter / After View / What I Now Find Interestingを含む成果物",
-  "Persona Article Generation": "writer-owned anchor / Writer Question / before→after / What I Now Find Interestingを自然に残した初稿全文",
-  "Fact-Safe Review": "必要ならFact境界だけを最小修正した最終記事全文。修正不要なら初稿をそのまま返す"
+  "Persona Article Generation": "writer-owned anchor / Writer Question / before→after / What I Now Find Interestingを自然に残し、Narrative Path固有の構成で書いた初稿全文",
+  "Fact-Safe Review": "必要ならFact境界と入力の強さだけを最小修正した最終記事全文。修正不要なら初稿をそのまま返す"
 }}"""
