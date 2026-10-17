@@ -10,6 +10,12 @@ on:
       - 'tests/test_editorial_engine_v3_phase0_live.py'
       - '.github/workflows/editorial-engine-v3-phase0.yml'
   workflow_dispatch:
+    inputs:
+      run_live:
+        description: 'Run Gemini Phase 0 live proof'
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -36,7 +42,7 @@ jobs:
   live-proof:
     name: Phase 0 bounded Gemini replay
     needs: contract
-    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[phase0-live]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_live == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     concurrency:
