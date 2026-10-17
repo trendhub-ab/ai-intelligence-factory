@@ -1,0 +1,378 @@
+"""Isolated, fixed-evidence Ready eligibility experiment.
+
+No production stores, note endpoints, or user-facing publication are touched.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import sys
+import time
+from unittest.mock import patch
+
+# GitHub Actions executes this file by path from experiments/, whereas production
+# modules live at repository root.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from experiments.ready_yield_send_policy import ProbePolicy, run_bounded_cases
+
+
+EVIDENCE_URL = "https://github.com/astral-sh/uv/blob/dd965a276182e2d46d80439feecd03216cc6643a/README.md"
+EVIDENCE = """Primary source: astral-sh/uv README at dd965a276182e2d46d80439feecd03216cc6643a.
+uv is a Python package and project manager written in Rust. The README describes a universal
+lockfile, Python version installation and management, dependency and environment management,
+script execution with inline dependency metadata, a pip-compatible interface, Cargo-style
+workspaces, and a global cache. It supports macOS, Linux and Windows. The README advertises
+10–100x faster performance than pip and points to BENCHMARKS.md; this is the author's claim
+and is not an independently confirmed general speed guarantee. The README describes dual
+Apache-2.0 and MIT licenses. The cited README gives no independently verified benchmark for
+the reader's workload and no assurance of migration compatibility for a particular project.
+Any recommended action must be a limited comparison or test, not an immediate full migration.
+"""
+REPO = {
+    "nameWithOwner": "astral-sh/uv", "url": "https://github.com/astral-sh/uv",
+    "primaryUrl": EVIDENCE_URL, "source": "GitHub", "stargazerCount": 0,
+    "licenseInfo": {"spdxId": "MIT"},
+    "description": "Python package and project manager written in Rust.",
+}
+MODELS = ("gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash")
+STYLES = ("classic", "human_narrative", "duo_narrative", "minimal")
+
+
+def sha(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def install_production_gates():
+    import pipeline as p
+    import production_pipeline
+    import run203_runtime_state_channel
+    import run179_eyecatch_font_refinement
+
+    # The same installer order as the production entrypoint, while bypassing its
+    # operational main, runtime-state writes, and all production persistence.
+    original = p.main
+    p.main = lambda: None
+    try:
+        # Install the actual production layers while excluding two startup I/O
+        # checks that require a production branch/font asset during local QA.
+        with patch.object(run203_runtime_state_channel, "preflight_runtime_state_channel"), \
+             patch.object(run179_eyecatch_font_refinement, "ensure_google_font_assets"):
+            production_pipeline.main()
+    finally:
+        p.main = original
+    return p
+
+
+def source_info(p):
+    metadata = p._build_evidence_metadata(EVIDENCE, False)
+    return {
+        "primary_source_resolved": True, "primary_url": EVIDENCE_URL,
+        "context": EVIDENCE, "verification_context": EVIDENCE,
+        "method": p.GROUNDING_SOURCE_NATIVE, "source": "GitHub",
+        "source_details": {}, "supplement_candidates": [],
+        "evidence_documents": [{"url": EVIDENCE_URL, "retrieved": True}],
+        "evidence_urls": [EVIDENCE_URL], "deep_source_scanned": False,
+        "evidence_metadata": metadata,
+        "requested_action_risk_tier": "LOW",
+    }
+
+
+def gate_result(p, parsed, info, *, truncated=False):
+    fact, fact_reasons = p.validate_fact_gate(
+        parsed, REPO["nameWithOwner"], source_context=EVIDENCE,
+        source="GitHub", evidence_metadata=info["evidence_metadata"],
+        source_info=info, freshness={}, output_truncated=truncated,
+    )
+    editorial, editorial_reasons = p.validate_editorial_gate(parsed, REPO["nameWithOwner"])
+    publication, publication_reasons = p.validate_publication_readiness_gate(parsed, EVIDENCE, info)
+    reader, reader_reasons = p.validate_human_appeal_gate(parsed, [])
+    rows = sum((p.map_gate_reasons(k, v) for k, v in (
+        ("fact", fact_reasons), ("editorial", editorial_reasons),
+        ("publication", publication_reasons), ("human_appeal", reader_reasons))), [])
+    disposition = p.gate_reason_disposition(rows)
+    ready_eligible = disposition in {p.GATE_DISPOSITION_PASS, p.GATE_DISPOSITION_PASS_WITH_WARNINGS}
+    return {
+        "evidence": info["evidence_result"]["state"],
+        "fact": {"pass": fact, "reasons": fact_reasons},
+        "editorial": {"pass": editorial, "reasons": editorial_reasons},
+        "publication": {"state": publication, "reasons": publication_reasons},
+        "reader_value": {"state": reader, "reasons": reader_reasons},
+        "reason_rows": rows, "disposition": disposition,
+        "ready_eligible_before_persistence": ready_eligible,
+    }
+
+
+def prompt_for(p, style: str, feedback: str = "", previous: str = "") -> str:
+    p.AIIF_EDITORIAL_STYLE = "classic" if style == "minimal" else style
+    prompt = p.build_decision_prompt(
+        REPO["nameWithOwner"], EVIDENCE_URL, 0, REPO["description"],
+        quality_feedback=feedback, source="GitHub", source_context=EVIDENCE,
+        evidence_metadata=p._build_evidence_metadata(EVIDENCE, False),
+        freshness={}, previous_article=previous,
+        evidence_result=p.assess_evidence_sufficiency(source_info(p)),
+    )
+    if style == "minimal":
+        # Keep the production output schema and evidence boundaries, but replace
+        # narrative style requests with one explicit concise editorial condition.
+        prompt += "\n【実験条件: Evidence中心】事実の出典と未検証条件を明確にし、脚色せず、指定の出力形式を守る。"
+    return prompt
+
+
+def evaluate(p, raw: str, info):
+    parsed = p._parse_gemini_response(raw)
+    parsed_before_polish = parsed.get("note_draft", "")
+    parsed, jp_changes = p._apply_final_japanese_polish(parsed)
+    parsed, structure_changes = p._apply_deterministic_structure_polish(parsed)
+    parsed["grounding_status"] = p.GROUNDING_SOURCE_NATIVE
+    parsed["evidence_urls_text"] = EVIDENCE_URL
+    action = p.classify_action_risk_tier(parsed.get("action_text", ""))
+    current_info = dict(info)
+    current_info["requested_action_risk_tier"] = action
+    current_info["evidence_result"] = p.assess_evidence_sufficiency(current_info)
+    result = gate_result(p, parsed, current_info)
+    rescue = None
+    if not result["ready_eligible_before_persistence"]:
+        hard = p._reason_rows_by_severity(result["reason_rows"], p.GATE_SEVERITY_HARD)
+        if hard:
+            rescued, changes = p._apply_deterministic_publication_rescue(parsed, hard)
+            if changes:
+                ok, diag = p._publication_rescue_can_be_ready(
+                    rescued, EVIDENCE, "GitHub", current_info["evidence_metadata"],
+                    current_info, {}, peer_articles=[],
+                )
+                rescue = {
+                    "changes": changes, "body": rescued.get("note_draft", ""),
+                    "body_sha256": sha(rescued.get("note_draft", "")),
+                    "ready_eligible": bool(ok and not rescued.get("_rescue_loss", {}).get("loss_exceeded")),
+                    "diagnostics": diag,
+                    "new_reason_codes": sorted(set(r.get("reason_code") for r in diag["reason_rows"])
+                                               - set(r.get("reason_code") for r in result["reason_rows"])),
+                }
+    return {
+        "raw_response": raw, "raw_sha256": sha(raw),
+        "body_before_polish": parsed_before_polish,
+        "body_after_polish": parsed.get("note_draft", ""),
+        "polish_changes": jp_changes, "structure_changes": structure_changes,
+        "gate": result, "rescue": rescue,
+    }
+
+
+def execute_limited(p, info: dict, out_dir: Path, shared_rpm, *,
+                    max_attempts: int = 4, initial_only: bool = False,
+                    clock=time.monotonic, wall_clock=time.time,
+                    sleep=time.sleep) -> list[dict]:
+    """One bounded probe; every initial and feedback request uses one limiter.
+
+    The CLI keeps this unavailable until shared quota and an explicit one-shot
+    execution path have been verified. In particular this function does not
+    publish, create note drafts, or change Notion status.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cases = [
+        {"id": f"{model}_{style}_initial", "model": model, "style": style,
+         "phase": "initial", "feedback": "", "previous": ""}
+        for style in ("classic", "human_narrative")
+        for model in ("gemini-3.6-flash", "gemini-3.5-flash")
+    ]
+    if initial_only:
+        cases = cases[:2]
+
+    def send(case):
+        from canonical_article_contract import aiif_editor_persona
+        prompt = prompt_for(p, case["style"], case["feedback"], case["previous"])
+        case["prompt_sha256"] = sha(prompt)
+        config = {"max_output_tokens": p.GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS,
+                  "system_instruction": aiif_editor_persona()}
+        response = p._generate_via_chat(
+            case["model"], prompt, config=config,
+            request_kind="deep_dive" if case["phase"] == "initial" else "quality_retry",
+            request_context="experiment:ready-yield-fixed-evidence",
+            count_as_deep_dive=True,
+        )
+        raw = response.text or ""
+        # Write the unmodified provider text before parsing, polish, or Gate.
+        (out_dir / f"{case['id']}.raw.txt").write_text(raw, encoding="utf-8")
+        return raw
+
+    def assess(case, raw):
+        result = evaluate(p, raw, info)
+        assessment = {"article": result, "feedback": None}
+        if initial_only or case["phase"] != "initial" or result["gate"]["ready_eligible_before_persistence"]:
+            return assessment
+        reasons = [r["message"] for r in result["gate"]["reason_rows"]
+                   if r.get("severity") in {p.GATE_SEVERITY_HARD, p.GATE_SEVERITY_REVIEW}]
+        if reasons:
+            assessment["feedback"] = {
+                **case, "id": case["id"].replace("_initial", "_feedback"),
+                "phase": "feedback", "feedback": " / ".join(reasons),
+                "previous": result["body_after_polish"],
+            }
+        return assessment
+
+    def save(row):
+        (out_dir / f"{row['case']['id']}.json").write_text(
+            json.dumps(row, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+        )
+
+    def reserve_shared(case):
+        # The persistent reservation is committed before the provider call.
+        # Never proceed when remote state, scope, or CAS cannot be established.
+        for _ in range(5):
+            delay = shared_rpm.reserve(case["model"], wall_clock())
+            if delay <= 0:
+                return
+            sleep(delay + 0.01)
+        raise RuntimeError("Shared RPM reservation remained unavailable")
+
+    rows = run_bounded_cases(cases, send=send, assess=assess,
+                             before_send=reserve_shared, on_result=save,
+                             clock=clock, sleep=sleep,
+                             policy=ProbePolicy(max_attempts=max_attempts))
+    (out_dir / "summary.json").write_text(json.dumps({
+        "provider_attempts": sum(r.get("provider_attempted", False) for r in rows),
+        "successful_responses": sum(r["outcome"] == "success" for r in rows),
+        "ready_eligible_before_persistence": sum(
+            r.get("assessment", {}).get("article", {}).get("gate", {}).get(
+                "ready_eligible_before_persistence", False) for r in rows),
+        "note_writes": 0, "notion_writes": 0, "actual_ready_persisted": 0,
+        "evidence_sha256": sha(EVIDENCE),
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    return rows
+
+
+def prepare_isolated_probe_budget(p, *, max_attempts: int = 3):
+    """Use the original per-run cap in a probe that has no backlog or rescue work."""
+    original = getattr(p, "_run346_original_deep_dive_budget", None)
+    budget = getattr(p, "DEEP_DIVE_MODEL_BUDGET", None)
+    if not isinstance(original, int) or original < max_attempts or budget is None or budget.used != 0:
+        raise RuntimeError("Cannot establish remaining isolated Deep Dive budget")
+    budget.budget = max_attempts
+    if not budget.can_request():
+        raise RuntimeError("No Deep Dive request capacity before provider reservation")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--phase", choices=("preflight", "limited", "initial", "feedback"), required=True)
+    parser.add_argument("--confirm", default="")
+    parser.add_argument("--model", choices=MODELS)
+    parser.add_argument("--in-dir", type=Path)
+    parser.add_argument("--out-dir", type=Path, required=True)
+    args = parser.parse_args()
+    if args.phase in ("initial", "feedback"):
+        # The first live run bypassed Production's 20-second request pacing and
+        # hit the observed free-tier 5 RPM limit. Keep the canceled harness
+        # unusable until the shared project/model RPM reservation is implemented
+        # and exercised by zero-provider tests. An env flag cannot override this.
+        raise RuntimeError("RPM_SAFE_EXPERIMENT_DISABLED: live Gemini phases are canceled")
+    if args.phase == "limited":
+        required = {
+            "confirm": args.confirm == "RUN_ONCE",
+            "github_actions": os.environ.get("GITHUB_ACTIONS") == "true",
+            "event": os.environ.get("GITHUB_EVENT_NAME") == "pull_request",
+            "manual_rerun": os.environ.get("GITHUB_RUN_ATTEMPT") == "2",
+            "branch": os.environ.get("GITHUB_HEAD_REF") == "experiment/ready-yield-fixed-evidence-20260924",
+            "workflow": os.environ.get("AIIF_EXPERIMENT_SHARED_GROUP") == "true",
+            "key": bool(os.environ.get("GEMINI_API_KEY")),
+            "token": bool(os.environ.get("GH_PAT")),
+            "repository": os.environ.get("GITHUB_REPOSITORY") == "trendhub-ab/ai-intelligence-factory",
+            "run_id": bool(os.environ.get("GITHUB_RUN_ID", "").isdigit()),
+            "project": bool(os.environ.get("GEMINI_QUOTA_PROJECT_ID")),
+            "counter_branch": os.environ.get("GEMINI_COUNTER_BRANCH") == "runtime-state",
+        }
+        if not all(required.values()):
+            raise RuntimeError("RPM_SAFE_EXPERIMENT_DISABLED: missing explicit one-shot or quota prerequisites: "
+                               + ",".join(k for k, ok in required.items() if not ok))
+    p = install_production_gates()
+    info = source_info(p)
+    evidence = p.assess_evidence_sufficiency(info)
+    info["evidence_result"] = evidence
+    info["sufficient"] = evidence["state"] == p.EVIDENCE_SUFFICIENT
+    info["decision_scope_safe"] = evidence.get("decision_scope_safe", False)
+    if not info["sufficient"]:
+        raise RuntimeError(f"Frozen Evidence insufficient: {evidence}; zero provider sends")
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    if args.phase == "preflight":
+        (args.out_dir / "preflight.json").write_text(json.dumps({
+            "evidence_state": evidence["state"], "evidence_sha256": sha(EVIDENCE),
+            "evidence_url": EVIDENCE_URL, "provider_sends": 0,
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        return
+    if args.phase == "limited":
+        from experiments.ready_yield_shared_rpm import GitHubRPMStore, SharedRPM
+        if getattr(p, "GEMINI_SDK_RETRY_ATTEMPTS", None) != 1:
+            raise RuntimeError("SDK retries not disabled; zero provider sends")
+        scope = p.PERSISTENT_GEMINI_COUNTER.provider_project_scope
+        if not scope:
+            raise RuntimeError("Unknown Gemini project scope; zero provider sends")
+        store = GitHubRPMStore(os.environ["GITHUB_REPOSITORY"], os.environ["GH_PAT"],
+                               branch="runtime-state")
+        shared = SharedRPM(store, scope, campaign_id=SharedRPM.CAMPAIGN_0400,
+                           run_id=os.environ["GITHUB_RUN_ID"])
+        prepare_isolated_probe_budget(p, max_attempts=4)
+        shared.claim_campaign()
+        # All in-repo Gemini Actions share ai-intelligence-gemini-budget.
+        # Drain any sends from the job that owned it immediately before us.
+        time.sleep(65)
+        execute_limited(p, info, args.out_dir, shared, max_attempts=4)
+        return
+    rows = []
+    if args.phase == "initial":
+        if not args.model:
+            parser.error("--model required for initial phase")
+        conditions = [(style, repeat, args.model, "", "") for style in STYLES for repeat in (1, 2)]
+    else:
+        if not args.in_dir:
+            parser.error("--in-dir required for feedback phase")
+        records = [json.loads(f.read_text(encoding="utf-8")) for f in sorted(args.in_dir.rglob("*.json"))]
+        failures = [r for r in records if r.get("id") and r.get("phase") == "initial" and not r.get("error")
+                    and not r["initial"]["gate"]["ready_eligible_before_persistence"]]
+        conditions = []
+        for row in failures[:8]:
+            reasons = [r["message"] for r in row["initial"]["gate"]["reason_rows"]
+                       if r.get("severity") in {p.GATE_SEVERITY_HARD, p.GATE_SEVERITY_REVIEW}]
+            if reasons:
+                conditions.append((row["style"], row["repeat"], row["model"], " / ".join(reasons), row["initial"]["body_after_polish"]))
+    for index, (style, repeat, model, feedback, previous) in enumerate(conditions):
+        if index:
+            # Free-tier RPM is 5 for some models; the first run's unpaced
+            # requests reached 429 after provider-wide 503s.
+            time.sleep(15)
+        ident = f"{model}_{style}_{repeat}"
+        row = {"id": ident, "model": model, "style": style, "repeat": repeat,
+               "phase": args.phase, "evidence_url": EVIDENCE_URL, "evidence_sha256": sha(EVIDENCE)}
+        try:
+            prompt = prompt_for(p, style, feedback, previous)
+            from canonical_article_contract import aiif_editor_persona
+            config = {"max_output_tokens": p.GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS,
+                      "system_instruction": aiif_editor_persona()}
+            response = p._generate_via_chat(model, prompt, config=config,
+                         request_kind="deep_dive" if args.phase == "initial" else "quality_retry",
+                         request_context="experiment:ready-yield-fixed-evidence",
+                         count_as_deep_dive=True)
+            row["prompt_sha256"] = sha(prompt)
+            row["feedback"] = feedback
+            row[args.phase] = evaluate(p, response.text or "", info)
+        except Exception as exc:
+            row["error"] = {"type": type(exc).__name__, "message": str(exc)[:1000]}
+        (args.out_dir / f"{ident}.json").write_text(json.dumps(row, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        rows.append(row)
+        if row.get("error") and any(code in row["error"]["message"] for code in ("503 UNAVAILABLE", "429 RESOURCE_EXHAUSTED")):
+            # Stop instead of burning the remaining matrix on a provider outage
+            # or a short-window rate limit. Failed cells remain explicitly missing.
+            break
+    (args.out_dir / "summary.json").write_text(json.dumps({
+        "phase": args.phase, "count": len(rows), "provider_errors": sum("error" in r for r in rows),
+        "ready_eligible": sum(r.get(args.phase, {}).get("gate", {}).get("ready_eligible_before_persistence", False) for r in rows),
+        "evidence_sha256": sha(EVIDENCE), "note_writes": 0, "notion_writes": 0,
+        "actual_ready_persisted": 0,
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    if not rows and args.phase != "feedback":
+        raise RuntimeError("No eligible cases; zero provider sends")
+
+
+if __name__ == "__main__":
+    main()

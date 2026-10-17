@@ -98,6 +98,18 @@ class Run224MultiplierDeterministicRescueTests(unittest.TestCase):
         self.assertEqual(rescued["note_draft"], article)
         self.assertEqual(changes, [])
 
+    def test_unrelated_different_tools_does_not_count_as_performance_variability(self):
+        source = "The README benchmark advertises 10–100x faster performance than pip under tested conditions."
+        article = (
+            "環境を再現するためのロックファイルを作るなど、異なるツールを組み合わせます。"
+            "開発元のベンチマークでは10〜100倍高速であると主張しています。"
+        )
+        self.assertTrue(run223.multiplier_scope_failures(article, source))
+        rescued, changes = run224.rescue_multiplier_scope({"note_draft": article}, self.failure_rows)
+        self.assertIn("run224_multiplier_scope_qualifier:1", changes)
+        self.assertEqual(run223.multiplier_scope_failures(rescued["note_draft"], source), [])
+        self.assertEqual(run224._numeric_lexemes(rescued["note_draft"]), run224._numeric_lexemes(article))
+
 
 if __name__ == "__main__":
     unittest.main()
