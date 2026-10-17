@@ -6,12 +6,14 @@ no write, discovery, tag fallback, model, persistence, or Production authority.
 """
 from __future__ import annotations
 
+import time
 from typing import Any, Callable
 from urllib.parse import urlsplit
 
 import requests
 
 from v2_github_acquisition import acquire_github_candidates
+from v2_live_shadow_acquisition import AcquisitionRequestError, bounded_get
 
 
 GITHUB_REPOSITORIES: tuple[str, ...] = (
@@ -77,6 +79,7 @@ def fetch_github_repository_releases(
     token: str | None = None,
     timeout_seconds: float = 8.0,
     max_events: int = 5,
+    sleep_fn: Callable[[float], None] = time.sleep,
 ) -> list[dict[str, Any]]:
     """Fetch one exact allowlisted repository releases collection."""
 
@@ -86,30 +89,26 @@ def fetch_github_repository_releases(
         return []
     bounded_events = min(int(max_events), 5)
     url = _api_url(repository)
-    kwargs: dict[str, Any] = {
+    request_kwargs: dict[str, Any] = {
         "params": {"per_page": bounded_events},
-        "timeout": float(timeout_seconds),
     }
     if isinstance(token, str) and token:
-        kwargs["headers"] = {"Authorization": f"Bearer {token}"}
+        request_kwargs["headers"] = {"Authorization": f"Bearer {token}"}
 
     try:
-        response = http_get(url, **kwargs)
-    except Exception:
-        raise GitHubLiveError(repository, "request_failure") from None
+        response, _diagnostics = bounded_get(
+            http_get=http_get,
+            url=url,
+            timeout=float(timeout_seconds),
+            request_kwargs=request_kwargs,
+            sleep_fn=sleep_fn,
+        )
+    except AcquisitionRequestError as exc:
+        raise GitHubLiveError(repository, exc.category) from None
 
     final_url = str(getattr(response, "url", url) or url)
     if not _final_host_is_api_github(final_url):
         raise GitHubLiveError(repository, "redirect_host_unapproved")
-
-    try:
-        raise_for_status = getattr(response, "raise_for_status", None)
-        if callable(raise_for_status):
-            raise_for_status()
-        elif int(getattr(response, "status_code", 200) or 200) >= 400:
-            raise RuntimeError("HTTP failure")
-    except Exception:
-        raise GitHubLiveError(repository, "http_failure") from None
 
     try:
         payload = response.json()
@@ -136,6 +135,7 @@ def fetch_all_github_candidates(
     *,
     http_get: Callable[..., Any] = requests.get,
     token: str | None = None,
+    sleep_fn: Callable[[float], None] = time.sleep,
 ) -> list[dict[str, Any]]:
     """Read all reviewed repositories; raise only when every repository fails."""
 
@@ -147,6 +147,7 @@ def fetch_all_github_candidates(
                 repository=repository,
                 http_get=http_get,
                 token=token,
+                sleep_fn=sleep_fn,
             )
         except GitHubLiveError:
             continue
