@@ -328,3 +328,78 @@ def test_c_only_refinement_fingerprint_change_regenerates_all_c_cases(tmp_path: 
         "fresh-2",
         "fresh-3",
     ]
+
+
+def test_new_fingerprint_scrubs_stale_c_before_first_failed_provider_call(tmp_path: Path) -> None:
+    from experiments.editorial_engine_v3_phase0 import live
+
+    class Models:
+        def generate_content(self, *, model: str, contents: str):
+            raise RuntimeError("429 RESOURCE_EXHAUSTED")
+
+    cases = []
+    stale_packages = []
+    stale_mapping: dict[str, dict[str, str]] = {}
+    for index, item in enumerate(live.READY_CASES):
+        outputs = {
+            "A_CURRENT_WRITER": f"A-{item.case.case_id}",
+            "B_PERSONA_ONLY": f"B-{item.case.case_id}",
+            "C_EDITORIAL_ENGINE": f"stale-{index + 1}",
+        }
+        blind, mapping = live.build_blind_package(item.case.case_id, outputs)
+        stale_packages.append(blind)
+        stale_mapping[item.case.case_id] = mapping
+        cases.append(
+            {
+                "case_id": item.case.case_id,
+                "theme": item.theme,
+                "input_digest": live._input_digest(item),
+                "outputs": outputs,
+                "editorial_stage_outputs": _reaction_first_payload(final=f"stale-{index + 1}"),
+            }
+        )
+
+    state = {
+        "selected_model": "m1",
+        "provider_calls": 2,
+        "provider_attempts": 2,
+        "baseline_provider_calls": 6,
+        "baseline_provider_attempts": 7,
+        "c_refinement_fingerprint": "old-prompt-fingerprint",
+        "c_completed_case_ids": [item.case.case_id for item in live.READY_CASES[:2]],
+        "c_refinement_provider_calls_total": 2,
+        "c_refinement_provider_attempts_total": 2,
+        "cases": cases,
+        "blind_packages": stale_packages,
+        "blind_mapping": stale_mapping,
+    }
+    (tmp_path / "blind_packages.json").write_text(json.dumps(stale_packages), encoding="utf-8")
+    (tmp_path / "raw_results.json").write_text(json.dumps({"cases": cases}), encoding="utf-8")
+
+    client = type("Client", (), {"models": Models()})()
+    session = live.ModelSession(candidates=("m1",), locked_model="m1")
+
+    with pytest.raises(RuntimeError, match="429"):
+        live._run_c_only_refinement(
+            client,
+            session=session,
+            state=state,
+            output_dir=tmp_path,
+            cooldown=0,
+            sleep_fn=lambda _: None,
+        )
+
+    checkpoint = live._load_checkpoint(tmp_path)
+    assert checkpoint is not None
+    assert checkpoint["c_completed_case_ids"] == []
+    assert checkpoint["blind_packages"] == []
+    assert checkpoint["blind_mapping"] == {}
+    for case in checkpoint["cases"]:
+        assert set(case["outputs"]) == {"A_CURRENT_WRITER", "B_PERSONA_ONLY"}
+        assert case["editorial_stage_outputs"] == {}
+
+    assert json.loads((tmp_path / "blind_packages.json").read_text(encoding="utf-8")) == []
+    raw = json.loads((tmp_path / "raw_results.json").read_text(encoding="utf-8"))
+    for case in raw["cases"]:
+        assert set(case["outputs"]) == {"A_CURRENT_WRITER", "B_PERSONA_ONLY"}
+        assert case["editorial_stage_outputs"] == {}
