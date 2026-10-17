@@ -74,6 +74,14 @@ def _canonical_page_url(value: str) -> str:
     return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), path, "", ""))
 
 
+def _live_error_category(category: str) -> str:
+    """Preserve the pre-reliability public error contract; detail lives in diagnostics."""
+
+    if category.startswith("http_"):
+        return "http_failure"
+    return "request_failure"
+
+
 class _AnchorParser(HTMLParser):
     _HEADING_TAGS = frozenset({"h1", "h2", "h3", "h4"})
 
@@ -165,7 +173,7 @@ def fetch_official_vendor_source(
             diagnostic_sink=diagnostic_sink,
         )
     except AcquisitionRequestError as exc:
-        raise VendorLiveError(source.provider, exc.category) from None
+        raise VendorLiveError(source.provider, _live_error_category(exc.category)) from None
 
     final_url = str(getattr(response, "url", source.collection_url) or source.collection_url)
     if not _same_allowed_host(final_url, source.allowed_hostname):
