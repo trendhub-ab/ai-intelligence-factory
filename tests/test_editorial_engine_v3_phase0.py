@@ -39,14 +39,15 @@ def _module(name: str):
     return importlib.import_module(name)
 
 
-def test_phase0_contract_matches_canonical_spec() -> None:
+def test_phase0_contract_matches_reaction_first_spec() -> None:
     assert MINIMUM_CASES == 3
     assert VARIANTS == ("A_CURRENT_WRITER", "B_PERSONA_ONLY", "C_EDITORIAL_ENGINE")
     assert EDITORIAL_STAGES == (
+        "Writer Reaction",
         "Editorial Discovery",
-        "Persona Narrative",
-        "Article Writing",
-        "Editorial Review",
+        "Cognitive Shift",
+        "Persona Article Generation",
+        "Fact-Safe Review",
     )
 
 
@@ -107,46 +108,68 @@ def test_current_writer_snapshot_uses_production_adapter_and_shared_structured_i
     assert snapshot["evidence_urls"] == list(item.case.sources)
 
 
-def test_persona_only_prompt_does_not_smuggle_editorial_discovery_or_review() -> None:
+def test_persona_only_prompt_does_not_smuggle_reaction_first_editorial_stages() -> None:
     prompts = _module("experiments.editorial_engine_v3_phase0.prompts")
     prompt = prompts.build_persona_only_prompt(_case("persona"))
     assert "17歳" in prompt
     assert "外部Fact" in prompt
+    assert "Writer Reaction" not in prompt
     assert "Editorial Discovery" not in prompt
-    assert "Editorial Review" not in prompt
+    assert "Fact-Safe Review" not in prompt
 
 
-def test_editorial_engine_prompts_have_four_explicit_stages_and_no_external_fact_rule() -> None:
+def test_reaction_first_stage_prompts_have_five_explicit_stages_and_fact_boundary() -> None:
     prompts = _module("experiments.editorial_engine_v3_phase0.prompts")
     stages = prompts.build_editorial_stage_prompts(_case("editorial"))
     assert tuple(stages) == EDITORIAL_STAGES
     assert all("外部Fact" in value for value in stages.values())
-    assert "Surface" in stages["Editorial Discovery"]
-    assert "認識変化" in stages["Persona Narrative"]
-    assert "完成稿" in stages["Article Writing"]
-    assert "Evidence / Fact" in stages["Editorial Review"]
 
+    reaction = stages["Writer Reaction"]
+    for marker in ("Reaction", "Curiosity", "Question", "Future Imagination", "Emotion Intensity"):
+        assert marker in reaction
 
-def test_article_writing_and_review_must_preserve_discovery_and_persona_signal() -> None:
-    prompts = _module("experiments.editorial_engine_v3_phase0.prompts")
-    stages = prompts.build_editorial_stage_prompts(_case("recognition-preservation"))
-    writing = stages["Article Writing"]
-    review = stages["Editorial Review"]
-    bundle = prompts.build_editorial_bundle_prompt(_case("recognition-preservation"))
+    discovery = stages["Editorial Discovery"]
+    for marker in ("Surface", "Interesting Tension", "Evidence Pivot", "Deeper Insight", "Editorial Thesis"):
+        assert marker in discovery
 
-    required = (
-        "Initial Reaction",
-        "Question",
-        "Evidence Shift",
-        "Deeper Insight",
-        "Persona Narrative",
-        "無難な解説文",
-        "削除しない",
-    )
-    for marker in required:
-        assert marker in writing
+    shift = stages["Cognitive Shift"]
+    for marker in ("Before View", "Evidence Encounter", "After View", "What I Now Find Interesting"):
+        assert marker in shift
+    assert "固定" in shift
+
+    article = stages["Persona Article Generation"]
+    for marker in ("Writer Reaction", "Question", "Cognitive Shift", "discovery", "成人ビジネス"):
+        assert marker in article
+
+    review = stages["Fact-Safe Review"]
+    for marker in ("変更しない", "最小", "一人称", "好奇心", "specific question", "Future Imagination"):
         assert marker in review
+
+
+def test_reaction_first_bundle_requires_exact_stage_keys_and_preservation_policy() -> None:
+    prompts = _module("experiments.editorial_engine_v3_phase0.prompts")
+    bundle = prompts.build_editorial_bundle_prompt(_case("bundle"))
+
+    for stage in EDITORIAL_STAGES:
+        assert stage in bundle
+    for marker in (
+        "Reaction",
+        "Curiosity",
+        "Question",
+        "Future Imagination",
+        "Emotion Intensity",
+        "Before View",
+        "Evidence Encounter",
+        "After View",
+        "What I Now Find Interesting",
+        "外部Fact",
+        "変更しない",
+        "最小",
+    ):
         assert marker in bundle
+
+    assert "Persona Narrative" not in bundle
+    assert "Editorial Review" not in bundle
 
 
 def test_blind_package_contains_only_opaque_labels_and_keeps_mapping_separate() -> None:
