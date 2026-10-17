@@ -165,6 +165,30 @@ def test_provider_batches_candidates_into_exactly_one_request():
     assert set(result) == {"https://example.com/a", "https://example.com/b"}
 
 
+def test_provider_rejects_large_all_positive_batch_as_uninformative_saturation():
+    identities = [f"https://example.com/{index}" for index in range(10)]
+
+    def http_post(_url, **_kwargs):
+        results = [
+            {
+                "candidate_identity": identity,
+                "ai_relevant": True,
+                "decision_value": True,
+                "change_novelty": True,
+                "applied_reader_value": True,
+            }
+            for identity in identities
+        ]
+        return FakeResponse(json_data=_provider_body(results))
+
+    provider = GeminiSemanticScreeningProvider(api_key="test-key", http_post=http_post)
+
+    with pytest.raises(SemanticScreeningError) as caught:
+        provider([_candidate(identity) for identity in identities])
+
+    assert caught.value.safe_code == "semantic_provider_uninformative_saturated"
+
+
 def test_provider_classifies_http_5xx_without_leaking_transport_text():
     def http_post(_url, **_kwargs):
         return FakeResponse(status_code=503, json_data={"error": {"message": "private transport text"}})
