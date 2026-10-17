@@ -65,7 +65,7 @@ def test_official_vendor_503_retries_same_logical_read_once_then_recovers():
     assert [row["title"] for row in rows] == ["Reliable AI API release"]
 
 
-def test_official_vendor_400_is_not_retried_and_is_safely_classified():
+def test_official_vendor_400_is_not_retried_and_preserves_legacy_safe_category():
     source = vendor_live.OFFICIAL_VENDOR_SOURCES[0]
     calls = 0
 
@@ -82,7 +82,7 @@ def test_official_vendor_400_is_not_retried_and_is_safely_classified():
         )
 
     assert calls == 1
-    assert caught.value.category == "http_4xx"
+    assert caught.value.category == "http_failure"
     assert "SECRET_VENDOR_BODY" not in str(caught.value)
 
 
@@ -106,7 +106,7 @@ def test_github_503_retries_same_repository_read_once_then_recovers():
     assert [row["upstream_id"] for row in rows] == ["123"]
 
 
-def test_github_400_is_not_retried_and_is_safely_classified():
+def test_github_400_is_not_retried_and_preserves_legacy_safe_category():
     calls = 0
 
     def http_get(url, **kwargs):
@@ -122,7 +122,7 @@ def test_github_400_is_not_retried_and_is_safely_classified():
         )
 
     assert calls == 1
-    assert caught.value.category == "http_4xx"
+    assert caught.value.category == "http_failure"
     assert "SECRET_GITHUB_BODY" not in str(caught.value)
 
 
