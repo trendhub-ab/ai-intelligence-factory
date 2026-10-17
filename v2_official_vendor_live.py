@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from html.parser import HTMLParser
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import requests
@@ -152,6 +152,7 @@ def fetch_official_vendor_source(
     source: VendorSourceConfig,
     http_get: Callable[..., Any] = requests.get,
     sleep_fn: Callable[[float], None] = time.sleep,
+    diagnostic_sink: Callable[[Mapping[str, object]], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch one exact allowlisted vendor collection page and normalize <=5 links."""
 
@@ -161,6 +162,7 @@ def fetch_official_vendor_source(
             url=source.collection_url,
             timeout=source.timeout_seconds,
             sleep_fn=sleep_fn,
+            diagnostic_sink=diagnostic_sink,
         )
     except AcquisitionRequestError as exc:
         raise VendorLiveError(source.provider, exc.category) from None
@@ -218,6 +220,7 @@ def fetch_all_official_vendor_candidates(
     *,
     http_get: Callable[..., Any] = requests.get,
     sleep_fn: Callable[[float], None] = time.sleep,
+    diagnostic_sink: Callable[[Mapping[str, object]], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Read the three reviewed vendor pages; raise only when all three fail."""
 
@@ -229,6 +232,7 @@ def fetch_all_official_vendor_candidates(
                 source=source,
                 http_get=http_get,
                 sleep_fn=sleep_fn,
+                diagnostic_sink=diagnostic_sink,
             )
         except VendorLiveError:
             continue
