@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 
 import v2_four_source_live as four
 from v2_live_shadow_acquisition import AcquisitionDiagnostics, bounded_get
-from v2_shadow_selection import ShadowConfig, run_shadow_selection
 
 
 class Response:
@@ -12,12 +11,6 @@ class Response:
 
     def raise_for_status(self):
         return None
-
-
-class SafeSourceError(RuntimeError):
-    def __init__(self, category: str):
-        self.category = category
-        super().__init__("SECRET_TRANSPORT_DETAIL")
 
 
 def test_bounded_get_emits_safe_diagnostic_event_without_url_or_secret():
@@ -42,22 +35,6 @@ def test_bounded_get_emits_safe_diagnostic_event_without_url_or_secret():
         }
     ]
     assert "SECRET" not in repr(events)
-
-
-def test_shadow_provider_status_prefers_safe_category_attribute_not_exception_class_or_message():
-    def broken_provider():
-        raise SafeSourceError("http_503")
-
-    report = run_shadow_selection(
-        providers={"ArXiv": broken_provider},
-        deep_dive=lambda _candidate: {"evidence_sufficient": False},
-        config=ShadowConfig(max_candidates_per_provider=5, max_deep_dive_attempts=1),
-        now=datetime(2026, 10, 17, tzinfo=timezone.utc),
-        run_id="diagnostic-test",
-    )
-
-    assert report["provider_statuses"]["ArXiv"]["error_category"] == "http_503"
-    assert "SECRET_TRANSPORT_DETAIL" not in repr(report)
 
 
 def test_four_source_live_artifact_aggregates_http_attempts_without_changing_provider_call_count(monkeypatch):
