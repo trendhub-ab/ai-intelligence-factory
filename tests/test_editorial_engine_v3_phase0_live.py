@@ -194,8 +194,137 @@ def test_c_only_refinement_reuses_a_b_records_five_stages_and_spends_three_calls
     assert refined["provider_calls"] == 3
     assert refined["provider_attempts"] == 3
     assert refined["mode"] == "C_ONLY_REFINEMENT"
+    assert refined["c_refinement_provider_calls_total"] == 3
+    assert set(refined["c_completed_case_ids"]) == {item.case.case_id for item in live.READY_CASES}
     for index, case in enumerate(refined["cases"], start=1):
         assert case["outputs"]["A_CURRENT_WRITER"].startswith("A-")
         assert case["outputs"]["B_PERSONA_ONLY"].startswith("B-")
         assert case["outputs"]["C_EDITORIAL_ENGINE"] == f"reviewed-{index}"
         assert tuple(case["editorial_stage_outputs"]) == EDITORIAL_STAGES
+
+
+def test_c_only_refinement_resumes_same_fingerprint_and_calls_only_missing_case(tmp_path: Path) -> None:
+    from experiments.editorial_engine_v3_phase0 import live
+
+    calls: list[str] = []
+
+    class Models:
+        def generate_content(self, *, model: str, contents: str):
+            calls.append(model)
+            payload = _reaction_first_payload(final="new-third")
+            return type("Response", (), {"text": json.dumps(payload, ensure_ascii=False)})()
+
+    fingerprint = live._c_refinement_fingerprint()
+    completed_ids = [item.case.case_id for item in live.READY_CASES[:2]]
+    cases = []
+    for index, item in enumerate(live.READY_CASES):
+        stages = _reaction_first_payload(final=f"kept-{index + 1}") if index < 2 else {}
+        cases.append(
+            {
+                "case_id": item.case.case_id,
+                "theme": item.theme,
+                "input_digest": live._input_digest(item),
+                "outputs": {
+                    "A_CURRENT_WRITER": f"A-{item.case.case_id}",
+                    "B_PERSONA_ONLY": f"B-{item.case.case_id}",
+                    "C_EDITORIAL_ENGINE": f"kept-{index + 1}" if index < 2 else f"stale-{index + 1}",
+                },
+                "editorial_stage_outputs": stages,
+            }
+        )
+    state = {
+        "selected_model": "m1",
+        "provider_calls": 2,
+        "provider_attempts": 2,
+        "baseline_provider_calls": 6,
+        "baseline_provider_attempts": 7,
+        "c_refinement_fingerprint": fingerprint,
+        "c_completed_case_ids": completed_ids,
+        "c_refinement_provider_calls_total": 2,
+        "c_refinement_provider_attempts_total": 2,
+        "cases": cases,
+        "blind_packages": [],
+        "blind_mapping": {},
+    }
+    client = type("Client", (), {"models": Models()})()
+    session = live.ModelSession(candidates=("m1",), locked_model="m1")
+
+    refined = live._run_c_only_refinement(
+        client,
+        session=session,
+        state=state,
+        output_dir=tmp_path,
+        cooldown=0,
+        sleep_fn=lambda _: None,
+    )
+
+    assert calls == ["m1"]
+    assert refined["provider_calls"] == 1
+    assert refined["c_refinement_provider_calls_total"] == 3
+    assert set(refined["c_completed_case_ids"]) == {item.case.case_id for item in live.READY_CASES}
+    assert refined["cases"][0]["outputs"]["C_EDITORIAL_ENGINE"] == "kept-1"
+    assert refined["cases"][1]["outputs"]["C_EDITORIAL_ENGINE"] == "kept-2"
+    assert refined["cases"][2]["outputs"]["C_EDITORIAL_ENGINE"] == "new-third"
+
+
+def test_c_only_refinement_fingerprint_change_regenerates_all_c_cases(tmp_path: Path) -> None:
+    from experiments.editorial_engine_v3_phase0 import live
+
+    calls: list[str] = []
+
+    class Models:
+        def generate_content(self, *, model: str, contents: str):
+            calls.append(model)
+            payload = _reaction_first_payload(final=f"fresh-{len(calls)}")
+            return type("Response", (), {"text": json.dumps(payload, ensure_ascii=False)})()
+
+    cases = []
+    for index, item in enumerate(live.READY_CASES):
+        cases.append(
+            {
+                "case_id": item.case.case_id,
+                "theme": item.theme,
+                "input_digest": live._input_digest(item),
+                "outputs": {
+                    "A_CURRENT_WRITER": f"A-{item.case.case_id}",
+                    "B_PERSONA_ONLY": f"B-{item.case.case_id}",
+                    "C_EDITORIAL_ENGINE": f"old-{index + 1}",
+                },
+                "editorial_stage_outputs": _reaction_first_payload(final=f"old-{index + 1}"),
+            }
+        )
+    state = {
+        "selected_model": "m1",
+        "provider_calls": 2,
+        "provider_attempts": 2,
+        "baseline_provider_calls": 6,
+        "baseline_provider_attempts": 7,
+        "c_refinement_fingerprint": "stale-fingerprint",
+        "c_completed_case_ids": [item.case.case_id for item in live.READY_CASES[:2]],
+        "c_refinement_provider_calls_total": 2,
+        "c_refinement_provider_attempts_total": 2,
+        "cases": cases,
+        "blind_packages": [],
+        "blind_mapping": {},
+    }
+    client = type("Client", (), {"models": Models()})()
+    session = live.ModelSession(candidates=("m1",), locked_model="m1")
+
+    refined = live._run_c_only_refinement(
+        client,
+        session=session,
+        state=state,
+        output_dir=tmp_path,
+        cooldown=0,
+        sleep_fn=lambda _: None,
+    )
+
+    assert calls == ["m1", "m1", "m1"]
+    assert refined["provider_calls"] == 3
+    assert refined["c_refinement_provider_calls_total"] == 3
+    assert refined["c_refinement_fingerprint"] == live._c_refinement_fingerprint()
+    assert [case["outputs"]["C_EDITORIAL_ENGINE"] for case in refined["cases"]] == [
+        "fresh-1",
+        "fresh-2",
+        "fresh-3",
+    ]
