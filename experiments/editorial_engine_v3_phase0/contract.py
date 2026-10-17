@@ -11,10 +11,11 @@ VARIANTS = (
     "C_EDITORIAL_ENGINE",
 )
 EDITORIAL_STAGES = (
+    "Writer Reaction",
     "Editorial Discovery",
-    "Persona Narrative",
-    "Article Writing",
-    "Editorial Review",
+    "Cognitive Shift",
+    "Persona Article Generation",
+    "Fact-Safe Review",
 )
 
 
