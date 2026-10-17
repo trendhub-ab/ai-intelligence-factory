@@ -75,6 +75,15 @@ Editorial Discovery、Editorial Thesis、Persona Narrativeを材料に、Target 
 
 【Editorial Review】
 直前の完成稿を編集者として監査し、必要な修正を反映した最終完成稿だけを返す。
+Reviewの目的は文章を無難に整えることではない。Factを守りながら、Editorial DiscoveryとPersona Narrativeで得た『読者の認識が動く瞬間』を最終稿に保持すること。
+
+以下は、事実関係の修正に必要な場合を除き、削除しない。
+- Initial Reaction: 読者が最初に反応する入口
+- Question: そのテーマ固有の素朴な疑問
+- Evidence Shift: Evidenceによって最初の見方が変わる転換
+- Deeper Insight: 表面的な要約を越えた一段深い意味
+- Persona Narrative: 好奇心・疑問・発見として現れる自然な認識変化
+
 確認項目:
 - 説明だけの記事になっていないか
 - ニュースの本当に面白い核心が見えるか
@@ -84,6 +93,8 @@ Editorial Discovery、Editorial Thesis、Persona Narrativeを材料に、Target 
 - 感情がEvidence / Factを上書きしていないか
 - Editorial Thesisが元情報の単なる言い換えではなく、一段深いか
 - 好奇心と発見が価値であり、女子高生口調の演技になっていないか
+- Persona Narrativeを無難な解説文へ戻していないか
+- 文章を短く・整然とすること自体を優先し、Initial Reaction / Question / Evidence Shift / Deeper Insightを削っていないか
 外部Factは追加しない。新しい数字・固有名詞・性能・比較・条件を足さない。
 修正後の最終完成稿のみを出力する。"""
     return dict(zip(EDITORIAL_STAGES, (discovery, narrative, writing, review), strict=True))
@@ -119,8 +130,11 @@ DiscoveryとNarrativeを材料に、Target Readerが最後まで読みたくな�
 
 4. Editorial Review
 Article Writingを編集者として監査し、必要な修正を反映した最終完成稿を作る。
+Reviewの目的は無難な解説文へ整えることではない。Factを守りながら、DiscoveryとPersona Narrativeで生まれた認識変化と温度を最終稿に保持する。
 Evidence / Factを落とさず、外部Factを追加せず、AI臭・定型Narrative・過度な軽さを抑える。
 Editorial Thesisが元情報の単なる言い換えでなく、一段深いか確認する。
+事実関係の修正に必要な場合を除き、Initial Reaction / Question / Evidence Shift / Deeper Insight / Persona Narrativeを削除しない。
+Persona Narrativeを無難な解説文へ戻さない。文章の短さ・整然さを、好奇心・疑問・発見より優先しない。
 
 【出力形式】
 Markdownフェンスや前置きは付けず、次の4キーだけを持つ有効なJSON objectで返す。
