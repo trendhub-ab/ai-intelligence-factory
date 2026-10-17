@@ -127,11 +127,12 @@ def test_editorial_engine_prompts_have_four_explicit_stages_and_no_external_fact
     assert "Evidence / Fact" in stages["Editorial Review"]
 
 
-def test_editorial_review_must_preserve_discovery_and_persona_signal() -> None:
+def test_article_writing_and_review_must_preserve_discovery_and_persona_signal() -> None:
     prompts = _module("experiments.editorial_engine_v3_phase0.prompts")
-    stages = prompts.build_editorial_stage_prompts(_case("review-preservation"))
+    stages = prompts.build_editorial_stage_prompts(_case("recognition-preservation"))
+    writing = stages["Article Writing"]
     review = stages["Editorial Review"]
-    bundle = prompts.build_editorial_bundle_prompt(_case("review-preservation"))
+    bundle = prompts.build_editorial_bundle_prompt(_case("recognition-preservation"))
 
     required = (
         "Initial Reaction",
@@ -143,6 +144,7 @@ def test_editorial_review_must_preserve_discovery_and_persona_signal() -> None:
         "削除しない",
     )
     for marker in required:
+        assert marker in writing
         assert marker in review
         assert marker in bundle
 
