@@ -26,6 +26,7 @@ LOCKED_MODEL_ATTEMPTS = 2
 BACKOFF_BASE_SECONDS = 20.0
 DEFAULT_CASE_COOLDOWN_SECONDS = 45.0
 CHECKPOINT_NAME = "checkpoint.json"
+C_REFINEMENT_RESUME_SCHEMA_VERSION = 1
 
 
 @dataclass(slots=True)
@@ -194,6 +195,23 @@ def _input_digest(item: ReplayCase) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _c_refinement_fingerprint() -> str:
+    payload = {
+        "schema_version": C_REFINEMENT_RESUME_SCHEMA_VERSION,
+        "stages": list(EDITORIAL_STAGES),
+        "cases": [
+            {
+                "case_id": item.case.case_id,
+                "input_digest": _input_digest(item),
+                "editorial_bundle_prompt": build_editorial_bundle_prompt(item.case),
+            }
+            for item in READY_CASES
+        ],
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _checkpoint_path(output_dir: str | Path) -> Path:
     return Path(output_dir) / CHECKPOINT_NAME
 
@@ -231,6 +249,10 @@ def _write_evaluation_artifacts(output_dir: Path, state: dict[str, Any]) -> None
         "provider_attempts": state.get("provider_attempts", 0),
         "baseline_provider_calls": state.get("baseline_provider_calls", 0),
         "baseline_provider_attempts": state.get("baseline_provider_attempts", 0),
+        "c_refinement_fingerprint": state.get("c_refinement_fingerprint"),
+        "c_completed_case_ids": state.get("c_completed_case_ids", []),
+        "c_refinement_provider_calls_total": state.get("c_refinement_provider_calls_total", 0),
+        "c_refinement_provider_attempts_total": state.get("c_refinement_provider_attempts_total", 0),
         "case_count": len(state.get("cases", [])),
         "cases": state.get("cases", []),
     }
@@ -279,6 +301,17 @@ def _rebuild_blind_state(state: dict[str, Any]) -> None:
     state["blind_mapping"] = mapping
 
 
+def _valid_completed_c_case(case: dict[str, Any]) -> bool:
+    outputs = dict(case.get("outputs") or {})
+    stages = dict(case.get("editorial_stage_outputs") or {})
+    if set(stages) != set(EDITORIAL_STAGES):
+        return False
+    if any(not str(stages.get(stage) or "").strip() for stage in EDITORIAL_STAGES):
+        return False
+    final = str(outputs.get("C_EDITORIAL_ENGINE") or "").strip()
+    return bool(final) and final == str(stages.get("Fact-Safe Review") or "").strip()
+
+
 def _run_c_only_refinement(
     client: Any,
     *,
@@ -292,34 +325,97 @@ def _run_c_only_refinement(
         raise RuntimeError("C-only refinement requires a complete three-case baseline checkpoint")
     if not session.locked_model:
         raise RuntimeError("C-only refinement requires the baseline locked model")
+    selected_model = str(state.get("selected_model") or "").strip()
+    if not selected_model or selected_model != session.locked_model:
+        raise RuntimeError("C-only refinement requires the same locked model as the checkpoint")
 
     baseline_by_id = {str(case.get("case_id") or ""): dict(case) for case in state["cases"]}
-    if set(baseline_by_id) != {item.case.case_id for item in READY_CASES}:
+    canonical_ids = {item.case.case_id for item in READY_CASES}
+    if set(baseline_by_id) != canonical_ids:
         raise RuntimeError("C-only refinement baseline cases do not match current Phase 0 cases")
 
+    for item in READY_CASES:
+        baseline_case = baseline_by_id[item.case.case_id]
+        if baseline_case.get("input_digest") != _input_digest(item):
+            raise RuntimeError("C-only refinement baseline inputs do not match current Phase 0 cases")
+        outputs = dict(baseline_case.get("outputs") or {})
+        if not outputs.get("A_CURRENT_WRITER") or not outputs.get("B_PERSONA_ONLY"):
+            raise RuntimeError("C-only refinement requires preserved A and B outputs")
+
+    current_fingerprint = _c_refinement_fingerprint()
+    prior_fingerprint = str(state.get("c_refinement_fingerprint") or "")
+    declared_completed = {str(case_id) for case_id in state.get("c_completed_case_ids", []) if str(case_id)}
+    prior_calls_total = int(state.get("c_refinement_provider_calls_total", 0) or 0)
+    prior_attempts_total = int(state.get("c_refinement_provider_attempts_total", 0) or 0)
+
+    reuse_valid = prior_fingerprint == current_fingerprint
+    if reuse_valid and not declared_completed.issubset(canonical_ids):
+        reuse_valid = False
+    if reuse_valid and prior_calls_total != len(declared_completed):
+        reuse_valid = False
+    if reuse_valid and any(not _valid_completed_c_case(baseline_by_id[case_id]) for case_id in declared_completed):
+        reuse_valid = False
+
+    if reuse_valid:
+        reusable_completed = declared_completed
+        cumulative_calls = prior_calls_total
+        cumulative_attempts = prior_attempts_total
+    else:
+        reusable_completed = set()
+        cumulative_calls = 0
+        cumulative_attempts = 0
+
     state["mode"] = "C_ONLY_REFINEMENT"
-    state["baseline_provider_calls"] = int(state.get("provider_calls", 0))
-    state["baseline_provider_attempts"] = int(state.get("provider_attempts", 0))
+    state.setdefault("baseline_provider_calls", int(state.get("provider_calls", 0)))
+    state.setdefault("baseline_provider_attempts", int(state.get("provider_attempts", 0)))
     state["provider_calls"] = 0
     state["provider_attempts"] = 0
+    state["c_refinement_fingerprint"] = current_fingerprint
+    state["c_completed_case_ids"] = [
+        item.case.case_id for item in READY_CASES if item.case.case_id in reusable_completed
+    ]
+    state["c_refinement_provider_calls_total"] = cumulative_calls
+    state["c_refinement_provider_attempts_total"] = cumulative_attempts
     session.provider_attempts = 0
     ordered_cases = [baseline_by_id[item.case.case_id] for item in READY_CASES]
     state["cases"] = ordered_cases
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    for index, item in enumerate(READY_CASES):
+    # Persist the resume contract before the first provider call so a later 429/503
+    # can safely continue from any cases that completed before the interruption.
+    _write_checkpoint(out_dir, state)
+
+    missing = [
+        (index, item)
+        for index, item in enumerate(READY_CASES)
+        if item.case.case_id not in reusable_completed
+    ]
+    successful_calls = 0
+    attempts_accounted = 0
+
+    for missing_index, (index, item) in enumerate(missing):
         baseline_case = ordered_cases[index]
         outputs = dict(baseline_case.get("outputs") or {})
-        if not outputs.get("A_CURRENT_WRITER") or not outputs.get("B_PERSONA_ONLY"):
-            raise RuntimeError("C-only refinement requires preserved A and B outputs")
+        attempts_before = session.provider_attempts
+        try:
+            editorial, stages = _editorial_article(
+                client,
+                session=session,
+                item=item,
+                sleep_fn=sleep_fn,
+            )
+        except BaseException:
+            attempt_delta = session.provider_attempts - attempts_before
+            state["provider_attempts"] = session.provider_attempts
+            state["c_refinement_provider_attempts_total"] = cumulative_attempts + attempts_accounted + attempt_delta
+            _write_checkpoint(out_dir, state)
+            raise
 
-        editorial, stages = _editorial_article(
-            client,
-            session=session,
-            item=item,
-            sleep_fn=sleep_fn,
-        )
+        attempt_delta = session.provider_attempts - attempts_before
+        attempts_accounted += attempt_delta
+        successful_calls += 1
+        cumulative_calls += 1
         outputs["C_EDITORIAL_ENGINE"] = editorial
         ordered_cases[index] = {
             "case_id": item.case.case_id,
@@ -328,18 +424,31 @@ def _run_c_only_refinement(
             "outputs": outputs,
             "editorial_stage_outputs": stages,
         }
-        state["provider_calls"] = index + 1
+        reusable_completed.add(item.case.case_id)
+        state["provider_calls"] = successful_calls
         state["provider_attempts"] = session.provider_attempts
+        state["c_refinement_provider_calls_total"] = cumulative_calls
+        state["c_refinement_provider_attempts_total"] = cumulative_attempts + attempts_accounted
+        state["c_completed_case_ids"] = [
+            candidate.case.case_id for candidate in READY_CASES if candidate.case.case_id in reusable_completed
+        ]
         state["cases"] = ordered_cases
         _rebuild_blind_state(state)
         _write_checkpoint(out_dir, state)
         _write_evaluation_artifacts(out_dir, state)
 
-        if index + 1 < EXPECTED_CASES and cooldown:
+        if missing_index + 1 < len(missing) and cooldown:
             sleep_fn(cooldown)
 
-    if int(state.get("provider_calls", 0)) != C_ONLY_MAX_PROVIDER_CALLS:
-        raise RuntimeError(f"unexpected C-only provider call count: {state.get('provider_calls', 0)}")
+    if reusable_completed != canonical_ids:
+        raise RuntimeError(
+            f"C-only refinement incomplete after resume: {len(reusable_completed)}/{EXPECTED_CASES}"
+        )
+    if int(state.get("c_refinement_provider_calls_total", 0)) != C_ONLY_MAX_PROVIDER_CALLS:
+        raise RuntimeError(
+            "unexpected cumulative C-only provider call count: "
+            f"{state.get('c_refinement_provider_calls_total', 0)}"
+        )
     return state
 
 
