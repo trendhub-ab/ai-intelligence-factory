@@ -1,5 +1,4 @@
 name: Editorial Engine v3 Phase 0
-# phase0-live-once
 
 on:
   push:
@@ -59,7 +58,7 @@ jobs:
   live-proof:
     name: Phase 0 bounded Gemini replay
     needs: contract
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_live == true) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[phase0-live]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_live == true }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency:
@@ -71,7 +70,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Restore prior Phase 0 checkpoint
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.resume_run_id != '' }}
+        if: ${{ inputs.resume_run_id != '' }}
         uses: actions/download-artifact@v4
         with:
           name: editorial-engine-v3-phase0-checkpoint
@@ -83,8 +82,8 @@ jobs:
       - name: Run bounded three-case replay
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          AIIF_PHASE0_MODELS: ${{ github.event_name == 'workflow_dispatch' && inputs.model_candidates || 'gemini-3.8-flash,gemini-3.6-flash' }}
-          AIIF_PHASE0_CASE_COOLDOWN_SECONDS: ${{ github.event_name == 'workflow_dispatch' && inputs.case_cooldown_seconds || '45' }}
+          AIIF_PHASE0_MODELS: ${{ inputs.model_candidates }}
+          AIIF_PHASE0_CASE_COOLDOWN_SECONDS: ${{ inputs.case_cooldown_seconds }}
           AIIF_PHASE0_OUTPUT_DIR: phase0_artifacts
         run: python -m experiments.editorial_engine_v3_phase0.live
       - name: Upload checkpoint and blind evaluation artifacts
