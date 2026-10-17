@@ -230,3 +230,32 @@ def test_blind_package_contains_only_opaque_labels_and_keeps_mapping_separate() 
     assert all(variant not in serialized_package for variant in VARIANTS)
     assert set(mapping.values()) == set(VARIANTS)
     assert {row["label"] for row in package["candidates"]} == set(mapping)
+
+
+def test_c_only_partial_blind_state_exposes_only_current_completed_cases() -> None:
+    live = _module("experiments.editorial_engine_v3_phase0.live")
+    completed = list(EXPECTED_READY_CASE_IDS[:2])
+    cases = []
+    for index, case_id in enumerate(EXPECTED_READY_CASE_IDS):
+        cases.append(
+            {
+                "case_id": case_id,
+                "outputs": {
+                    "A_CURRENT_WRITER": f"A-{index}",
+                    "B_PERSONA_ONLY": f"B-{index}",
+                    "C_EDITORIAL_ENGINE": f"C-{index}",
+                },
+            }
+        )
+    state = {
+        "mode": "C_ONLY_REFINEMENT",
+        "c_completed_case_ids": completed,
+        "cases": cases,
+        "blind_packages": [],
+        "blind_mapping": {},
+    }
+
+    live._rebuild_blind_state(state)
+
+    assert [package["case_id"] for package in state["blind_packages"]] == completed
+    assert set(state["blind_mapping"]) == set(completed)
