@@ -21,13 +21,13 @@ DEFAULT_SEMANTIC_MODEL = SEMANTIC_MODEL_POOL[0]
 GEMINI_GENERATE_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 SEMANTIC_TIMEOUT_SECONDS = 90.0
 MAX_SEMANTIC_CANDIDATES = 20
-_REQUIRED_ITEM_KEYS = {
-    "candidate_identity",
+_SEMANTIC_BOOLEAN_FIELDS = (
     "ai_relevant",
     "decision_value",
     "change_novelty",
     "applied_reader_value",
-}
+)
+_REQUIRED_ITEM_KEYS = {"candidate_identity", *_SEMANTIC_BOOLEAN_FIELDS}
 _SAFE_ERROR_CODES = {
     "semantic_provider_request_failed",
     "semantic_provider_http_400",
@@ -40,6 +40,7 @@ _SAFE_ERROR_CODES = {
     "semantic_provider_response_json_invalid",
     "semantic_provider_response_shape_invalid",
     "semantic_provider_contract_invalid",
+    "semantic_provider_uninformative_saturated",
 }
 
 
@@ -75,11 +76,17 @@ def build_semantic_screening_prompt(candidates: Sequence[Mapping[str, Any]]) -> 
     return (
         "You are the bounded semantic screening judge for AIIF V2 shadow evaluation.\n"
         "Use ONLY the supplied source metadata. Do not browse, invent, or infer unsupported facts.\n"
-        "For every candidate, classify four independent boolean dimensions:\n"
-        "- ai_relevant: the subject is materially about AI/ML, models, agents, inference, robotics, or AI deployment.\n"
-        "- decision_value: it can affect a business, product, technical, security, policy, cost, or adoption decision.\n"
-        "- change_novelty: it describes a meaningful launch, release, update, benchmark, partnership, policy change, or new finding.\n"
-        "- applied_reader_value: it has plausible practical value for implementation, workflow, productivity, coding, automation, integration, deployment, or customers.\n"
+        "Classify each candidate independently and conservatively. A true value requires direct support in the supplied title or description.\n"
+        "When evidence is missing, ambiguous, or merely plausible, classify that dimension false.\n"
+        "Provider or source identity alone is not evidence, and engagement metadata such as scores or comment counts is not semantic evidence.\n"
+        "Do not make every candidate positive merely because this is an AI screening task. It is valid for many candidates to be false.\n"
+        "For every candidate, classify four boolean dimensions:\n"
+        "- ai_relevant: AI/ML, models, agents, inference, robotics, or AI deployment is a material core subject, not merely a tangential association.\n"
+        "- decision_value: the metadata states a concrete decision lever such as capability, pricing, cost, API behavior, compatibility, security, policy, deployment, availability, or measurable performance. Generic interest is false.\n"
+        "- change_novelty: the metadata explicitly states what meaningfully launched, changed, improved, partnered, became available, or was newly found. Recency or feed appearance alone is false.\n"
+        "- applied_reader_value: the metadata directly supports implementation, workflow, productivity, coding, automation, integration, deployment, or customer-use implications. Hypothetical usefulness is false.\n"
+        "If ai_relevant is false, the other three dimensions must also be false.\n"
+        "Calibration examples: an electric sports-car product page with only engagement counts is all false; historical cryptography research with no AI subject is all false; an AI inference API release with explicit pricing, security, and deployment changes can be all true.\n"
         "Return JSON only with exactly one top-level key named results.\n"
         "results must contain exactly one object per supplied candidate and no extras.\n"
         "Each object must contain exactly candidate_identity, ai_relevant, decision_value, change_novelty, applied_reader_value.\n"
@@ -124,6 +131,26 @@ def parse_semantic_screening_result(
     if len(expected) > MAX_SEMANTIC_CANDIDATES or set(parsed) != set(expected) or len(parsed) != len(expected):
         raise SemanticScreeningContractError("result_identities_invalid")
     return parsed
+
+
+def _is_uninformative_positive_saturation(parsed: Mapping[str, Mapping[str, Any]]) -> bool:
+    """Reject a large batch when almost every row is indiscriminately all-positive.
+
+    V2 deliberately mixes source families. For batches of at least four candidates,
+    >=90% all-positive classifications are treated as a semantic quality failure so
+    the existing Lite-lane fallback can try the alternate model. Small batches are
+    exempt because they can legitimately be uniformly high-value.
+    """
+
+    rows = [row for row in parsed.values() if isinstance(row, Mapping)]
+    if len(rows) < 4:
+        return False
+    all_positive = sum(
+        1
+        for row in rows
+        if all(row.get(field) is True for field in _SEMANTIC_BOOLEAN_FIELDS)
+    )
+    return all_positive * 10 >= len(rows) * 9
 
 
 def _classify_http_status(status_code: int) -> str:
@@ -213,6 +240,9 @@ class GeminiSemanticScreeningProvider:
         except (KeyError, IndexError, TypeError):
             raise SemanticScreeningError("semantic_provider_response_shape_invalid") from None
         try:
-            return parse_semantic_screening_result(text, expected_identities=identities)
+            parsed = parse_semantic_screening_result(text, expected_identities=identities)
         except SemanticScreeningContractError:
             raise SemanticScreeningError("semantic_provider_contract_invalid") from None
+        if _is_uninformative_positive_saturation(parsed):
+            raise SemanticScreeningError("semantic_provider_uninformative_saturated")
+        return parsed

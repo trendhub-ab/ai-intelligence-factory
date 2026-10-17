@@ -107,6 +107,24 @@ def test_prompt_exposes_source_metadata_but_not_internal_scores_or_reasons():
     assert "screening_reasons" not in prompt
 
 
+def test_prompt_requires_conservative_evidence_boundaries_for_discrimination():
+    prompt = build_semantic_screening_prompt(
+        [
+            _candidate(
+                "https://example.com/roadster",
+                title="Tesla Roadster",
+                description="HN score=900; comments=400",
+            )
+        ]
+    )
+
+    assert "When evidence is missing, ambiguous, or merely plausible, classify that dimension false." in prompt
+    assert "Provider or source identity alone is not evidence" in prompt
+    assert "engagement metadata such as scores or comment counts is not semantic evidence" in prompt
+    assert "If ai_relevant is false, the other three dimensions must also be false." in prompt
+    assert "Do not make every candidate positive merely because this is an AI screening task." in prompt
+
+
 def test_provider_batches_candidates_into_exactly_one_request():
     calls = []
 
@@ -145,6 +163,30 @@ def test_provider_batches_candidates_into_exactly_one_request():
     assert DEFAULT_SEMANTIC_MODEL in calls[0][0]
     assert calls[0][1]["timeout"] > 0
     assert set(result) == {"https://example.com/a", "https://example.com/b"}
+
+
+def test_provider_rejects_large_all_positive_batch_as_uninformative_saturation():
+    identities = [f"https://example.com/{index}" for index in range(10)]
+
+    def http_post(_url, **_kwargs):
+        results = [
+            {
+                "candidate_identity": identity,
+                "ai_relevant": True,
+                "decision_value": True,
+                "change_novelty": True,
+                "applied_reader_value": True,
+            }
+            for identity in identities
+        ]
+        return FakeResponse(json_data=_provider_body(results))
+
+    provider = GeminiSemanticScreeningProvider(api_key="test-key", http_post=http_post)
+
+    with pytest.raises(SemanticScreeningError) as caught:
+        provider([_candidate(identity) for identity in identities])
+
+    assert caught.value.safe_code == "semantic_provider_uninformative_saturated"
 
 
 def test_provider_classifies_http_5xx_without_leaking_transport_text():
