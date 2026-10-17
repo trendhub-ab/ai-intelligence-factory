@@ -16,6 +16,11 @@ on:
         required: true
         default: false
         type: boolean
+      regenerate_c_only:
+        description: 'Reuse restored A/B outputs and regenerate only C Editorial Engine'
+        required: true
+        default: false
+        type: boolean
       model_candidates:
         description: 'Ordered non-Lite Gemini candidates; first successful model is locked for the whole experiment'
         required: true
@@ -27,7 +32,7 @@ on:
         default: '45'
         type: string
       resume_run_id:
-        description: 'Optional prior Phase 0 run ID whose checkpoint artifact should be resumed'
+        description: 'Prior Phase 0 run ID to restore; required for C-only refinement'
         required: false
         default: ''
         type: string
@@ -77,6 +82,11 @@ jobs:
           path: phase0_artifacts
           github-token: ${{ github.token }}
           run-id: ${{ inputs.resume_run_id }}
+      - name: Validate C-only resume input
+        if: ${{ inputs.regenerate_c_only == true && inputs.resume_run_id == '' }}
+        run: |
+          echo 'C-only refinement requires resume_run_id' >&2
+          exit 1
       - name: Install isolated Gemini client
         run: python -m pip install --disable-pip-version-check 'google-genai>=1.56.0,<2.0.0'
       - name: Run bounded three-case replay
@@ -84,6 +94,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           AIIF_PHASE0_MODELS: ${{ inputs.model_candidates }}
           AIIF_PHASE0_CASE_COOLDOWN_SECONDS: ${{ inputs.case_cooldown_seconds }}
+          AIIF_PHASE0_REGENERATE_C_ONLY: ${{ inputs.regenerate_c_only }}
           AIIF_PHASE0_OUTPUT_DIR: phase0_artifacts
         run: python -m experiments.editorial_engine_v3_phase0.live
       - name: Upload checkpoint and blind evaluation artifacts
