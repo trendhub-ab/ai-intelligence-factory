@@ -13,6 +13,7 @@ from html.parser import HTMLParser
 import time
 from typing import Any, Callable, Mapping
 from urllib.parse import urljoin, urlsplit, urlunsplit
+from xml.etree import ElementTree
 
 import requests
 
@@ -37,6 +38,7 @@ class VendorSourceConfig:
     allowed_path_prefixes: tuple[str, ...]
     max_items: int = 5
     timeout_seconds: float = 8.0
+    response_format: str = "html"
 
 
 OFFICIAL_VENDOR_SOURCES: tuple[VendorSourceConfig, ...] = (
@@ -60,6 +62,39 @@ OFFICIAL_VENDOR_SOURCES: tuple[VendorSourceConfig, ...] = (
             "/products-and-platforms/products/gemini/",
             "/innovation-and-ai/models-and-research/gemini-models/",
         ),
+    ),
+    VendorSourceConfig(
+        provider="Microsoft",
+        collection_url="https://www.microsoft.com/en-us/research/blog/",
+        allowed_hostname="www.microsoft.com",
+        allowed_path_prefixes=("/en-us/research/blog/",),
+    ),
+    VendorSourceConfig(
+        provider="Meta",
+        collection_url="https://ai.meta.com/blog/",
+        allowed_hostname="ai.meta.com",
+        allowed_path_prefixes=("/blog/",),
+    ),
+    VendorSourceConfig(
+        provider="Google DeepMind",
+        collection_url="https://deepmind.google/blog/rss.xml",
+        allowed_hostname="deepmind.google",
+        allowed_path_prefixes=("/blog/",),
+        response_format="feed",
+    ),
+    VendorSourceConfig(
+        provider="NVIDIA",
+        collection_url="https://developer.nvidia.com/blog/feed/",
+        allowed_hostname="developer.nvidia.com",
+        allowed_path_prefixes=("/blog/",),
+        response_format="feed",
+    ),
+    VendorSourceConfig(
+        provider="Mistral",
+        collection_url="https://mistral.ai/news/rss",
+        allowed_hostname="mistral.ai",
+        allowed_path_prefixes=("/news/",),
+        response_format="feed",
     ),
 )
 
@@ -139,6 +174,39 @@ class _AnchorParser(HTMLParser):
             self._heading_text.append(text)
 
 
+def _feed_links(payload: str) -> list[tuple[str, str]]:
+    """Read only article link/title pairs from a reviewed RSS or Atom feed."""
+
+    root = ElementTree.fromstring(payload)
+    if root.tag == "rss":
+        channel = root.find("channel")
+        if channel is None:
+            raise ValueError("RSS channel missing")
+        return [
+            (_clean_text(item.findtext("link")), _clean_text(item.findtext("title")))
+            for item in channel.findall("item")
+        ]
+
+    atom = "{http://www.w3.org/2005/Atom}"
+    if root.tag == f"{atom}feed":
+        links: list[tuple[str, str]] = []
+        for entry in root.findall(f"{atom}entry"):
+            title_element = entry.find(f"{atom}title")
+            title = _clean_text(" ".join(title_element.itertext())) if title_element is not None else ""
+            link = next(
+                (
+                    element.get("href", "")
+                    for element in entry.findall(f"{atom}link")
+                    if element.get("rel", "alternate") == "alternate"
+                ),
+                "",
+            )
+            links.append((link, title))
+        return links
+
+    raise ValueError("Unrecognized feed root")
+
+
 def _same_allowed_host(url: str, allowed_hostname: str) -> bool:
     try:
         parts = urlsplit(url)
@@ -183,16 +251,25 @@ def fetch_official_vendor_source(
     if not isinstance(html, str):
         raise VendorLiveError(source.provider, "invalid_html")
 
-    parser = _AnchorParser()
-    try:
-        parser.feed(html)
-        parser.close()
-    except Exception:
-        raise VendorLiveError(source.provider, "invalid_html") from None
+    if source.response_format == "html":
+        parser = _AnchorParser()
+        try:
+            parser.feed(html)
+            parser.close()
+        except Exception:
+            raise VendorLiveError(source.provider, "invalid_html") from None
+        links = parser.anchors
+    elif source.response_format == "feed":
+        try:
+            links = _feed_links(html)
+        except (ElementTree.ParseError, ValueError):
+            raise VendorLiveError(source.provider, "invalid_feed") from None
+    else:
+        raise VendorLiveError(source.provider, "unsupported_format")
 
     collection_identity = _canonical_page_url(source.collection_url)
     items: list[dict[str, Any]] = []
-    for href, title in parser.anchors:
+    for href, title in links:
         if len(items) >= source.max_items:
             break
         if not title:
@@ -230,7 +307,7 @@ def fetch_all_official_vendor_candidates(
     sleep_fn: Callable[[float], None] = time.sleep,
     diagnostic_sink: Callable[[Mapping[str, object]], None] | None = None,
 ) -> list[dict[str, Any]]:
-    """Read the three reviewed vendor pages; raise only when all three fail."""
+    """Read the eight allowlisted vendor pages; raise only when all fail."""
 
     rows: list[dict[str, Any]] = []
     successful_reads = 0
