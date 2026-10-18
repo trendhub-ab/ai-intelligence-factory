@@ -64,3 +64,27 @@ def test_offline_cli_fails_closed_on_prediction_contract_error(tmp_path):
 
     assert completed.returncode == 2
     assert "prediction_case_ids_invalid" in completed.stderr
+
+
+def test_offline_cli_rejects_duplicate_json_prediction_case_keys(tmp_path):
+    payload = json.loads(GOLD.read_text(encoding="utf-8"))
+    rows = validate_gold_dataset(payload)
+    predictions = {row["case_id"]: row["gold"] for row in rows}
+    first_id = rows[0]["case_id"]
+    duplicate = {**predictions[first_id], "ai_relevant": not predictions[first_id]["ai_relevant"]}
+    serialized = json.dumps(predictions, ensure_ascii=False)
+    serialized = serialized[:-1] + ", " + json.dumps(first_id) + ": " + json.dumps(duplicate) + "}"
+    predictions_path = tmp_path / "duplicate_predictions.json"
+    predictions_path.write_text('{"predictions": ' + serialized + "}", encoding="utf-8")
+
+    completed = subprocess.run(
+        [sys.executable, str(CLI), "--gold", str(GOLD), "--predictions", str(predictions_path)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={},
+    )
+
+    assert completed.returncode == 2
+    assert "benchmark_json_duplicate_key" in completed.stderr
