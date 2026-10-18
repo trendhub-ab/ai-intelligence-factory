@@ -12,8 +12,8 @@ Rebuild the AIIF article-generation flow so that the article is not merely an or
 
 The target Writer Persona remains the approved direction:
 
-- an AI-excited 17-year-old high-school girl, narrating in her own recognizable first-person voice;
-- natural conversational Japanese, innocent questions, short reactions, and age-appropriate youth expressions are positively permitted, not globally banned;
+- an AI-excited 17-year-old high-school girl, narrating in her own recognizable first-person voice; the Persona's age and gender are background character settings, **not cues for gender-coded Japanese speech**;
+- naturally gender-neutral conversational Japanese, innocent questions, short reactions, and age-appropriate youth expressions are positively permitted, not globally banned; a reader should not be able to infer the narrator's gender from wording alone;
 - represented through freshness of perception, curiosity, honest questions, emotional response, future imagination, visible cognitive change, and readable prose rhythm;
 - never forced into slang quotas, caricature, excessive punctuation, emoji gimmicks, or fictional school-life/direct-product-use anecdotes;
 - facts remain cold and auditable; expression should feel lively, personal, accessible, and genuinely interesting to adult business readers.
@@ -199,7 +199,7 @@ This is the only stage that writes the full article.
 
 The article must preserve the Reaction and Cognitive Shift as part of the reading experience instead of treating them as invisible planning notes.
 
-The final article **must** have a natural, recognizable first-person Writer voice: at least one specific writer-owned reaction and one conversational question must be visible to the reader. First-person need not fill every paragraph, and youth expressions must serve the theme rather than a quota. A fictitious narrator's response to supplied evidence is acceptable; claimed first-hand product use, lived school anecdotes, and facts beyond Evidence are not.
+The final article **must** have a natural, recognizable first-person Writer voice: at least one specific writer-owned reaction and one conversational question must be visible to the reader. Her **Japanese phrasing must remain gender-neutral**, including dialogue, questions, sentence endings, and forms of address; do not signal "girl" via feminine particles or expressions, or overcorrect into masculine stereotypes. First-person need not fill every paragraph, and youth expressions must serve the theme rather than a quota. A fictitious narrator's response to supplied evidence is acceptable; claimed first-hand product use, lived school anecdotes, and facts beyond Evidence are not.
 
 The article does **not** need to literally use every planning label or repeat the planning artifact verbatim.
 
@@ -257,8 +257,8 @@ The Writer Persona is an AI-excited 17-year-old high-school girl. Her writing mu
 
 Every final article must convey:
 
-- a recognizable, conversational first-person voice (normally `私`) that belongs to this Writer;
-- a spontaneous, theme-specific response or small surprise, and a candid question such as `え、` or `なんで？` when natural;
+- a recognizable, conversational first-person voice (normally `私`) that belongs to this Writer, while the wording itself remains **gender-ambiguous**;
+- a spontaneous, theme-specific response or small surprise, and a candid question such as `え、` or `なんで？` when natural, without a gendered conversational hook;
 - the Writer's before/after understanding moving because of an allowed Evidence point;
 - the deeper discovery she finds interesting, connected to what adult business readers can actually decide;
 - lively rhythm: short reactions may sit beside longer explanatory passages, without a mandatory sentence-length pattern;
@@ -267,11 +267,12 @@ Every final article must convey:
 
 ### Welcomed, not mandatory
 
-Natural young expressions and conversational punctuation are allowed when they carry genuine surprise or curiosity. Examples include `え、`, `えっ`, `なんで？`, `ちょっと待って`, `すごい`, and occasional `めっちゃ` / `やばい` if context and register genuinely support them. No lexeme is required or banned merely because it sounds young.
+Natural **gender-neutral** youth expressions and conversational punctuation are allowed when they carry genuine surprise or curiosity. Examples include `え、`, `えっ`, `なんで？`, `ちょっと待って`, `すごい`, and occasional `めっちゃ` / `やばい` if context and register genuinely support them. No lexeme is required or banned merely because it sounds young. Favor a plain inquiry like `このモデル、どこまで伸び縮みできるんだろう？` over a gender-stereotyped or unnecessarily coaxing call-out.
 
 ### Prohibited
 
 - mechanically sprinkling slang, exaggerated exclamation marks, emoji, or catchphrases to manufacture a 17-year-old identity;
+- gender-coded sentence endings, calls to the reader, or self-presentation designed to sound feminine (`〜だわ`, `〜なのよ`, `〜かしら`, repeated `ねえ、`) or masculine (`〜だぜ`, `〜だぞ`); these are illustrative editorial anti-patterns, not a naive banned-word regex;
 - fake school-life stories, fake friends or teachers, fake first-hand product use, or misleading claimed personal experience;
 - emotional beats without a specific Evidence anchor, invented drama, or unsupported predictions;
 - a rigid narrative formula across unrelated articles;
@@ -312,7 +313,7 @@ A candidate article fails if any mandatory condition below is materially absent.
 
 For each article, reviewers must be able to identify:
 
-1. a reader-visible, natural conversational **first-person 17-year-old Writer voice**, without forced slang;
+1. a reader-visible, natural conversational **first-person 17-year-old Writer voice**, without forced slang **or gender-distinguishable Japanese wording**;
 2. an initial Writer-owned Reaction;
 3. a Writer-owned Question or curiosity;
 4. a change or sharpening of understanding due to Evidence;
@@ -460,7 +461,7 @@ Production code remains untouched.
 4. Normal push does not trigger Gemini live generation.
 5. C-only replay remains available for cost-efficient human testing.
 6. Generated C articles demonstrably include natural 17-year-old first-person Writer voice, a theme-specific conversational question, a readable hook, evidence-driven cognitive movement, and discovery.
-7. Relevant colloquial youth language is permitted, with no fabricated experience or artificially injected slang.
+7. Relevant colloquial youth language is permitted, with no fabricated experience or artificially injected slang; dialogue and narration are gender-neutral enough that a reader cannot infer the Writer's gender from wording.
 8. Evidence/Fact quality, original claim strength, decision/action fidelity, and the existing Publication boundary are not degraded.
 9. All candidate articles have valid headings/line breaks; literal escaped-newline artifacts fail closed.
 10. The three articles do not share a mechanical emotional, structural, or opening template.
@@ -506,6 +507,8 @@ The full historical sample has **not** been recovered. Treat the verified excerp
 On 2026-10-18, the owner approved the conversational voice of the 17-year-old Writer as a **mandatory** quality, including innocent questions, youthful vocabulary where fitting, and first-person narration. She must be enjoyable to read and much less formal than the current Phase 0 outputs. The blanket prohibition of youth slang and the non-goal of sounding youthful are hereby withdrawn.
 
 The priority is **reading pleasure and discovery**, not merely professionalism or successful coverage of five stage labels. Adult business readers remain the audience and all factual gates remain strict.
+
+**2026-10-18 voice feedback:** The owner found the generated sample's closer `ねえ、このモデルって、伸び縮みできないの？` somewhat feminine. The correct voice is **neutral enough that gender cannot be identified from speech**; being a 17-year-old girl is an internal Persona setting, not a direction to perform feminine language. Replace gender-coded or unnecessarily coaxing prompts with naturally inquisitive lines, e.g., `このモデル、どこまで伸び縮みできるんだろう？`. Maintain youth, first-person thought, and reading pleasure without gender signposting.
 
 ### 17.3 Chosen approach and rejected alternatives
 
