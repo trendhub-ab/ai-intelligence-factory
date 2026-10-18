@@ -323,7 +323,14 @@ def _valid_completed_c_case(case: dict[str, Any]) -> bool:
     if any(not str(stages.get(stage) or "").strip() for stage in EDITORIAL_STAGES):
         return False
     final = str(outputs.get("C_EDITORIAL_ENGINE") or "").strip()
-    return bool(final) and final == str(stages.get("Fact-Safe Review") or "").strip()
+    if not final or final != str(stages.get("Fact-Safe Review") or "").strip():
+        return False
+    try:
+        validate_article_layout(str(stages["Persona Article Generation"]))
+        validate_article_layout(final)
+    except ValueError:
+        return False
+    return True
 
 
 def _run_c_only_refinement(
@@ -363,12 +370,22 @@ def _run_c_only_refinement(
     prior_attempts_total = int(state.get("c_refinement_provider_attempts_total", 0) or 0)
 
     reuse_valid = prior_fingerprint == current_fingerprint
-    if reuse_valid and not declared_completed.issubset(canonical_ids):
-        reuse_valid = False
-    if reuse_valid and prior_calls_total != len(declared_completed):
-        reuse_valid = False
-    if reuse_valid and any(not _valid_completed_c_case(baseline_by_id[case_id]) for case_id in declared_completed):
-        reuse_valid = False
+    if reuse_valid:
+        invalid_resume = (
+            not declared_completed.issubset(canonical_ids)
+            or prior_calls_total != len(declared_completed)
+            or prior_attempts_total < prior_calls_total
+            or any(not _valid_completed_c_case(baseline_by_id[case_id]) for case_id in declared_completed)
+        )
+        if invalid_resume:
+            # Never replay a current-fingerprint completion to repair corrupted
+            # data: that would silently consume another provider call. Remove
+            # human-facing blind artifacts, but retain raw C for diagnosis.
+            state["blind_packages"] = []
+            state["blind_mapping"] = {}
+            _write_checkpoint(output_dir, state)
+            _write_evaluation_artifacts(Path(output_dir), state)
+            raise RuntimeError("invalid current C-only refinement checkpoint: resume rejected without provider call")
 
     if reuse_valid:
         reusable_completed = declared_completed

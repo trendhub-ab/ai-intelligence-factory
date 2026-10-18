@@ -304,6 +304,74 @@ def test_c_only_refinement_resumes_same_fingerprint_and_calls_only_missing_case(
     assert refined["cases"][2]["outputs"]["C_EDITORIAL_ENGINE"] == _article("new-third")
 
 
+def test_invalid_completed_c_resume_is_fail_closed_without_provider_call(tmp_path: Path) -> None:
+    from experiments.editorial_engine_v3_phase0 import live
+
+    calls: list[str] = []
+
+    class Models:
+        def generate_content(self, *, model: str, contents: str):
+            calls.append(model)
+            return type("Response", (), {"text": "should not generate"})()
+
+    bad_article = "# 題名\\n\\nこれは改行のつもりです。"
+    completed_id = live.READY_CASES[0].case.case_id
+    cases = []
+    for index, item in enumerate(live.READY_CASES):
+        outputs = {
+            "A_CURRENT_WRITER": f"A-{item.case.case_id}",
+            "B_PERSONA_ONLY": f"B-{item.case.case_id}",
+        }
+        stages = {}
+        if index == 0:
+            outputs["C_EDITORIAL_ENGINE"] = bad_article
+            stages = _reaction_first_payload(final=bad_article)
+        cases.append({
+            "case_id": item.case.case_id,
+            "theme": item.theme,
+            "input_digest": live._input_digest(item),
+            "outputs": outputs,
+            "editorial_stage_outputs": stages,
+        })
+
+    blind, mapping = live.build_blind_package(completed_id, cases[0]["outputs"])
+    state = {
+        "mode": "C_ONLY_REFINEMENT",
+        "selected_model": "m1",
+        "cases": cases,
+        "c_refinement_fingerprint": live._c_refinement_fingerprint(),
+        "c_completed_case_ids": [completed_id],
+        "c_refinement_provider_calls_total": 1,
+        "c_refinement_provider_attempts_total": 1,
+        "blind_packages": [blind],
+        "blind_mapping": {completed_id: mapping},
+    }
+    live._write_checkpoint(tmp_path, state)
+    live._write_evaluation_artifacts(tmp_path, state)
+
+    with pytest.raises(RuntimeError, match="invalid.*C-only.*checkpoint"):
+        live._run_c_only_refinement(
+            type("Client", (), {"models": Models()})(),
+            session=live.ModelSession(candidates=("m1",), locked_model="m1"),
+            state=state,
+            output_dir=tmp_path,
+            cooldown=0,
+            sleep_fn=lambda _: None,
+        )
+
+    assert calls == []
+    checkpoint = live._load_checkpoint(tmp_path)
+    assert checkpoint is not None
+    assert checkpoint["c_refinement_provider_calls_total"] == 1
+    assert checkpoint["blind_packages"] == []
+    assert json.loads((tmp_path / "blind_packages.json").read_text(encoding="utf-8")) == []
+    assert bad_article not in (tmp_path / "blind_evaluation.md").read_text(encoding="utf-8")
+    assert [(case["outputs"]["A_CURRENT_WRITER"], case["outputs"]["B_PERSONA_ONLY"])
+            for case in checkpoint["cases"]] == [
+        (f"A-{item.case.case_id}", f"B-{item.case.case_id}") for item in live.READY_CASES
+    ]
+
+
 def test_c_only_refinement_fingerprint_change_regenerates_all_c_cases(tmp_path: Path) -> None:
     from experiments.editorial_engine_v3_phase0 import live
 

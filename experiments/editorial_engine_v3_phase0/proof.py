@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from . import live
+from .contract import validate_article_layout
 from .runner import build_blind_package
 
 BASELINE_AB_DIGESTS_NAME = "baseline_ab_digests.json"
@@ -171,6 +172,7 @@ def evaluate_c_only_proof(
     completed_all_cases = completed_ids == canonical_ids
     five_stages_complete = exact_case_set
     final_matches_fact_safe_review = exact_case_set
+    c_articles_layout_valid = exact_case_set
     if exact_case_set:
         for case_id in canonical_ids:
             case = cases[case_id]
@@ -184,6 +186,11 @@ def evaluate_c_only_proof(
             reviewed = str(stages.get("Fact-Safe Review") or "").strip()
             if not final or final != reviewed:
                 final_matches_fact_safe_review = False
+            for article in (str(stages.get("Persona Article Generation") or ""), reviewed):
+                try:
+                    validate_article_layout(article)
+                except ValueError:
+                    c_articles_layout_valid = False
 
     state_package_ids = _artifact_case_ids(state.get("blind_packages", []))
     disk_package_ids = _artifact_case_ids(disk_packages)
@@ -233,6 +240,7 @@ def evaluate_c_only_proof(
         == live.C_ONLY_MAX_PROVIDER_CALLS,
         "five_stages_complete": five_stages_complete,
         "final_matches_fact_safe_review": final_matches_fact_safe_review,
+        "c_articles_layout_valid": c_articles_layout_valid,
         "blind_case_set_exact": blind_case_set_exact,
         "blind_mapping_set_exact": blind_mapping_set_exact,
         "blind_articles_current": blind_articles_current,

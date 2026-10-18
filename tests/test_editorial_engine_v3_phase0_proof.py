@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 
 def _baseline_state(live) -> dict:
     cases = []
@@ -40,13 +42,13 @@ def _complete_current_refinement(live, state: dict) -> None:
     state["provider_calls"] = 3
     state["provider_attempts"] = 3
     for index, case in enumerate(state["cases"], start=1):
-        final = f"reviewed-{index}"
+        final = f"# 記事タイトル\n\nreviewed-{index}"
         case["outputs"]["C_EDITORIAL_ENGINE"] = final
         case["editorial_stage_outputs"] = {
             "Writer Reaction": f"reaction-{index}",
             "Editorial Discovery": f"discovery-{index}",
             "Cognitive Shift": f"shift-{index}",
-            "Persona Article Generation": f"draft-{index}",
+            "Persona Article Generation": f"# 記事タイトル\n\ndraft-{index}",
             "Fact-Safe Review": final,
         }
     live._rebuild_blind_state(state)
@@ -75,6 +77,27 @@ def test_c_only_structural_proof_verdict_passes_for_complete_current_fingerprint
     assert report["cumulative_provider_calls"] == 3
     persisted = json.loads((tmp_path / proof.PROOF_VERDICT_NAME).read_text(encoding="utf-8"))
     assert persisted["status"] == "PASS"
+
+
+@pytest.mark.parametrize("stage", ("Persona Article Generation", "Fact-Safe Review"))
+def test_c_only_structural_proof_rejects_unreadable_c_article(tmp_path: Path, stage: str) -> None:
+    from experiments.editorial_engine_v3_phase0 import live, proof
+
+    state = _write_complete_current_state(live, proof, tmp_path)
+    case = state["cases"][0]
+    malformed = "# 題名\\n\\n本文らしく見える文字列"
+    case["editorial_stage_outputs"][stage] = malformed
+    if stage == "Fact-Safe Review":
+        case["outputs"]["C_EDITORIAL_ENGINE"] = malformed
+        live._rebuild_blind_state(state)
+    live._write_checkpoint(tmp_path, state)
+    live._write_evaluation_artifacts(tmp_path, state)
+
+    report = proof.evaluate_c_only_proof(tmp_path, model_candidates=("gemini-3.8-flash",))
+
+    assert report["status"] == "FAIL"
+    assert report["checks"]["c_articles_layout_valid"] is False
+    assert all(value for key, value in report["checks"].items() if key != "c_articles_layout_valid")
 
 
 def test_c_only_structural_proof_verdict_fails_when_a_or_b_changes(tmp_path: Path) -> None:
