@@ -12,7 +12,7 @@ from typing import Any, Callable
 from local_skills.compiler import compile_snapshot
 
 from .cases import READY_CASES, ReplayCase
-from .contract import EDITORIAL_STAGES
+from .contract import EDITORIAL_STAGES, validate_article_layout
 from .prompts import build_editorial_bundle_prompt, build_persona_only_prompt
 from .runner import build_blind_package, build_current_writer_snapshot
 
@@ -162,6 +162,12 @@ def _parse_editorial_bundle(text: str) -> tuple[str, dict[str, str]]:
         if not value:
             raise RuntimeError(f"invalid editorial bundle: missing stage {stage}")
         stages[stage] = value
+
+    for stage in ("Persona Article Generation", "Fact-Safe Review"):
+        try:
+            validate_article_layout(stages[stage])
+        except ValueError as exc:
+            raise RuntimeError(f"invalid editorial bundle: {stage}: {exc}") from exc
 
     return stages["Fact-Safe Review"], stages
 

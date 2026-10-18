@@ -9,12 +9,16 @@ import pytest
 from experiments.editorial_engine_v3_phase0.contract import EDITORIAL_STAGES
 
 
-def _reaction_first_payload(*, final: str = "reviewed final article") -> dict[str, str]:
+def _article(body: str) -> str:
+    return f"# 記事タイトル\n\n{body}"
+
+
+def _reaction_first_payload(*, final: str = "# 記事タイトル\n\nreviewed final article") -> dict[str, str]:
     return {
         "Writer Reaction": "Reaction: curious\nCuriosity: why\nQuestion: really?\nFuture Imagination: what changes\nEmotion Intensity: MEDIUM",
         "Editorial Discovery": "Surface: update\nInteresting Tension: tension\nEvidence Pivot: evidence\nDeeper Insight: deeper\nEditorial Thesis: thesis",
         "Cognitive Shift": "Before View: before\nEvidence Encounter: evidence\nAfter View: after\nWhat I Now Find Interesting: discovery",
-        "Persona Article Generation": "draft with writer-owned reaction and cognitive movement",
+        "Persona Article Generation": _article("draft with writer-owned reaction and cognitive movement"),
         "Fact-Safe Review": final,
     }
 
@@ -44,10 +48,43 @@ def test_editorial_bundle_requires_all_five_stages_and_uses_fact_safe_review_as_
 
     final, stages = live._parse_editorial_bundle(json.dumps(_reaction_first_payload(), ensure_ascii=False))
     assert tuple(stages) == EDITORIAL_STAGES
-    assert final == "reviewed final article"
+    assert final == _article("reviewed final article")
     assert stages["Writer Reaction"]
     assert stages["Cognitive Shift"]
     assert stages["Persona Article Generation"]
+
+
+@pytest.mark.parametrize("stage", ("Persona Article Generation", "Fact-Safe Review"))
+def test_article_layout_rejects_literal_escape_only_in_prose(stage: str) -> None:
+    from experiments.editorial_engine_v3_phase0 import live
+
+    payload = _reaction_first_payload()
+    payload[stage] = "# 題名\\n\\nこれは文字としての改行です。"
+    with pytest.raises(RuntimeError, match="invalid editorial bundle"):
+        live._parse_editorial_bundle(json.dumps(payload, ensure_ascii=False))
+
+    payload[stage] = "# 題名\n\nこれは実際の改行です。"
+    live._parse_editorial_bundle(json.dumps(payload, ensure_ascii=False))
+
+    payload[stage] = "# 題名\n\nコード `\\n` の説明です。"
+    live._parse_editorial_bundle(json.dumps(payload, ensure_ascii=False))
+
+    payload[stage] = '# 題名\n\n段落です。\n\n```python\nprint("\\n")\n```'
+    live._parse_editorial_bundle(json.dumps(payload, ensure_ascii=False))
+
+
+@pytest.mark.parametrize("stage", ("Persona Article Generation", "Fact-Safe Review"))
+@pytest.mark.parametrize("article", ("本文のみ", "# \n\n本文です。", "# 題名"))
+def test_article_layout_rejects_missing_heading_or_body(stage: str, article: str) -> None:
+    from experiments.editorial_engine_v3_phase0 import live
+
+    payload = _reaction_first_payload()
+    payload[stage] = article
+    with pytest.raises(RuntimeError, match="invalid editorial bundle"):
+        live._parse_editorial_bundle(json.dumps(payload, ensure_ascii=False))
+
+    payload[stage] = "# 題名\n\n本文です。"
+    live._parse_editorial_bundle(json.dumps(payload, ensure_ascii=False))
 
 
 @pytest.mark.parametrize("missing_stage", EDITORIAL_STAGES)
@@ -152,7 +189,7 @@ def test_c_only_refinement_reuses_a_b_records_five_stages_and_spends_three_calls
     class Models:
         def generate_content(self, *, model: str, contents: str):
             calls.append(model)
-            payload = _reaction_first_payload(final=f"reviewed-{len(calls)}")
+            payload = _reaction_first_payload(final=_article(f"reviewed-{len(calls)}"))
             return type("Response", (), {"text": json.dumps(payload, ensure_ascii=False)})()
 
     cases = []
@@ -199,7 +236,7 @@ def test_c_only_refinement_reuses_a_b_records_five_stages_and_spends_three_calls
     for index, case in enumerate(refined["cases"], start=1):
         assert case["outputs"]["A_CURRENT_WRITER"].startswith("A-")
         assert case["outputs"]["B_PERSONA_ONLY"].startswith("B-")
-        assert case["outputs"]["C_EDITORIAL_ENGINE"] == f"reviewed-{index}"
+        assert case["outputs"]["C_EDITORIAL_ENGINE"] == _article(f"reviewed-{index}")
         assert tuple(case["editorial_stage_outputs"]) == EDITORIAL_STAGES
 
 
@@ -211,14 +248,14 @@ def test_c_only_refinement_resumes_same_fingerprint_and_calls_only_missing_case(
     class Models:
         def generate_content(self, *, model: str, contents: str):
             calls.append(model)
-            payload = _reaction_first_payload(final="new-third")
+            payload = _reaction_first_payload(final=_article("new-third"))
             return type("Response", (), {"text": json.dumps(payload, ensure_ascii=False)})()
 
     fingerprint = live._c_refinement_fingerprint()
     completed_ids = [item.case.case_id for item in live.READY_CASES[:2]]
     cases = []
     for index, item in enumerate(live.READY_CASES):
-        stages = _reaction_first_payload(final=f"kept-{index + 1}") if index < 2 else {}
+        stages = _reaction_first_payload(final=_article(f"kept-{index + 1}")) if index < 2 else {}
         cases.append(
             {
                 "case_id": item.case.case_id,
@@ -227,7 +264,7 @@ def test_c_only_refinement_resumes_same_fingerprint_and_calls_only_missing_case(
                 "outputs": {
                     "A_CURRENT_WRITER": f"A-{item.case.case_id}",
                     "B_PERSONA_ONLY": f"B-{item.case.case_id}",
-                    "C_EDITORIAL_ENGINE": f"kept-{index + 1}" if index < 2 else f"stale-{index + 1}",
+                    "C_EDITORIAL_ENGINE": _article(f"kept-{index + 1}") if index < 2 else f"stale-{index + 1}",
                 },
                 "editorial_stage_outputs": stages,
             }
@@ -262,9 +299,9 @@ def test_c_only_refinement_resumes_same_fingerprint_and_calls_only_missing_case(
     assert refined["provider_calls"] == 1
     assert refined["c_refinement_provider_calls_total"] == 3
     assert set(refined["c_completed_case_ids"]) == {item.case.case_id for item in live.READY_CASES}
-    assert refined["cases"][0]["outputs"]["C_EDITORIAL_ENGINE"] == "kept-1"
-    assert refined["cases"][1]["outputs"]["C_EDITORIAL_ENGINE"] == "kept-2"
-    assert refined["cases"][2]["outputs"]["C_EDITORIAL_ENGINE"] == "new-third"
+    assert refined["cases"][0]["outputs"]["C_EDITORIAL_ENGINE"] == _article("kept-1")
+    assert refined["cases"][1]["outputs"]["C_EDITORIAL_ENGINE"] == _article("kept-2")
+    assert refined["cases"][2]["outputs"]["C_EDITORIAL_ENGINE"] == _article("new-third")
 
 
 def test_c_only_refinement_fingerprint_change_regenerates_all_c_cases(tmp_path: Path) -> None:
@@ -275,7 +312,7 @@ def test_c_only_refinement_fingerprint_change_regenerates_all_c_cases(tmp_path: 
     class Models:
         def generate_content(self, *, model: str, contents: str):
             calls.append(model)
-            payload = _reaction_first_payload(final=f"fresh-{len(calls)}")
+            payload = _reaction_first_payload(final=_article(f"fresh-{len(calls)}"))
             return type("Response", (), {"text": json.dumps(payload, ensure_ascii=False)})()
 
     cases = []
@@ -290,7 +327,7 @@ def test_c_only_refinement_fingerprint_change_regenerates_all_c_cases(tmp_path: 
                     "B_PERSONA_ONLY": f"B-{item.case.case_id}",
                     "C_EDITORIAL_ENGINE": f"old-{index + 1}",
                 },
-                "editorial_stage_outputs": _reaction_first_payload(final=f"old-{index + 1}"),
+                "editorial_stage_outputs": _reaction_first_payload(final=_article(f"old-{index + 1}")),
             }
         )
     state = {
@@ -324,9 +361,9 @@ def test_c_only_refinement_fingerprint_change_regenerates_all_c_cases(tmp_path: 
     assert refined["c_refinement_provider_calls_total"] == 3
     assert refined["c_refinement_fingerprint"] == live._c_refinement_fingerprint()
     assert [case["outputs"]["C_EDITORIAL_ENGINE"] for case in refined["cases"]] == [
-        "fresh-1",
-        "fresh-2",
-        "fresh-3",
+        _article("fresh-1"),
+        _article("fresh-2"),
+        _article("fresh-3"),
     ]
 
 
@@ -355,7 +392,7 @@ def test_new_fingerprint_scrubs_stale_c_before_first_failed_provider_call(tmp_pa
                 "theme": item.theme,
                 "input_digest": live._input_digest(item),
                 "outputs": outputs,
-                "editorial_stage_outputs": _reaction_first_payload(final=f"stale-{index + 1}"),
+                "editorial_stage_outputs": _reaction_first_payload(final=_article(f"stale-{index + 1}")),
             }
         )
 

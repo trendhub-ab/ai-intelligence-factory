@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from types import MappingProxyType
 from typing import Iterable, Mapping
 
@@ -17,6 +18,43 @@ EDITORIAL_STAGES = (
     "Persona Article Generation",
     "Fact-Safe Review",
 )
+
+
+def validate_article_layout(article: str) -> None:
+    """Reject unreadable Markdown articles, without rewriting provider output."""
+    lines = article.strip().splitlines()
+    if not lines or not re.match(r"^#\s+\S", lines[0]):
+        raise ValueError("invalid article layout: missing Markdown H1 title")
+
+    in_fence = False
+    fence_char = ""
+    fence_length = 0
+    has_body = False
+    for line in lines[1:]:
+        fence = re.match(r"^\s{0,3}(`{3,}|~{3,})", line)
+        if fence:
+            token = fence.group(1)
+            if not in_fence:
+                in_fence = True
+                fence_char, fence_length = token[0], len(token)
+                continue
+            if token[0] == fence_char and len(token) >= fence_length:
+                in_fence = False
+                continue
+        if in_fence:
+            continue
+
+        # Literal backslash+n is valid in code examples, not as an article line break.
+        outside_inline_code = re.sub(r"`+[^`]*`+", "", line)
+        if r"\n" in outside_inline_code:
+            raise ValueError("invalid article layout: literal escaped newline in prose")
+        if outside_inline_code.strip() and not outside_inline_code.lstrip().startswith("#"):
+            has_body = True
+
+    if r"\n" in re.sub(r"`+[^`]*`+", "", lines[0]):
+        raise ValueError("invalid article layout: literal escaped newline in title")
+    if not has_body:
+        raise ValueError("invalid article layout: missing article body")
 
 
 @dataclass(frozen=True, slots=True)
