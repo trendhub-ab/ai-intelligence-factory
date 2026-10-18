@@ -6,7 +6,9 @@ import pytest
 
 from v2_005_evidence_pack import (
     EvidencePackContractError,
+    _load_json,
     build_evidence_pack,
+    main,
     render_evidence_pack_markdown,
     write_evidence_pack,
 )
@@ -356,3 +358,51 @@ def test_evidence_pack_writer_creates_only_requested_deterministic_files(tmp_pat
     assert json.loads(json_path.read_text(encoding="utf-8")) == pack
     assert json_path.read_text(encoding="utf-8").endswith("\n")
     assert markdown_path.read_text(encoding="utf-8").endswith("\n")
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"run_id":"run-1","run_id":"run-2"}',
+        '{"observation":{"diagnostic_only":true,"diagnostic_only":false}}',
+        '{"human_review":{"verdict":"v2_better","verdict":"v1_better"}}',
+        '{"run_id":"run-1","\\u0072un_id":"run-2"}',
+    ],
+)
+def test_evidence_pack_json_reader_rejects_duplicate_keys_at_any_depth(tmp_path, payload):
+    input_path = tmp_path / "duplicate.json"
+    input_path.write_text(payload, encoding="utf-8")
+
+    with pytest.raises(EvidencePackContractError, match="evidence_pack_json_duplicate_key"):
+        _load_json(input_path)
+
+
+def test_evidence_pack_cli_rejects_duplicate_run_id_before_writing(tmp_path, monkeypatch):
+    paths = []
+    for index, report in enumerate(_three_reports()):
+        serialized = json.dumps(report)
+        if index == 0:
+            serialized = serialized[:-1] + ', "run_id": "renamed-run"}'
+        input_path = tmp_path / f"run-{index}.json"
+        input_path.write_text(serialized, encoding="utf-8")
+        paths.append(input_path)
+
+    json_output = tmp_path / "evidence-pack.json"
+    markdown_output = tmp_path / "evidence-pack.md"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "v2_005_evidence_pack.py",
+            *(str(path) for path in paths),
+            "--json-output",
+            str(json_output),
+            "--markdown-output",
+            str(markdown_output),
+        ],
+    )
+
+    with pytest.raises(EvidencePackContractError, match="evidence_pack_json_duplicate_key"):
+        main()
+
+    assert not json_output.exists()
+    assert not markdown_output.exists()
