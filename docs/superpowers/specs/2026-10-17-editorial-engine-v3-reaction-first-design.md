@@ -1,7 +1,7 @@
 # Editorial Engine v3 Reaction-First Redesign
 
-**Status:** Design approved in chat; implementation not started  
-**Date:** 2026-10-17  
+**Status:** Reaction-First Phase 0 implemented; 2026-10-18 Writer Voice revision approved in chat, written-spec review pending; experiment remains DRAFT / NO-GO  
+**Date:** 2026-10-17; Writer Voice revision 2026-10-18  
 **Branch:** `feature/editorial-engine-v3-phase0`  
 **Production main:** unchanged  
 **Parent direction:** `AIIF_Writer_Editorial_大改修方針仕様書_v3_2026-10-15-1.md`
@@ -12,10 +12,11 @@ Rebuild the AIIF article-generation flow so that the article is not merely an or
 
 The target Writer Persona remains the approved direction:
 
-- an AI-excited 17-year-old high-school girl;
-- not represented through slang, caricature, exaggerated punctuation, emoji, or fictional school-life anecdotes;
-- represented through freshness of perception, curiosity, honest questions, emotional response, future imagination, and visible cognitive change;
-- facts remain cold and auditable; expression may be lively and personal.
+- an AI-excited 17-year-old high-school girl, narrating in her own recognizable first-person voice;
+- natural conversational Japanese, innocent questions, short reactions, and age-appropriate youth expressions are positively permitted, not globally banned;
+- represented through freshness of perception, curiosity, honest questions, emotional response, future imagination, visible cognitive change, and readable prose rhythm;
+- never forced into slang quotas, caricature, excessive punctuation, emoji gimmicks, or fictional school-life/direct-product-use anecdotes;
+- facts remain cold and auditable; expression should feel lively, personal, accessible, and genuinely interesting to adult business readers.
 
 The redesign exists because the first Phase 0 implementation produced articles that were factually clean but editorially flat. The generated output repeatedly regressed into polished business explainer prose. That is a failure against the approved specification even when it outperforms the current Writer.
 
@@ -51,14 +52,14 @@ Even when Persona Narrative contained useful first-person curiosity and cognitiv
 
 The model optimized for “complete article” rather than “preserve the writer's lived intellectual movement.”
 
-### 2.3 Editorial Review rewrote instead of protecting
+### 2.3 Editorial Review must protect, not flatten
 
-Editorial Review behaved like a polishing layer. It improved structure and business readability but often removed precisely the irregular, personal, exploratory signals that made the article interesting.
+The design risk is that an editorial polishing layer may normalize the voice. However, the 2026-10-18 live checkpoint shows a more precise cause in the current implementation: all three `Fact-Safe Review` article bodies exactly matched their `Persona Article Generation` inputs. The flatness in those cases was **already present in Article Generation**, rather than introduced by Review.
 
-This violated the intended separation:
+The required separation remains:
 
-- Writer creates the reading experience.
-- Review protects Fact, Evidence, decision integrity, and publication safety.
+- Writer creates the reading experience and a distinct voice.
+- Review protects Fact, Evidence, decision integrity, and publication safety with minimal local changes.
 
 ## 3. Design decision
 
@@ -198,7 +199,7 @@ This is the only stage that writes the full article.
 
 The article must preserve the Reaction and Cognitive Shift as part of the reading experience instead of treating them as invisible planning notes.
 
-The writer is allowed to use first person when natural.
+The final article **must** have a natural, recognizable first-person Writer voice: at least one specific writer-owned reaction and one conversational question must be visible to the reader. First-person need not fill every paragraph, and youth expressions must serve the theme rather than a quota. A fictitious narrator's response to supplied evidence is acceptable; claimed first-hand product use, lived school anecdotes, and facts beyond Evidence are not.
 
 The article does **not** need to literally use every planning label or repeat the planning artifact verbatim.
 
@@ -252,28 +253,31 @@ The review must not:
 
 ### Required
 
-The Writer Persona must appear through:
+The Writer Persona is an AI-excited 17-year-old high-school girl. Her writing must be naturally readable and entertaining, not a polished corporate explainer with a teenager label attached.
 
-- fresh surprise;
-- curiosity;
-- willingness to ask basic questions;
-- healthy skepticism;
-- future imagination;
-- emotional reaction to evidence;
-- willingness to revise an initial view;
-- an identifiable point of view.
+Every final article must convey:
+
+- a recognizable, conversational first-person voice (normally `私`) that belongs to this Writer;
+- a spontaneous, theme-specific response or small surprise, and a candid question such as `え、` or `なんで？` when natural;
+- the Writer's before/after understanding moving because of an allowed Evidence point;
+- the deeper discovery she finds interesting, connected to what adult business readers can actually decide;
+- lively rhythm: short reactions may sit beside longer explanatory passages, without a mandatory sentence-length pattern;
+- readable, jargon-aware explanations that keep adult readers engaged rather than talking down to them;
+- a distinct story path for each theme, not a fixed "reaction → question → lesson" template.
+
+### Welcomed, not mandatory
+
+Natural young expressions and conversational punctuation are allowed when they carry genuine surprise or curiosity. Examples include `え、`, `えっ`, `なんで？`, `ちょっと待って`, `すごい`, and occasional `めっちゃ` / `やばい` if context and register genuinely support them. No lexeme is required or banned merely because it sounds young.
 
 ### Prohibited
 
-The following remain prohibited:
+- mechanically sprinkling slang, exaggerated exclamation marks, emoji, or catchphrases to manufacture a 17-year-old identity;
+- fake school-life stories, fake friends or teachers, fake first-hand product use, or misleading claimed personal experience;
+- emotional beats without a specific Evidence anchor, invented drama, or unsupported predictions;
+- a rigid narrative formula across unrelated articles;
+- stronger claims, invented facts, or weakened Fact / Evidence / decision boundaries to make prose more exciting.
 
-- “やばい”, “神”, “めっちゃ”, or forced youth slang;
-- fake school anecdotes;
-- fake friends, teachers, classes, or personal product use;
-- emoji as a Persona substitute;
-- exaggerated claims;
-- unsupported future predictions;
-- facts created only to make the story more dramatic.
+The Writer's first person describes an editorial point of view reacting to supplied evidence; it is not an assertion of real-world direct experience.
 
 ## 7. Emotion intensity
 
@@ -308,8 +312,8 @@ A candidate article fails if any mandatory condition below is materially absent.
 
 For each article, reviewers must be able to identify:
 
-1. a real Writer presence;
-2. an initial Reaction;
+1. a reader-visible, natural conversational **first-person 17-year-old Writer voice**, without forced slang;
+2. an initial Writer-owned Reaction;
 3. a Writer-owned Question or curiosity;
 4. a change or sharpening of understanding due to Evidence;
 5. what the Writer ultimately finds most interesting;
@@ -329,6 +333,8 @@ Human evaluation asks:
 - Did the article make me see the news differently?
 - Does anything stick in memory?
 - Does the article sound like someone actually thought about the news?
+- Is it **easy and fun to read**, with live conversational rhythm instead of solemn business-template prose?
+- Does the question/voice feel personally owned rather than a synthetic first-person phrase pasted onto a summary?
 
 ### 8.3 Evidence / Fact Gate
 
@@ -343,7 +349,8 @@ Across the three Phase 0 cases:
 - emotional curves must differ where the evidence differs;
 - openings must not reuse the same pattern;
 - headings must not mechanically repeat the same sequence;
-- the same “すごい→でも待って” structure must not appear by default.
+- the same “すごい→でも待って” structure must not appear by default;
+- first-person introductions and youth expressions must not be repeated mechanically or used as a keyword-count shortcut.
 
 ### 8.5 User Acceptance Gate
 
@@ -372,7 +379,9 @@ Use the existing non-Lite model constraints and run-level model locking.
 
 For iteration efficiency, A/B may remain frozen while only C is regenerated when the underlying Evidence and comparator text are unchanged.
 
-C-only refinement remains bounded to one logical provider call per case unless the implementation plan explicitly changes that budget.
+C-only refinement remains bounded to one logical provider call per case unless the implementation plan explicitly changes that budget. No live Gemini/API requests before 17:00 JST.
+
+**2026-10-18 blind review baseline (immutable):** The owner scored A_CURRENT_WRITER 46/60, B_PERSONA_ONLY 37/60, and C_EDITORIAL_ENGINE 27/60 across the three frozen cases. C ranked last in every case; this is a strong NO-GO signal, not proof that the mechanism can never improve. The blind score SHA-256 is `1d6f7e2b2150014531859e41e6a16ee7d373296e54524bf0222282c6b38ba80f` (canonical score record in the conversation).
 
 ## 10. Required output artifacts
 
@@ -398,7 +407,9 @@ The experiment must fail closed if:
 - a Lite model is selected;
 - resume data does not match immutable case inputs;
 - C-only refinement cannot prove that A/B comparators came from the expected checkpoint;
-- Persona quality checks collapse to simple keyword matching as the sole GO criterion.
+- Persona quality checks collapse to simple keyword matching as the sole GO criterion;
+- raw literal newline escapes (e.g., a visible `\n` sequence in prose), missing/invalid title layout, or malformed article text are left in a candidate presented for GO;
+- structural gate PASS is mistaken for editorial-interest PASS.
 
 Automated tests may assert structural contracts, but final Persona/interest judgment remains Human Evaluation.
 
@@ -429,6 +440,8 @@ However, provider-call count must remain cost-conscious. A single provider call 
 
 Do not introduce extra Gemini calls merely to make the architecture look modular.
 
+The 2026-10-18 checkpoint diagnostic proves all three `Persona Article Generation` bodies were byte-identical to `Fact-Safe Review`; the weak voice and the case-3 literal escaped newlines were already present at Article Generation, **not introduced by review**. Fix Writer generation, preserve review's fact-only mandate, and add fail-closed formatting checks. A/B remain byte-identical frozen comparators.
+
 The likely implementation touchpoints are limited to the experimental surface:
 
 - `experiments/editorial_engine_v3_phase0/prompts.py`
@@ -446,17 +459,21 @@ Production code remains untouched.
 3. Existing Phase 0 resilience tests remain green.
 4. Normal push does not trigger Gemini live generation.
 5. C-only replay remains available for cost-efficient human testing.
-6. Generated C articles visibly contain theme-specific Writer presence, curiosity, cognitive movement, and discovery.
-7. Evidence/Fact quality is not degraded.
-8. The three articles do not share a mechanical emotional or structural template.
-9. The owner reads the final articles and judges them materially interesting.
-10. Only after that Human Evaluation may the experiment be marked GO.
+6. Generated C articles demonstrably include natural 17-year-old first-person Writer voice, a theme-specific conversational question, a readable hook, evidence-driven cognitive movement, and discovery.
+7. Relevant colloquial youth language is permitted, with no fabricated experience or artificially injected slang.
+8. Evidence/Fact quality, original claim strength, decision/action fidelity, and the existing Publication boundary are not degraded.
+9. All candidate articles have valid headings/line breaks; literal escaped-newline artifacts fail closed.
+10. The three articles do not share a mechanical emotional, structural, or opening template.
+11. A/B comparator bytes and immutable input digests remain unchanged; 3 C calls maximum per bounded live replay unless separately approved.
+12. RED→GREEN focused TDD, full repository regression, and relevant CI/guard checks are evaluated before any live replay; no normal push triggers Gemini.
+13. The owner reads the final articles and finds them materially interesting and note-publishable; another blind comparison informs but cannot replace this absolute judgment.
+14. Only after that Human Evaluation and explicit owner GO may the experiment be considered for integration.
 
 ## 15. Non-goals
 
 This redesign does not attempt to:
 
-- make the prose sound literally teenage;
+- enforce a fixed slang vocabulary or a caricatured teenager voice;
 - optimize SEO;
 - redesign note eyecatch;
 - change paid Decision Intelligence tone;
@@ -469,3 +486,37 @@ This redesign does not attempt to:
 The Reaction-First Editorial Engine is successful only when the reader can feel that someone encountered the news, cared about something specific, asked a real question, learned from evidence, changed or sharpened her view, and then handed that discovery to an adult reader without compromising factual integrity.
 
 If the result is merely a polished business explainer, the system has failed even if it is accurate.
+
+## 17. Approved 2026-10-18 Writer Voice revision and design provenance
+
+### 17.1 North-star example
+
+The owner explicitly selected the ChatGPT-authored 2026-10-15 *Your Transformer Is Secretly Elastic* sample as the desired editorial quality target:
+
+> え、AIモデルって「大・中・小」を選ばなくてよくなるの？
+
+The verified opening begins:
+
+> AIモデルを使うときって、ずっと不思議でした。なんで最初に、Smallにするか。Baseにするか。Largeにするか。
+
+The full historical sample has **not** been recovered. Treat the verified excerpt and documented qualities (curiosity, surprise, conversational first person, evidence-driven change of mind, an interesting discovery) as an editorial north star, **not** as an exact full-text golden fixture. Do not fabricate or paraphrase missing historical text as a verified quotation.
+
+### 17.2 Owner's clarified intent
+
+On 2026-10-18, the owner approved the conversational voice of the 17-year-old Writer as a **mandatory** quality, including innocent questions, youthful vocabulary where fitting, and first-person narration. She must be enjoyable to read and much less formal than the current Phase 0 outputs. The blanket prohibition of youth slang and the non-goal of sounding youthful are hereby withdrawn.
+
+The priority is **reading pleasure and discovery**, not merely professionalism or successful coverage of five stage labels. Adult business readers remain the audience and all factual gates remain strict.
+
+### 17.3 Chosen approach and rejected alternatives
+
+**Chosen — Writer Voice + Article Generation contract redesign:** maintain the inspectable five-stage Reaction-First architecture and existing cost-bounded one-provider-call-per-C-case experiment, but require reader-visible writer voice and specific rhetorical movement, preserve it through generation, and add deterministic formatting/structural checks plus human interest acceptance.
+
+**Deferred — prompt-only tone tweak:** insufficient as a standalone solution because the current prompts already request Writer Reaction and Cognitive Shift, yet generated final articles were still flat.
+
+**Deferred — multiple provider calls per stage:** potentially useful for future falsification, but adds cost, 429/503 exposure, and a changed budget without evidence it fixes reading appeal.
+
+### 17.4 Evidence and verification
+
+The 2026-10-18 Phase 0 C-only run `39115310334` generated three C candidates using `gemini-3.8-flash` with structural proof PASS. The owner blind evaluation was editorial NO-GO. All three `Persona Article Generation` outputs exactly matched the corresponding `Fact-Safe Review` outputs; therefore, current weakness is present before final review. The case-3 literal `\n` sequence also originated in Article Generation.
+
+Before implementation: amend prompt and quality-contract tests by TDD, inspect stage-level changes without provider calls, and preserve the production boundaries. After successful offline regression and relevant CI, request a separately bounded live C-only rerun no earlier than 17:00 JST, then conduct human blind reading. Do not merge PR #810 without a new, explicit merge authorization.
