@@ -76,3 +76,27 @@ def test_fact_safe_review_audits_background_framing_before_returning_unchanged()
             "過去の投資を無駄にするリスク",
         ):
             assert marker in prompt
+
+
+def test_c_voice_contract_keeps_gender_neutral_first_person_and_evidence_boundary() -> None:
+    case = _case()
+    article = build_editorial_stage_prompts(case)["Persona Article Generation"]
+    bundle = build_editorial_bundle_prompt(case)
+
+    for prompt in (article, bundle):
+        for marker in (
+            "17歳",
+            "一人称",
+            "中性的",
+            "素朴な疑問",
+            "若者言葉",
+            "Writer Question",
+            "Evidence / Facts / Sources",
+            "架空",
+            "私",
+        ):
+            assert marker in prompt
+        assert "女性的な語尾" in prompt
+        assert "男性的な語尾" in prompt
+        assert "若者言葉は禁止" not in prompt
+        assert "一人称単数は自然なら使ってよいが" not in prompt

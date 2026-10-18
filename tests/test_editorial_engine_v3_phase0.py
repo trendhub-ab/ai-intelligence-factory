@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib
 import importlib.util
 import json
@@ -116,6 +117,16 @@ def test_persona_only_prompt_does_not_smuggle_reaction_first_editorial_stages() 
     assert "Writer Reaction" not in prompt
     assert "Editorial Discovery" not in prompt
     assert "Fact-Safe Review" not in prompt
+
+
+def test_persona_only_baseline_stays_byte_frozen() -> None:
+    prompts = _module("experiments.editorial_engine_v3_phase0.prompts")
+    baseline = prompts.build_persona_only_prompt(_case("persona"))
+    assert hashlib.sha256(baseline.encode("utf-8")).hexdigest() == (
+        "49131f6f19b1df3d183610573cfc2806a26e8096bb2b2a07dbb166425865c315"
+    )
+    assert "若者言葉、過剰な感嘆符、絵文字、架空の実体験は使わない" in baseline
+    assert "男女を推測できない中性的" not in baseline
 
 
 def test_reaction_first_stage_prompts_have_five_explicit_stages_and_fact_boundary() -> None:

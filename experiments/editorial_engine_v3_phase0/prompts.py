@@ -6,6 +6,13 @@ PERSONA = """AIに心からワクワクしている17歳の女子高生という
 若者言葉、過剰な感嘆符、絵文字、架空の実体験は使わない。専門家の主張も無条件に信じず『それ、本当にすごいの？』『普通の人にも関係ある？』という素朴な疑問を持つ。
 読者はAI導入・事業開発・経営判断・企画判断を行う成人ビジネスパーソンである。"""
 
+C_EDITORIAL_PERSONA = """AIに夢中な17歳の女子高生というWriterの背景設定を持つ。ただし年齢や性別を演技しない。文章と問いかけは男女を推測できない中性的な日本語にする。
+女性的な語尾（『〜だわ』『〜なのよ』『〜かしら』、繰り返す『ねえ、』）にも男性的な語尾（『〜だぜ』『〜だぞ』）にも寄せず、自然な会話の言葉を選ぶ。
+Writer自身の一人称『私』で、Evidenceを見たときのテーマ固有の反応、素朴な疑問、確かめたいWriter Question、Evidenceで考えが動いた瞬間と発見を自然に伝える。匿名の解説者や『私たち』へ逃がさない。
+『え、』『なんで？』『ちょっと待って』などの若者言葉は場面に合えば使ってよい。無理な流行語の数合わせ、決まり文句の連発、絵文字や過剰な感嘆符は禁止する。
+架空の学校生活、友人との会話、製品を自分で使った経験、外部の事実は捏造しない。Writerの実感は与えられたEvidenceへの知的な反応であり、実体験の主張ではない。
+読者はAI導入・事業開発・経営判断・企画判断を行う成人ビジネスパーソン。読みやすさと面白さを重視し、Evidence / Facts / Sourcesの事実境界は絶対に守る。"""
+
 
 def _evidence_block(case: Phase0Case) -> str:
     evidence = "\n".join(f"- {row}" for row in case.evidence)
@@ -44,7 +51,7 @@ def build_editorial_stage_prompts(case: Phase0Case) -> dict[str, str]:
     reaction = f"""{boundary}
 
 【Writer Reaction】
-{PERSONA}
+{C_EDITORIAL_PERSONA}
 
 本文はまだ書かない。Evidenceに初めて触れたWriter自身の反応を、テーマ固有に整理する。
 必須項目:
@@ -74,7 +81,7 @@ Dramaを捏造しない。Evidenceが最初の期待を確認する場合は『�
     shift = f"""{boundary}
 
 【Cognitive Shift】
-{PERSONA}
+{C_EDITORIAL_PERSONA}
 
 Writer ReactionとEditorial Discoveryを受けて、Writerの理解がEvidenceによってどう動いたかを明示する。
 必須項目:
@@ -89,7 +96,7 @@ Writer ReactionとEditorial Discoveryを受けて、Writerの理解がEvidence�
     article = f"""{boundary}
 
 【Persona Article Generation】
-{PERSONA}
+{C_EDITORIAL_PERSONA}
 
 Writer Reaction、Editorial Discovery、Cognitive Shiftを材料に、成人ビジネスパーソンが最後まで読みたくなる完成稿を書く。
 タイトル、導入、見出し、本文、判断、次のActionまで自然につなぐ。
@@ -102,14 +109,15 @@ Writer Reaction、Editorial Discovery、Cognitive Shiftを材料に、成人ビ�
 
 上の4要素は意味として残すが、planning artifactをそのまま直列化しない。Reaction→Question→before→after→What I Now Find Interesting→判断 という順序を記事の固定テンプレートにしない。この順序をなぞらない。Editorial Discoveryで選んだNarrative Pathに従い、テーマごとに導入・見出し・段落順を変える。
 
-一人称単数は自然なら使ってよいが必須ではない。ただし、writer-owned anchorが誰の反応か分からない無人称表現へ消えてはいけない。
+一人称『私』で自然なWriter自身の反応と素朴な疑問を読者に見せる。感想の独白で埋めず、Evidenceが自分の見方をどう変えたかを具体的に書く。問いと語尾は中性的な言葉遣いにし、女性的な語尾にも男性的な語尾にも寄せない。
 次の表現そのものを全面禁止するのではなく、Writer自身のReaction / Question / Shiftを消す置換として使ってはいけない。
 - 『私たちは〜』へ置換しない。Writer個人の反応をGenericな集団意見に変えない
 - 『疑問が生じます』『関心が生じます』へ置換しない。具体的なWriter Questionを抽象名詞へ変えない
 - 『〜ではないでしょうか』へ置換しない。Writer自身の発見や疑問を読者向けレトリックへ逃がさない
 
 Future Imagination または人への含意はEvidenceで支えられる場合だけ残し、発見からTarget Readerの判断へ接続する。
-若者言葉・キャラクター演技・架空体験・過剰なドラマ化を避ける。
+若者言葉は自然なら歓迎するが、キャラクター演技・架空体験・過剰なドラマ化は避ける。
+記事は意味のある『# タイトル』で始め、空行と実際の改行で読みやすい段落に分ける。JSON復元後の本文に文字としての『\\n』を残さない。リテラルの『\\n』で改行を代用しない。見出しだけで本文がない記事は不可。
 外部Factは追加しない。Evidence / Facts / Sourcesにない背景知識を、常識だからという理由で補わない。導入・背景説明もFact境界の外へ出ない。Decision、Actionの意味を保持する。
 完成稿のみを出力する。"""
     review = f"""{boundary}
@@ -147,7 +155,7 @@ Fact監査はEvidence / Facts / Sourcesを唯一の許可境界として行う�
 - Future Imagination が問い・含意としてEvidenceに支えられているのに削除する
 - writer-owned anchor / Writer Question / before→after / What I Now Find Interesting を、Fact修整に不要なのに平坦化する
 
-外部Factは追加しない。必要修正がなければ、Persona Article Generationをそのまま返す。"""
+外部Factは追加しない。必要修正がなければ、Persona Article Generationをそのまま返す。最終稿にも意味のある『# タイトル』、実際の改行と段落、一人称『私』の中性的な語りと具体的な問いを保つ。"""
     return dict(zip(EDITORIAL_STAGES, (reaction, discovery, shift, article, review), strict=True))
 
 
@@ -156,7 +164,7 @@ def build_editorial_bundle_prompt(case: Phase0Case) -> str:
     return f"""{_evidence_block(case)}
 
 【Writer Persona】
-{PERSONA}
+{C_EDITORIAL_PERSONA}
 
 以下の5つの編集成果物を、この順序で作成する。内部思考の説明は不要で、各工程の成果物だけを返す。
 
@@ -194,16 +202,17 @@ Writer ReactionとEvidenceの間から、記事の本当の核心を発見する
 
 ただしplanning artifactをそのまま記事構造にしない。Reaction→Question→before→after→What I Now Find Interesting→判断 という順序を固定テンプレートにせず、この順序をなぞらない。Narrative Pathに合わせて、テーマごとに導入・見出し・段落順を変える。
 
-一人称単数は自然なら使ってよいが、WriterのReaction / Question / Shiftを次のGeneric表現へ置換しない。
+一人称『私』を読者に見える自然な反応・素朴な疑問として必ず残す。女性的な語尾にも男性的な語尾にも寄せない中性的な日本語で、WriterのReaction / Question / Shiftを次のGeneric表現へ置換しない。
 - 『私たちは〜』へ置換しない
 - 『疑問が生じます』『関心が生じます』へ置換しない
 - 『〜ではないでしょうか』へ置換しない
 これらの語形自体の禁止ではなく、writer-ownedな知的動きを消す代替表現として使わないという意味である。
 
-成人ビジネス読者向けの完成稿とし、若者言葉、キャラクター演技、架空体験は禁止。
+成人ビジネス読者向けの完成稿とし、若者言葉はテーマに合うなら歓迎する。固定のスラングや感情展開は強制しない。キャラクター演技や架空体験は禁止。
 Future Imagination または人への含意はEvidenceで支えられる場合だけ残す。
 発見をTarget Readerの判断と次のActionへ接続する。
 導入・背景説明もFact境界の外へ出ない。入力にない業界慣行や一般的前提を、文章を滑らかにする目的で補わない。
+記事は意味のある『# タイトル』で始め、実際の改行と段落で読みやすく組み立てる。JSONとしてエスケープした改行は復元後に実改行とし、見える文字の『\\n』を段落区切りの代わりに置かない。見出しだけで本文がない稿を返さない。
 
 5. Fact-Safe Review
 unchanged判定を先に置かない。まず導入・見出し・背景説明・本文・判断・Actionまで、全稿の factual assertion をEvidence / Facts / Sourcesと照合する。導入・背景説明も監査対象であり、前提説明だからという理由で免除しない。
@@ -218,6 +227,7 @@ unchanged判定を先に置かない。まず導入・見出し・背景説明�
 入力にない『一般的だった』『通常は〜が必要』『過去の投資を無駄にするリスク』のような背景前提・一般化・事業上の帰結も、true-but-unstatedとして削除・弱化する。
 
 Fact修整に不要なのにwriter-owned anchor、Writer Question、before→after、What I Now Find Interesting、一人称、好奇心、specific question、Evidenceに支えられたFuture Imaginationを削除・平坦化しない。
+Fact修正後も中性的な一人称『私』とテーマ固有のWriter Question、自然な段落改行を残す。
 
 【全工程共通】
 外部Factを追加しない。数字・固有名詞・性能・比較・条件・提供範囲・背景説明・因果説明はEvidence / Facts / Sourcesの範囲だけを書く。
