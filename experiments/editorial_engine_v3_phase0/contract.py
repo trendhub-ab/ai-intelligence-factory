@@ -48,7 +48,9 @@ def validate_article_layout(article: str) -> None:
         outside_inline_code = re.sub(r"`+[^`]*`+", "", line)
         if r"\n" in outside_inline_code:
             raise ValueError("invalid article layout: literal escaped newline in prose")
-        if outside_inline_code.strip() and not outside_inline_code.lstrip().startswith("#"):
+        prose = outside_inline_code.strip()
+        is_rule = bool(re.fullmatch(r"(?:[-*_]\s*){3,}", prose))
+        if prose and not prose.startswith("#") and not is_rule:
             has_body = True
 
     if r"\n" in re.sub(r"`+[^`]*`+", "", lines[0]):

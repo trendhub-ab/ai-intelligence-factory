@@ -74,7 +74,7 @@ def test_article_layout_rejects_literal_escape_only_in_prose(stage: str) -> None
 
 
 @pytest.mark.parametrize("stage", ("Persona Article Generation", "Fact-Safe Review"))
-@pytest.mark.parametrize("article", ("本文のみ", "# \n\n本文です。", "# 題名"))
+@pytest.mark.parametrize("article", ("本文のみ", "# \n\n本文です。", "# 題名", "# 題名\n\n---"))
 def test_article_layout_rejects_missing_heading_or_body(stage: str, article: str) -> None:
     from experiments.editorial_engine_v3_phase0 import live
 
