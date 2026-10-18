@@ -472,15 +472,18 @@ def run_shadow_selection(
                 raw_semantic = semantic_screen(semantic_candidates)
                 if not isinstance(raw_semantic, Mapping) or set(raw_semantic) != submitted_identities:
                     raise ValueError("semantic result identities invalid")
+                pending_semantic_updates = []
                 for candidate in semantic_candidates:
                     identity = str(candidate["candidate_identity"])
                     payload = raw_semantic[identity]
                     if not isinstance(payload, Mapping):
                         raise ValueError("semantic result item invalid")
                     semantic_score, semantic_reasons = _semantic_selection_value(payload)
-                    candidate["semantic_screening"] = {
-                        field: bool(payload[field]) for field in _SEMANTIC_BOOLEAN_FIELDS
-                    }
+                    pending_semantic_updates.append((candidate, semantic_score, semantic_reasons, {
+                        field: payload[field] for field in _SEMANTIC_BOOLEAN_FIELDS
+                    }))
+                for candidate, semantic_score, semantic_reasons, semantic_values in pending_semantic_updates:
+                    candidate["semantic_screening"] = semantic_values
                     if semantic_score > int(candidate.get("selection_value_score") or 0):
                         candidate["selection_value_score"] = semantic_score
                         candidate["selection_value_reasons"] = semantic_reasons

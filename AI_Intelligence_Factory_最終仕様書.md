@@ -1,10 +1,10 @@
 # AI Intelligence Factory — 現行Production仕様
 
-仕様最終変更日: **2026-10-17**
-Production最終照合日: **2026-10-17**
+仕様最終変更日: **2026-10-18**
+Production最終照合日: **2026-10-18**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`c6117137b4fa09843a818f0812574b138ec4032514756e42088610b43e7111a4`**
+Production Contract Fingerprint: **`70868413b099cee6efbd4529e232c54d4d883ef11b305f03bed2d18647b31f19`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -247,7 +247,7 @@ System V2のprovider-backed shadow deep diveは **診断専用** であり、V1 
 
 1回のV2 provider-backed shadow runで許可するmodel HTTP attemptは **最大7回（Lite最大2 + Flash Evidence最大5）**。正常時はSemantic 1回 + Evidence 1回の **2回** で終了する。同一modelへのretryは行わず、distinct-model fallbackだけを許可する。400 / 401 / 403等、modelを変えても解消しない共有設定・認証系errorでは無駄なfallbackを打ち切る。
 
-Semantic Screeningは4つのboolean（AI relevance / decision value / change novelty / applied reader value）だけをstrict JSON contractで返し、結果は **rescue / upside-only** としてdeterministic Selection Valueを下げない。raw Gemini response / prompt / secretをartifactへ保存しない。
+Semantic Screeningは4つのboolean（AI relevance / decision value / change novelty / applied reader value）だけをstrict JSON contractで返し、結果は **rescue / upside-only** としてdeterministic Selection Valueを下げない。同一batchの全候補を検証してから加点・診断値を一括反映し、1候補でも契約不正なら一部加点を残さずdeterministic rankingへ完全縮退する。raw Gemini response / prompt / secretをartifactへ保存しない。
 
 V2のRequired 4 Source（OfficialVendor / GitHub / HackerNews / ArXiv）のlive acquisitionは、外部HTTPの一時障害をSource固有の場当たり的処理ではなく共通のbounded reliability契約で扱う。通常は1 GETで終了し、`timeout` / `connection` / HTTP 429 / HTTP 5xxだけ同一logical readを最大1回retryする。429以外の4xx、invalid JSON/XML等の非transient failureはretryしない。1 Source familyの失敗で他Source familyを停止させず、OfficialVendorの複数vendor、GitHubの複数repository等の既存冗長性も維持する。Artifactへはattempt count、retry有無、safe failure category等の診断だけを残し、URL query、raw response、secretを保存しない。既存live readerの公開error category互換は維持し、`http_5xx` 等の詳細分類はdiagnostics側のauthorityとする。
 
