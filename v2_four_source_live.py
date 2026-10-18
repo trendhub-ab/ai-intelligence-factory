@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import datetime
+from hashlib import sha256
 from typing import Any, Callable, Mapping
 
 import requests
@@ -72,6 +73,43 @@ def _with_source_family(rows: list[dict[str, Any]], source_family: str) -> list[
     return result
 
 
+def _balanced_upstream_candidates(
+    rows: list[dict[str, Any]], *, upstream_field: str, limit: int, run_id: str
+) -> list[dict[str, Any]]:
+    """Interleave upstreams with a reproducibly rotated starting source."""
+
+    if limit <= 0:
+        return []
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        identity = row.get(upstream_field)
+        group = identity if isinstance(identity, str) and identity else ""
+        groups.setdefault(group, []).append(row)
+
+    group_names = list(groups)
+    if len(group_names) > 1:
+        digest = sha256(f"{upstream_field}:{run_id}".encode("utf-8")).digest()
+        offset = int.from_bytes(digest[:8], "big") % len(group_names)
+        group_names = group_names[offset:] + group_names[:offset]
+
+    selected: list[dict[str, Any]] = []
+    depth = 0
+    while len(selected) < limit:
+        advanced = False
+        for group_name in group_names:
+            group_rows = groups[group_name]
+            if depth >= len(group_rows):
+                continue
+            selected.append(group_rows[depth])
+            advanced = True
+            if len(selected) >= limit:
+                return selected
+        if not advanced:
+            break
+        depth += 1
+    return selected
+
+
 def _aggregate_diagnostics(events: list[Mapping[str, object]]) -> dict[str, object]:
     first_failure: str | None = None
     final_failure: str | None = None
@@ -129,7 +167,10 @@ def run_four_source_live(
             http_get=http_get,
             diagnostic_sink=sink("OfficialVendor"),
         )
-        return _with_source_family(rows[: bounded.vendor_limit], "official_vendor")
+        selected = _balanced_upstream_candidates(
+            rows, upstream_field="provider", limit=bounded.vendor_limit, run_id=run_id
+        )
+        return _with_source_family(selected, "official_vendor")
 
     def github_provider() -> list[dict[str, Any]]:
         rows = fetch_all_github_candidates(
@@ -137,7 +178,10 @@ def run_four_source_live(
             token=github_token,
             diagnostic_sink=sink("GitHub"),
         )
-        return _with_source_family(rows[: bounded.github_limit], "github")
+        selected = _balanced_upstream_candidates(
+            rows, upstream_field="repository", limit=bounded.github_limit, run_id=run_id
+        )
+        return _with_source_family(selected, "github")
 
     def hacker_news_provider() -> list[dict[str, Any]]:
         rows = fetch_hacker_news_candidates(
