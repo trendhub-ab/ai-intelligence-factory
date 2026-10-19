@@ -17,8 +17,6 @@ on:
         options:
           - gemini-3.8-flash
           - gemini-3.6-flash
-        required: true
-        type: string
 
 permissions:
   contents: read
