@@ -1,9 +1,9 @@
 # Editorial Engine v3 Reaction-First Redesign
 
-**Status:** Reaction-First Phase 0 implemented; 2026-10-18 Writer Voice revision approved in chat, written-spec review pending; experiment remains DRAFT / NO-GO  
-**Date:** 2026-10-17; Writer Voice revision 2026-10-18  
-**Branch:** `feature/editorial-engine-v3-phase0`  
-**Production main:** unchanged  
+**Status:** Reaction-First Phase 0 implemented; 2026-10-18 Writer Voice revision approved in chat, written-spec review pending; experiment remains DRAFT / NO-GO
+**Date:** 2026-10-17; Writer Voice revision 2026-10-18
+**Branch:** `feature/editorial-engine-v3-phase0`
+**Production main:** unchanged
 **Parent direction:** `AIIF_Writer_Editorial_大改修方針仕様書_v3_2026-10-15-1.md`
 
 ## 1. Purpose

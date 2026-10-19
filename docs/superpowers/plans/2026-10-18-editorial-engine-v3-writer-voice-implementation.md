@@ -58,7 +58,7 @@ Five high-risk conditions and their test owners:
 
 - [ ] **Step 2: Run RED.**
 
-  Run: `python -m pytest -q tests/test_editorial_engine_v3_phase0.py::test_persona_only_baseline_stays_byte_frozen tests/test_editorial_engine_v3_phase0_quality_contract.py::test_c_voice_contract_keeps_gender_neutral_first_person_and_evidence_boundary`  
+  Run: `python -m pytest -q tests/test_editorial_engine_v3_phase0.py::test_persona_only_baseline_stays_byte_frozen tests/test_editorial_engine_v3_phase0_quality_contract.py::test_c_voice_contract_keeps_gender_neutral_first_person_and_evidence_boundary`
   Expected: the new C-quality test fails on the old C voice contract. The baseline B digest test should already pass.
 
 - [ ] **Step 3: Implement only the C prompt contract.**
@@ -67,12 +67,12 @@ Five high-risk conditions and their test owners:
 
 - [ ] **Step 4: Run GREEN and focused existing contracts.**
 
-  Run: `python -m pytest -q tests/test_editorial_engine_v3_phase0.py tests/test_editorial_engine_v3_phase0_quality_contract.py`  
+  Run: `python -m pytest -q tests/test_editorial_engine_v3_phase0.py tests/test_editorial_engine_v3_phase0_quality_contract.py`
   Expected: 0 failures; B golden SHA unchanged.
 
 - [ ] **Step 5: Commit the bounded prompt change.**
 
-  `git add experiments/editorial_engine_v3_phase0/prompts.py tests/test_editorial_engine_v3_phase0.py tests/test_editorial_engine_v3_phase0_quality_contract.py`  
+  `git add experiments/editorial_engine_v3_phase0/prompts.py tests/test_editorial_engine_v3_phase0.py tests/test_editorial_engine_v3_phase0_quality_contract.py`
   `git commit -m "feat(v3): isolate frozen B and require neutral lively C Writer voice"`
 
 ### Task 2: Fail Closed on Article Layout at the Single-Call Boundary
@@ -101,7 +101,7 @@ Five high-risk conditions and their test owners:
 
 - [ ] **Step 2: Run RED.**
 
-  Run: `python -m pytest -q tests/test_editorial_engine_v3_phase0_live.py -k "article_layout"`  
+  Run: `python -m pytest -q tests/test_editorial_engine_v3_phase0_live.py -k "article_layout"`
   Expected: layout tests fail because no validator yet exists.
 
 - [ ] **Step 3: Implement the small deterministic validator.**
@@ -110,12 +110,12 @@ Five high-risk conditions and their test owners:
 
 - [ ] **Step 4: Run GREEN and existing live resilience tests.**
 
-  Run: `python -m pytest -q tests/test_editorial_engine_v3_phase0_live.py`  
+  Run: `python -m pytest -q tests/test_editorial_engine_v3_phase0_live.py`
   Expected: 0 failures, including old 429/503 locking and one-call budget tests.
 
 - [ ] **Step 5: Commit.**
 
-  `git add experiments/editorial_engine_v3_phase0/contract.py experiments/editorial_engine_v3_phase0/live.py tests/test_editorial_engine_v3_phase0_live.py`  
+  `git add experiments/editorial_engine_v3_phase0/contract.py experiments/editorial_engine_v3_phase0/live.py tests/test_editorial_engine_v3_phase0_live.py`
   `git commit -m "fix(v3): fail closed on broken generated article layouts"`
 
 ### Task 3: Preserve Resume/Proof Integrity and the Three-Call Boundary
@@ -145,7 +145,7 @@ Five high-risk conditions and their test owners:
 
 - [ ] **Step 2: Run RED.**
 
-  Run: `python -m pytest -q tests/test_editorial_engine_v3_phase0_live.py::test_invalid_completed_c_resume_is_fail_closed_without_provider_call tests/test_editorial_engine_v3_phase0_proof.py::test_c_only_structural_proof_rejects_unreadable_c_article`  
+  Run: `python -m pytest -q tests/test_editorial_engine_v3_phase0_live.py::test_invalid_completed_c_resume_is_fail_closed_without_provider_call tests/test_editorial_engine_v3_phase0_proof.py::test_c_only_structural_proof_rejects_unreadable_c_article`
   Expected: both fail against existing reuse/proof behavior.
 
 - [ ] **Step 3: Close the checkpoint and proof gaps.**
@@ -154,12 +154,12 @@ Five high-risk conditions and their test owners:
 
 - [ ] **Step 4: Run GREEN with proof and C-only regressions.**
 
-  Run: `python -m pytest -q tests/test_editorial_engine_v3_phase0_live.py tests/test_editorial_engine_v3_phase0_proof.py`  
+  Run: `python -m pytest -q tests/test_editorial_engine_v3_phase0_live.py tests/test_editorial_engine_v3_phase0_proof.py`
   Expected: 0 failures; existing `ab_byte_identical`, `current_fingerprint`, three-call limit, artifact freshness, no Lite, and locked-model tests remain green.
 
 - [ ] **Step 5: Commit.**
 
-  `git add experiments/editorial_engine_v3_phase0/live.py experiments/editorial_engine_v3_phase0/proof.py tests/test_editorial_engine_v3_phase0_live.py tests/test_editorial_engine_v3_phase0_proof.py`  
+  `git add experiments/editorial_engine_v3_phase0/live.py experiments/editorial_engine_v3_phase0/proof.py tests/test_editorial_engine_v3_phase0_live.py tests/test_editorial_engine_v3_phase0_proof.py`
   `git commit -m "test(v3): guard stale C resumes and proof article layout"`
 
 ## Offline Regression and CI Gate (before any new live proof)
