@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 import requests
 
 from v2_github_acquisition import acquire_github_candidates
-from v2_live_shadow_acquisition import AcquisitionRequestError, bounded_get
+from v2_live_shadow_acquisition import AcquisitionRequestError, bounded_get, emit_upstream_read_diagnostic
 
 
 GITHUB_REPOSITORIES: tuple[str, ...] = (
@@ -147,22 +147,44 @@ def fetch_all_github_candidates(
     token: str | None = None,
     sleep_fn: Callable[[float], None] = time.sleep,
     diagnostic_sink: Callable[[Mapping[str, object]], None] | None = None,
+    upstream_diagnostic_sink: Callable[[Mapping[str, object]], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Read all reviewed repositories; raise only when every repository fails."""
 
     rows: list[dict[str, Any]] = []
     successful_reads = 0
     for repository in GITHUB_REPOSITORIES:
+        http_events: list[Mapping[str, object]] = []
+
+        def record_http(event: Mapping[str, object]) -> None:
+            http_events.append(dict(event))
+            if diagnostic_sink is not None:
+                diagnostic_sink(event)
+
         try:
             repository_rows = fetch_github_repository_releases(
                 repository=repository,
                 http_get=http_get,
                 token=token,
                 sleep_fn=sleep_fn,
-                diagnostic_sink=diagnostic_sink,
+                diagnostic_sink=record_http,
             )
-        except GitHubLiveError:
+        except GitHubLiveError as exc:
+            emit_upstream_read_diagnostic(
+                upstream=repository,
+                http_events=http_events,
+                candidate_count=0,
+                failure_category=exc.category,
+                diagnostic_sink=upstream_diagnostic_sink,
+            )
             continue
+        emit_upstream_read_diagnostic(
+            upstream=repository,
+            http_events=http_events,
+            candidate_count=len(repository_rows),
+            failure_category=None,
+            diagnostic_sink=upstream_diagnostic_sink,
+        )
         successful_reads += 1
         rows.extend(repository_rows)
     if successful_reads == 0:
