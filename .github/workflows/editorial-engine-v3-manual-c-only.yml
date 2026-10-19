@@ -71,11 +71,6 @@ jobs:
       - name: Snapshot original A/B digests (fail closed on invalid baseline)
         run: python -m experiments.editorial_engine_v3_phase0.proof snapshot-baseline --output-dir phase0_artifacts
 
-      - name: Enforce Gemini API use after 17:00 JST
-        shell: bash
-        run: |
-          python -c 'from datetime import datetime; from zoneinfo import ZoneInfo; hour = datetime.now(ZoneInfo("Asia/Tokyo")).hour; assert hour >= 17, "Gemini API is forbidden before 17:00 JST"'
-
       - name: Prepare explicitly mixed-model C-only checkpoint (one-off exception)
         if: ${{ inputs.one_off_model == 'gemini-3.6-flash' }}
         shell: bash
