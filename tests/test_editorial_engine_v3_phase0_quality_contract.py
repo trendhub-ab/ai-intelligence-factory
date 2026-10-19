@@ -100,3 +100,15 @@ def test_c_voice_contract_keeps_gender_neutral_first_person_and_evidence_boundar
         assert "男性的な語尾" in prompt
         assert "若者言葉は禁止" not in prompt
         assert "一人称単数は自然なら使ってよいが" not in prompt
+
+
+def test_p1_editorial_quality_does_not_force_fake_personal_reactions() -> None:
+    case = _case()
+    stages = build_editorial_stage_prompts(case)
+    bundle = build_editorial_bundle_prompt(case)
+    for prompt in (stages["Persona Article Generation"], bundle):
+        assert "架空の体験談を作らない" in prompt
+        assert "一人称を毎記事の冒頭に強制しない" in prompt
+        assert "驚きを説明せず、Evidenceの具体性で読者に発見させる" in prompt
+        assert "同じ感情の型を複数記事に使い回さない" in prompt
+        assert "読者にとっての判断材料を具体的に示す" in prompt

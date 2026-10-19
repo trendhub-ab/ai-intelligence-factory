@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/editorial-engine-v3-phase0
+      - feature/editorial-engine-v3-p1-editorial-quality
     paths:
       - 'experiments/editorial_engine_v3_phase0/**'
       - 'tests/test_editorial_engine_v3_phase0.py'
