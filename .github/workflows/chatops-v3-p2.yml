@@ -52,7 +52,7 @@ jobs:
           gh api "$repo/branches/$target" --jq '.commit.sha' | grep -Eq '^[0-9a-f]{40}$'
           # A replay may not overlap another running or queued V3 live workflow.
           for status in queued in_progress waiting pending requested; do
-            count="$(gh api "$repo/actions/workflows/$workflow/runs" -f event=workflow_dispatch -f status="$status" --jq '.total_count')"
+            count="$(gh api --method GET "$repo/actions/workflows/$workflow/runs" -f event=workflow_dispatch -f status="$status" --jq '.total_count')"
             if [ "$count" -gt 0 ]; then
               echo "::error::V3 workflow_dispatch already $status ($count); refusing duplicate"
               exit 1
