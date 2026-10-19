@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "editorial-engine-v3-manual-c-only.yml"
-V3_PIN = "c497c8080a4a1a601bf47603f30207e0e87a90c3"
+V3_PIN = "524ef9853478be752b4b0aecea225dff6dff47c1"
 BASELINE_RUN = "39020858078"
 
 

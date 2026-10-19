@@ -27,7 +27,7 @@ jobs:
       - name: Checkout reviewed immutable V3 Phase 0 commit
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: c497c8080a4a1a601bf47603f30207e0e87a90c3
+          ref: 524ef9853478be752b4b0aecea225dff6dff47c1
           persist-credentials: false
 
       - name: Set up bounded test runtime
