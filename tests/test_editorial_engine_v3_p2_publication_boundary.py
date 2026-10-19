@@ -42,3 +42,16 @@ def test_bundle_parser_fails_closed_when_final_leaks_label() -> None:
     }
     with pytest.raises(RuntimeError, match="internal decision label"):
         _parse_editorial_bundle(json.dumps(payload, ensure_ascii=False))
+
+
+def test_bundle_accepts_repaired_draft_label() -> None:
+    payload = {
+        "Writer Reaction": "反応",
+        "Editorial Discovery": "発見",
+        "Cognitive Shift": "変化",
+        "Persona Article Generation": "# タイトル\n\nTRY と書かれた下書き。",
+        "Fact-Safe Review": "# タイトル\n\n私はここが気になった。",
+    }
+    article, stages = _parse_editorial_bundle(json.dumps(payload, ensure_ascii=False))
+    assert article == payload["Fact-Safe Review"]
+    assert stages["Persona Article Generation"] == payload["Persona Article Generation"]
