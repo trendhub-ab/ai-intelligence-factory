@@ -94,7 +94,11 @@ def test_product_review_runtime_installs_preflights_then_runs_pipeline():
 
 
 def test_main_selects_product_review_runtime_before_article_stack():
-    with mock.patch.dict(os.environ, {"AIIF_PRODUCT_REVIEW_RUNTIME": "true"}, clear=False), \
+    with mock.patch.dict(os.environ, {
+        "AIIF_PRODUCT_REVIEW_RUNTIME": "true",
+        "GITHUB_EVENT_PATH": "",
+        "AIIF_ONE_SHOT_MODE": "",
+    }, clear=False), \
          mock.patch.object(pp, "_run_product_review_runtime") as run_product_review:
         pp.main()
     run_product_review.assert_called_once_with()

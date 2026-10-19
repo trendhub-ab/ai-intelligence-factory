@@ -57,4 +57,5 @@ jobs:
         env:
           SYNTHETIC_REGRESSION_MODE: 'true'
           SYNTHETIC_REGRESSION_TIER: 'smoke'
-        run: python production_pipeline.py
+        # A workflow_dispatch run carries CI event metadata, not ONE-SHOT input authority.
+        run: env -u GITHUB_EVENT_PATH -u AIIF_ONE_SHOT_MODE python production_pipeline.py
