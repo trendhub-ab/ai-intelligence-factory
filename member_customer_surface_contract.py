@@ -144,6 +144,12 @@ CUSTOMER_ENTRYPOINTS = {
 # Other existing modules are explicitly classified as infrastructure/compatibility.
 # A new Python module must be classified before it can introduce a new surface.
 NON_MEMBER_MODULES = frozenset((
+    "experiments/editorial_engine_v3_phase0/cases.py",
+    "experiments/editorial_engine_v3_phase0/contract.py",
+    "experiments/editorial_engine_v3_phase0/live.py",
+    "experiments/editorial_engine_v3_phase0/prompts.py",
+    "experiments/editorial_engine_v3_phase0/proof.py",
+    "experiments/editorial_engine_v3_phase0/runner.py",
     "local_skills/__init__.py",
     "local_skills/a_plus.py",
     "local_skills/compiler.py",

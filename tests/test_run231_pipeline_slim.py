@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 import types
 import unittest
@@ -228,6 +229,10 @@ class Run231PipelineSlimTests(unittest.TestCase):
                 "run283_numeric_evidence_equivalence": numeric_precision,
                 "run284_reader_recovery_precision": reader_recovery_precision,
             },
+            clear=False,
+        ), patch.dict(
+            os.environ,
+            {"GITHUB_EVENT_PATH": "", "AIIF_ONE_SHOT_MODE": ""},
             clear=False,
         ):
             production_pipeline.main()

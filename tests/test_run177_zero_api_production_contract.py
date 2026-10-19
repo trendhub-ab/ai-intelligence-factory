@@ -101,7 +101,10 @@ class Run177ZeroApiProductionContractTests(unittest.TestCase):
         self.assertIn("  zero-api-regression:", text)
         self.assertIn("python -m pytest -q tests", text)
         self.assertIn("SYNTHETIC_REGRESSION_MODE: 'true'", text)
-        self.assertIn("run: python production_pipeline.py", text)
+        self.assertIn(
+            "run: env -u GITHUB_EVENT_PATH -u AIIF_ONE_SHOT_MODE python production_pipeline.py",
+            text,
+        )
 
         # Run267: zero-api-regression is required on main, so file-level path filters
         # would let some PRs bypass the workflow entirely and leave the required context

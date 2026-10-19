@@ -61,6 +61,24 @@ class MemberCustomerSurfaceContractTests(unittest.TestCase):
     def test_v2_semantic_screening_is_explicitly_non_member_infrastructure(self):
         self.assertIn("v2_semantic_screening.py", contract.NON_MEMBER_MODULES)
 
+    def test_v3_phase0_experiments_are_explicitly_non_member_modules(self):
+        for filename in ("cases.py", "prompts.py", "proof.py", "runner.py", "contract.py", "live.py"):
+            with self.subTest(filename=filename):
+                path = f"experiments/editorial_engine_v3_phase0/{filename}"
+                self.assertIn(path, contract.NON_MEMBER_MODULES)
+
+    def test_unregistered_v3_experiment_module_is_still_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate = root / "experiments" / "editorial_engine_v3_phase0" / "future.py"
+            candidate.parent.mkdir(parents=True)
+            candidate.write_text("def unknown(): pass\n", encoding="utf-8")
+            failures = contract.validate_repository(root)
+            self.assertIn(
+                "unclassified member/customer module: experiments/editorial_engine_v3_phase0/future.py",
+                failures,
+            )
+
     def test_digest_is_registered_and_has_no_internal_scoring_jargon(self):
         self.assertIn("monthly_digest", contract.SURFACES)
         rows = [

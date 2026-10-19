@@ -18,7 +18,10 @@ class Run246RepositoryHygieneTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/integration-reconciliation-ci.yml").read_text(encoding="utf-8")
         self.assertIn("python -m pytest -q tests", workflow)
         self.assertIn("SYNTHETIC_REGRESSION_MODE: 'true'", workflow)
-        self.assertIn("run: python production_pipeline.py", workflow)
+        self.assertIn(
+            "run: env -u GITHUB_EVENT_PATH -u AIIF_ONE_SHOT_MODE python production_pipeline.py",
+            workflow,
+        )
         # Run267: zero-api-regression is a required main-branch status context, so
         # pull_request path filters are forbidden. Full pytest itself is the coverage
         # authority; a hand-maintained tests/** trigger list is no longer required.

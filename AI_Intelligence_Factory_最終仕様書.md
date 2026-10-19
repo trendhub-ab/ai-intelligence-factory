@@ -1,10 +1,10 @@
 # AI Intelligence Factory — 現行Production仕様
 
-仕様最終変更日: **2026-10-18**
-Production最終照合日: **2026-10-18**
+仕様最終変更日: **2026-10-19**
+Production最終照合日: **2026-10-19**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`b25e54c192b6e5653ea81c00fa88ff73d72f2078958d9ee9da7bb0020c4e4455`**
+Production Contract Fingerprint: **`f43df9cae9a02c1db88ad065afbaf6b607bc5a131e88601ffc07a15f34cdbd72`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -971,6 +971,7 @@ Required / protective checksは過去文書の文言一致ではなく、**実�
 Production Contract Fingerprintの対象:
 
 - tracked Production Python / shell surfaces
+- `experiments/editorial_engine_v3_phase0/` の実行可能なPython / shell surfaces（V3実験用であっても、branchの手動workflowが現行checkoutを実行できるため、監査から除外しない）
 - `local_skills/`
 - `.github/workflows/` / `.github/actions/`
 - `assets/`
