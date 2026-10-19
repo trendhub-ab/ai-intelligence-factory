@@ -12,7 +12,7 @@ from typing import Any, Callable
 from local_skills.compiler import compile_snapshot
 
 from .cases import READY_CASES, ReplayCase
-from .contract import EDITORIAL_STAGES, validate_article_layout
+from .contract import EDITORIAL_STAGES, validate_article_layout, validate_reader_facing_article
 from .prompts import build_editorial_bundle_prompt, build_persona_only_prompt
 from .runner import build_blind_package, build_current_writer_snapshot
 
@@ -165,7 +165,7 @@ def _parse_editorial_bundle(text: str) -> tuple[str, dict[str, str]]:
 
     for stage in ("Persona Article Generation", "Fact-Safe Review"):
         try:
-            validate_article_layout(stages[stage])
+            validate_reader_facing_article(stages[stage])
         except ValueError as exc:
             raise RuntimeError(f"invalid editorial bundle: {stage}: {exc}") from exc
 
@@ -326,8 +326,8 @@ def _valid_completed_c_case(case: dict[str, Any]) -> bool:
     if not final or final != str(stages.get("Fact-Safe Review") or "").strip():
         return False
     try:
-        validate_article_layout(str(stages["Persona Article Generation"]))
-        validate_article_layout(final)
+        validate_reader_facing_article(str(stages["Persona Article Generation"]))
+        validate_reader_facing_article(final)
     except ValueError:
         return False
     return True
