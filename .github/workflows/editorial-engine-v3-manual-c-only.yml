@@ -1,0 +1,93 @@
+name: Editorial Engine v3 Phase 0 — Manual C-only Proof
+
+# Independent, default-branch entrypoint. The experimental V3 branch stays Draft/NO-GO.
+# This workflow never dispatches from push, schedule, or a pull request.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type RUN_V3_C_ONLY exactly; runs only the pinned Phase 0 C refinement'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  c-only-proof:
+    name: Pinned V3 C-only bounded proof
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirm == 'RUN_V3_C_ONLY' && github.run_attempt == 1 }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    concurrency:
+      group: ai-intelligence-gemini-budget
+      cancel-in-progress: false
+    steps:
+      - name: Checkout reviewed immutable V3 Phase 0 commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: c497c8080a4a1a601bf47603f30207e0e87a90c3
+          persist-credentials: false
+
+      - name: Set up bounded test runtime
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11.16'
+
+      - name: Install focused V3 test runner and Gemini client
+        run: |
+          python -m pip install --disable-pip-version-check 'pytest==8.4.2'
+          python -m pip install --disable-pip-version-check 'google-genai>=1.56.0,<2.0.0'
+
+      # Exactly these four focused files exist in the immutable checkout, not in main:
+      # tests/test_editorial_engine_v3_phase0.py
+      # tests/test_editorial_engine_v3_phase0_live.py
+      # tests/test_editorial_engine_v3_phase0_quality_contract.py
+      # tests/test_editorial_engine_v3_phase0_proof.py
+      - name: Verify reviewed Phase 0 contracts (offline; no API calls)
+        shell: bash
+        run: |
+          files=(tests/test_editorial_engine_v3_phase0*.py)
+          test "${#files[@]}" -eq 4
+          python -m pytest -q "${files[@]}"
+
+      - name: Restore immutable prior A/B/C checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: editorial-engine-v3-phase0-checkpoint
+          path: phase0_artifacts
+          github-token: ${{ github.token }}
+          run-id: 39020858078
+
+      - name: Snapshot original A/B digests (fail closed on invalid baseline)
+        run: python -m experiments.editorial_engine_v3_phase0.proof snapshot-baseline --output-dir phase0_artifacts
+
+      - name: Enforce Gemini API use after 17:00 JST
+        shell: bash
+        run: |
+          python -c 'from datetime import datetime; from zoneinfo import ZoneInfo; hour = datetime.now(ZoneInfo("Asia/Tokyo")).hour; assert hour >= 17, "Gemini API is forbidden before 17:00 JST"'
+
+      - name: Run exactly three C-only Editorial Engine cases (A/B preserved)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          AIIF_PHASE0_MODELS: 'gemini-3.8-flash'
+          AIIF_PHASE0_CASE_COOLDOWN_SECONDS: '45'
+          AIIF_PHASE0_REGENERATE_C_ONLY: 'true'
+          AIIF_PHASE0_OUTPUT_DIR: phase0_artifacts
+        run: python -m experiments.editorial_engine_v3_phase0.live
+
+      - name: Verify byte-identical A/B and exact C-only proof
+        if: ${{ always() }}
+        env:
+          AIIF_PHASE0_MODELS: 'gemini-3.8-flash'
+        run: python -m experiments.editorial_engine_v3_phase0.proof verify --output-dir phase0_artifacts
+
+      - name: Upload checkpoint, blind evaluation, and structural verdict
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: editorial-engine-v3-phase0-checkpoint
+          path: phase0_artifacts
+          if-no-files-found: warn
+          retention-days: 7

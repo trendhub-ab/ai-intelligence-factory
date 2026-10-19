@@ -441,8 +441,20 @@ def write_evidence_pack(
     return json_output, markdown_output
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise EvidencePackContractError("evidence_pack_json_duplicate_key")
+        result[key] = value
+    return result
+
+
 def _load_json(path: str | Path) -> Any:
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    return json.loads(
+        Path(path).read_text(encoding="utf-8"),
+        object_pairs_hook=_reject_duplicate_json_keys,
+    )
 
 
 def _parse_args() -> argparse.Namespace:

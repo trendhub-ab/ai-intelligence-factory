@@ -110,6 +110,57 @@ def test_semantic_provider_failure_falls_back_and_still_runs_evidence_once():
     assert "opaque provider failure" not in str(report)
 
 
+def test_semantic_invalid_later_result_does_not_partially_boost_earlier_candidate():
+    raw_candidates = [
+        _candidate(
+            "https://example.com/ai-release",
+            title="AI API release",
+            description="An announced AI API release with specific compatibility information.",
+        ),
+        _candidate(
+            "https://example.com/other",
+            title="Industry product announcement",
+            description="A general product announcement without verified AI-specific details.",
+        ),
+    ]
+
+    def run(semantic_screen=None):
+        return run_shadow_selection(
+            providers={"feed": lambda: list(raw_candidates)},
+            semantic_screen=semantic_screen,
+            deep_dive=lambda _candidate: {"evidence_sufficient": True},
+            config=ShadowConfig(),
+            now=NOW,
+            run_id="semantic-partial-fallback",
+        )
+
+    baseline = run()
+
+    def partly_invalid(_candidates):
+        return {
+            "https://example.com/ai-release": {
+                "candidate_identity": "https://example.com/ai-release",
+                "ai_relevant": True,
+                "decision_value": True,
+                "change_novelty": True,
+                "applied_reader_value": True,
+            },
+            "https://example.com/other": {
+                "candidate_identity": "https://example.com/other",
+                "ai_relevant": True,
+                "decision_value": "invalid",
+                "change_novelty": False,
+                "applied_reader_value": False,
+            },
+        }
+
+    failed = run(partly_invalid)
+
+    assert failed["semantic_screening"] == {"status": "provider_failure", "fallback_used": True}
+    assert failed["screening"] == baseline["screening"]
+    assert failed["v2_selected_candidate_identity"] == baseline["v2_selected_candidate_identity"]
+
+
 def test_existing_shadow_contract_is_unchanged_when_semantic_screen_is_not_injected():
     report = run_shadow_selection(
         providers={

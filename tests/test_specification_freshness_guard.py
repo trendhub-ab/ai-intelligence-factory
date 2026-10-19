@@ -35,6 +35,34 @@ class SpecificationFreshnessGuardTests(unittest.TestCase):
         self.assertFalse(guard.is_production_surface("docs/audits/example.md"))
         self.assertFalse(guard.is_production_surface("AI_Intelligence_Factory_最終仕様書.md"))
 
+    def test_v3_phase0_dispatchable_code_is_included_in_production_fingerprint(self):
+        guard = _guard_module()
+        for name in ("cases.py", "prompts.py", "proof.py", "runner.py", "contract.py", "live.py"):
+            with self.subTest(name=name):
+                self.assertTrue(
+                    guard.is_production_surface(f"experiments/editorial_engine_v3_phase0/{name}")
+                )
+        self.assertTrue(guard.is_production_surface("experiments/other_experiment/runner.py"))
+        production = {"pipeline.py": b"live code"}
+        experiment_changed = dict(production)
+        experiment_changed["experiments/editorial_engine_v3_phase0/prompts.py"] = b"C writer changed"
+        self.assertNotEqual(
+            guard.fingerprint_entries(production),
+            guard.fingerprint_entries(experiment_changed),
+        )
+
+    def test_v3_experiment_commit_advances_production_review_date(self):
+        guard = _guard_module()
+        history = (
+            "__AIIF_COMMIT__2026-10-19\n"
+            "experiments/editorial_engine_v3_phase0/prompts.py\n"
+            "__AIIF_COMMIT__2026-10-18\n"
+            "pipeline.py\n"
+        )
+        from unittest.mock import patch
+        with patch.object(guard, "_git", return_value=history):
+            self.assertEqual("2026-10-19", guard.latest_production_commit_date())
+
     def test_fingerprint_is_deterministic_and_ignores_documentation_only_changes(self):
         guard = _guard_module()
         self.assertIsNotNone(guard, "specification_freshness_guard.py must exist")
