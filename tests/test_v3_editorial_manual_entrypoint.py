@@ -5,8 +5,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "editorial-engine-v3-manual-c-only.yml"
-V3_PIN = "524ef9853478be752b4b0aecea225dff6dff47c1"
-BASELINE_RUN = "39020858078"
+V3_PIN = "69103a38abaf68764fd321ac9a5ef35d89b7f6ce"
+BASELINE_RUN = "39239644474"
 
 
 def _workflow() -> str:
@@ -20,9 +20,9 @@ def test_v3_dispatch_requires_exact_confirmation_and_one_attempt() -> None:
     assert "workflow_dispatch:" in events
     assert "confirm:" in events
     assert "required: true" in events
-    assert "RUN_V3_C_ONLY" in events
+    assert "RUN_V3_P1_C_ONLY" in events
     assert "github.event_name == 'workflow_dispatch'" in text
-    assert "inputs.confirm == 'RUN_V3_C_ONLY'" in text
+    assert "inputs.confirm == 'RUN_V3_P1_C_ONLY'" in text
     assert "github.run_attempt == 1" in text
     for automatic_event in (
         "push:", "pull_request:", "schedule:", "workflow_run:",
