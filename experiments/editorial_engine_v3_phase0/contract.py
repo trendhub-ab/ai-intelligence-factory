@@ -59,6 +59,30 @@ def validate_article_layout(article: str) -> None:
         raise ValueError("invalid article layout: missing article body")
 
 
+
+# Publication-only metadata tokens. Fail closed rather than silently rewriting prose.
+_INTERNAL_VERDICT = re.compile(
+    r"(?<![A-Za-z0-9_])(?:TRY|WATCH|PASS|AVOID)(?![A-Za-z0-9_])"
+)
+
+
+def validate_reader_facing_article(article: str, *, source_quotes: Iterable[str] = ()) -> None:
+    """Reject leaked internal decision labels in C article prose.
+
+    Exact, explicitly supplied source quotations may contain the same ordinary
+    English words; this is not a blanket word ban. Quotation exemption applies
+    only to matching full quoted source snippets, not arbitrary author prose.
+    """
+    validate_article_layout(article)
+    cleaned = article
+    for quote in source_quotes:
+        quote = str(quote).strip()
+        if quote and quote in cleaned:
+            cleaned = cleaned.replace(quote, "", 1)
+    if _INTERNAL_VERDICT.search(cleaned):
+        raise ValueError("internal decision label leaked into reader-facing article")
+
+
 @dataclass(frozen=True, slots=True)
 class Phase0Case:
     """Immutable shared input for one Phase 0 Ready-article replay case."""
