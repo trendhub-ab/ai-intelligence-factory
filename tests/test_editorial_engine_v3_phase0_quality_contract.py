@@ -112,3 +112,27 @@ def test_p1_editorial_quality_does_not_force_fake_personal_reactions() -> None:
         assert "驚きを説明せず、Evidenceの具体性で読者に発見させる" in prompt
         assert "同じ感情の型を複数記事に使い回さない" in prompt
         assert "読者にとっての判断材料を具体的に示す" in prompt
+
+
+def test_p2_reader_facing_prompts_isolate_internal_decision_labels() -> None:
+    case = _case()
+    stages = build_editorial_stage_prompts(case)
+    bundle = build_editorial_bundle_prompt(case)
+    for prompt in (stages["Persona Article Generation"], stages["Fact-Safe Review"], bundle):
+        assert "TRY / WATCH / PASS / AVOID" in prompt
+        assert "内部メタデータ" in prompt
+        assert "読者向け" in prompt
+        assert "構造化判断データ" in prompt
+        assert "引用" in prompt
+
+
+def test_p2_voice_and_plain_language_keep_fact_boundary() -> None:
+    case = _case()
+    stages = build_editorial_stage_prompts(case)
+    bundle = build_editorial_bundle_prompt(case)
+    for prompt in (stages["Persona Article Generation"], bundle):
+        for marker in ("一人称「私」", "経験を捏造しない", "専門用語", "日常語", "短い段落", "Evidence", "同じ型を使い回さない"):
+            assert marker in prompt
+    for prompt in (stages["Fact-Safe Review"], bundle):
+        assert "Fact" in prompt
+        assert "Evidence / Facts / Sources" in prompt
