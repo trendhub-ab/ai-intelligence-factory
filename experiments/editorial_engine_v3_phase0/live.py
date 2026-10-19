@@ -165,7 +165,10 @@ def _parse_editorial_bundle(text: str) -> tuple[str, dict[str, str]]:
 
     for stage in ("Persona Article Generation", "Fact-Safe Review"):
         try:
-            validate_reader_facing_article(stages[stage])
+            if stage == "Fact-Safe Review":
+                validate_reader_facing_article(stages[stage])
+            else:
+                validate_article_layout(stages[stage])
         except ValueError as exc:
             raise RuntimeError(f"invalid editorial bundle: {stage}: {exc}") from exc
 
@@ -326,7 +329,7 @@ def _valid_completed_c_case(case: dict[str, Any]) -> bool:
     if not final or final != str(stages.get("Fact-Safe Review") or "").strip():
         return False
     try:
-        validate_reader_facing_article(str(stages["Persona Article Generation"]))
+        validate_article_layout(str(stages["Persona Article Generation"]))
         validate_reader_facing_article(final)
     except ValueError:
         return False
