@@ -1,0 +1,94 @@
+name: AIIF ChatOps V3 P2 Replay
+
+# Dedicated owner-only bridge. No Gemini API call is made by this workflow.
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+  issues: read
+
+concurrency:
+  group: aiif-chatops-v3-p2-dispatch
+  cancel-in-progress: false
+
+jobs:
+  authorize-and-dispatch:
+    if: >-
+      github.run_attempt == 1 &&
+      github.event.issue.number == 71 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.user.login == 'trendhub-ab' &&
+      github.actor == 'trendhub-ab' &&
+      github.event.comment.body == '/aiif v3 p2 run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Re-authorize owner and exact command
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+          ACTOR: ${{ github.actor }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          test "$COMMENT_BODY" = '/aiif v3 p2 run'
+          test "$COMMENT_AUTHOR" = 'trendhub-ab'
+          test "$ACTOR" = 'trendhub-ab'
+          test "$ISSUE_NUMBER" = '71'
+          test "${{ github.event.issue.pull_request == null }}" = 'true'
+
+      - name: Validate target branch and reject concurrent replay
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="/repos/${GITHUB_REPOSITORY}"
+          target='feature/editorial-engine-v3-p2-reader-voice'
+          workflow='editorial-engine-v3-phase0.yml'
+          gh api "$repo/branches/$target" --jq '.commit.sha' | grep -Eq '^[0-9a-f]{40}$'
+          # A replay may not overlap another running or queued V3 live workflow.
+          for status in queued in_progress waiting pending requested; do
+            count="$(gh api "$repo/actions/workflows/$workflow/runs" -f event=workflow_dispatch -f status="$status" --jq '.total_count')"
+            if [ "$count" -gt 0 ]; then
+              echo "::error::V3 workflow_dispatch already $status ($count); refusing duplicate"
+              exit 1
+            fi
+          done
+
+      - name: Dispatch bounded C-only P2 proof
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # The original Phase0 checkpoint uses the exact artifact name expected
+          # by the V3 workflow. It preserves identical three-case A/B baselines.
+          gh api --method POST \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/editorial-engine-v3-phase0.yml/dispatches" \
+            --input - <<'JSON'
+          {
+            "ref": "feature/editorial-engine-v3-p2-reader-voice",
+            "inputs": {
+              "run_live": "true",
+              "regenerate_c_only": "true",
+              "resume_run_id": "39239644474",
+              "model_candidates": "gemini-3.8-flash",
+              "case_cooldown_seconds": "45"
+            }
+          }
+          JSON
+
+      - name: Summarize dispatch
+        run: |
+          {
+            echo '### V3 P2 C-only replay dispatched'
+            echo '- branch: `feature/editorial-engine-v3-p2-reader-voice`'
+            echo '- baseline run: `39239644474`'
+            echo '- model: `gemini-3.8-flash`'
+            echo '- A/B: preserved; C: 3-case regeneration'
+            echo '- note publication: none'
+            echo '- main merge: none'
+          } >> "$GITHUB_STEP_SUMMARY"
