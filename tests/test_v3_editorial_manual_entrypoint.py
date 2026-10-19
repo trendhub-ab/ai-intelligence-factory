@@ -59,10 +59,10 @@ def test_v3_dispatch_is_single_model_and_c_only() -> None:
     assert "python -m experiments.editorial_engine_v3_phase0.live" in text
 
 
-def test_v3_dispatch_enforces_jst_time_readonly_budget_and_no_prod_secrets() -> None:
+def test_v3_dispatch_is_time_unrestricted_readonly_budget_and_no_prod_secrets() -> None:
     text = _workflow()
-    assert 'ZoneInfo("Asia/Tokyo")' in text
-    assert "hour >= 17" in text
+    assert 'ZoneInfo("Asia/Tokyo")' not in text
+    assert "hour >= 17" not in text
     assert "group: ai-intelligence-gemini-budget" in text
     assert "cancel-in-progress: false" in text
     assert "permissions:\n  contents: read\n  actions: read" in text
