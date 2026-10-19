@@ -9,6 +9,14 @@ on:
         description: 'Type RUN_V3_P1_C_ONLY exactly; runs only the pinned P1 C refinement'
         required: true
         type: string
+      one_off_model:
+        description: 'One-off C-only model (default preserves same-model comparison)'
+        required: true
+        type: choice
+        default: gemini-3.8-flash
+        options:
+          - gemini-3.8-flash
+          - gemini-3.6-flash
 
 permissions:
   contents: read
@@ -68,10 +76,32 @@ jobs:
         run: |
           python -c 'from datetime import datetime; from zoneinfo import ZoneInfo; hour = datetime.now(ZoneInfo("Asia/Tokyo")).hour; assert hour >= 17, "Gemini API is forbidden before 17:00 JST"'
 
+      - name: Prepare explicitly mixed-model C-only checkpoint (one-off exception)
+        if: ${{ inputs.one_off_model == 'gemini-3.6-flash' }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('phase0_artifacts/checkpoint.json')
+          state = json.loads(p.read_text(encoding='utf-8'))
+          assert state['selected_model'] == 'gemini-3.8-flash', 'unexpected baseline model'
+          assert len(state['cases']) == 3, 'unexpected case count'
+          state['baseline_selected_model'] = state['selected_model']
+          state['comparison_model_exception'] = 'ONE_OFF_MIXED_MODEL_C_3_6_FLASH'
+          state['selected_model'] = 'gemini-3.6-flash'
+          state.pop('c_refinement_fingerprint', None)
+          state.pop('c_completed_case_ids', None)
+          state.pop('c_refinement_provider_calls_total', None)
+          state.pop('c_refinement_provider_attempts_total', None)
+          p.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding='utf-8')
+          print('One-off mixed-model exception: A/B baseline 3.8 Flash; C-only 3.6 Flash')
+          PY
+
       - name: Run exactly three C-only Editorial Engine cases (A/B preserved)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          AIIF_PHASE0_MODELS: 'gemini-3.8-flash'
+          AIIF_PHASE0_MODELS: ${{ inputs.one_off_model }}
           AIIF_PHASE0_CASE_COOLDOWN_SECONDS: '45'
           AIIF_PHASE0_REGENERATE_C_ONLY: 'true'
           AIIF_PHASE0_OUTPUT_DIR: phase0_artifacts
@@ -80,14 +110,14 @@ jobs:
       - name: Verify byte-identical A/B and exact C-only proof
         if: ${{ always() }}
         env:
-          AIIF_PHASE0_MODELS: 'gemini-3.8-flash'
+          AIIF_PHASE0_MODELS: ${{ inputs.one_off_model }}
         run: python -m experiments.editorial_engine_v3_phase0.proof verify --output-dir phase0_artifacts
 
       - name: Upload checkpoint, blind evaluation, and structural verdict
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: editorial-engine-v3-p1-checkpoint
+          name: editorial-engine-v3-p1-checkpoint-${{ inputs.one_off_model }}
           path: phase0_artifacts
           if-no-files-found: warn
           retention-days: 7

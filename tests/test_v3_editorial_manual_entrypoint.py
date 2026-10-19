@@ -45,11 +45,14 @@ def test_v3_dispatch_uses_only_immutable_reviewed_code_and_checkpoint() -> None:
 
 def test_v3_dispatch_is_single_model_and_c_only() -> None:
     text = _workflow()
-    assert "AIIF_PHASE0_MODELS: 'gemini-3.8-flash'" in text
+    assert 'AIIF_PHASE0_MODELS: ${{ inputs.one_off_model }}' in text
+    assert 'default: gemini-3.8-flash' in text
+    assert 'comparison_model_exception' in text
+    assert 'baseline_selected_model' in text
     assert "AIIF_PHASE0_REGENERATE_C_ONLY: 'true'" in text
     assert "AIIF_PHASE0_CASE_COOLDOWN_SECONDS: '45'" in text
     assert "AIIF_PHASE0_OUTPUT_DIR: phase0_artifacts" in text
-    assert "gemini-3.6" not in text
+    assert 'gemini-3.6-flash' in text
     assert "gemini-2." not in text
     assert "model_candidates:" not in text
     assert "regenerate_c_only:" not in text
