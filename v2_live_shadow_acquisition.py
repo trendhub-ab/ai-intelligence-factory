@@ -117,6 +117,55 @@ def _emit_diagnostic(
         return
 
 
+_UPSTREAM_FAILURE_CATEGORIES = frozenset({
+    "timeout", "connection", "request_failure", "http_429", "http_4xx", "http_5xx",
+    "invalid_html", "invalid_feed", "invalid_json", "invalid_payload",
+    "redirect_host_unapproved", "unsupported_format", "http_failure",
+})
+
+
+def emit_upstream_read_diagnostic(
+    *,
+    upstream: str,
+    http_events: list[Mapping[str, object]],
+    candidate_count: int,
+    failure_category: str | None,
+    diagnostic_sink: Callable[[Mapping[str, object]], None] | None,
+) -> None:
+    """Emit safe read health for a reviewed upstream.
+
+    candidate_count counts normalized, accepted candidates, not raw links/releases.
+    Only the reviewed upstream label and categorical metrics leave this function.
+    """
+
+    if diagnostic_sink is None:
+        return
+    http = http_events[-1] if http_events else {}
+
+    def safe_category(value: object) -> str | None:
+        return value if isinstance(value, str) and value in _UPSTREAM_FAILURE_CATEGORIES else None
+
+    try:
+        attempts = max(0, min(int(http.get("attempt_count") or 0), 2))
+    except (TypeError, ValueError, OverflowError):
+        attempts = 0
+    final_http_failure = safe_category(http.get("final_failure_category"))
+    failed = failure_category is not None
+    event = {
+        "upstream": upstream,
+        "status": "failed" if failed else "success_nonempty" if candidate_count else "success_empty",
+        "candidate_count": 0 if failed else max(0, candidate_count),
+        "http_attempt_count": attempts,
+        "retry_used": http.get("retry_used") is True,
+        "first_failure_category": safe_category(http.get("first_failure_category")),
+        "failure_category": (final_http_failure or safe_category(failure_category) or "request_failure") if failed else None,
+    }
+    try:
+        diagnostic_sink(event)
+    except Exception:
+        return
+
+
 def bounded_get(
     *,
     http_get: Callable[..., Any],

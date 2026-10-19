@@ -17,7 +17,7 @@ from xml.etree import ElementTree
 
 import requests
 
-from v2_live_shadow_acquisition import AcquisitionRequestError, bounded_get
+from v2_live_shadow_acquisition import AcquisitionRequestError, bounded_get, emit_upstream_read_diagnostic
 from v2_official_vendor_acquisition import acquire_official_vendor_candidates
 
 
@@ -306,21 +306,43 @@ def fetch_all_official_vendor_candidates(
     http_get: Callable[..., Any] = requests.get,
     sleep_fn: Callable[[float], None] = time.sleep,
     diagnostic_sink: Callable[[Mapping[str, object]], None] | None = None,
+    upstream_diagnostic_sink: Callable[[Mapping[str, object]], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Read the eight allowlisted vendor pages; raise only when all fail."""
 
     rows: list[dict[str, Any]] = []
     successful_reads = 0
     for source in OFFICIAL_VENDOR_SOURCES:
+        http_events: list[Mapping[str, object]] = []
+
+        def record_http(event: Mapping[str, object]) -> None:
+            http_events.append(dict(event))
+            if diagnostic_sink is not None:
+                diagnostic_sink(event)
+
         try:
             source_rows = fetch_official_vendor_source(
                 source=source,
                 http_get=http_get,
                 sleep_fn=sleep_fn,
-                diagnostic_sink=diagnostic_sink,
+                diagnostic_sink=record_http,
             )
-        except VendorLiveError:
+        except VendorLiveError as exc:
+            emit_upstream_read_diagnostic(
+                upstream=source.provider,
+                http_events=http_events,
+                candidate_count=0,
+                failure_category=exc.category,
+                diagnostic_sink=upstream_diagnostic_sink,
+            )
             continue
+        emit_upstream_read_diagnostic(
+            upstream=source.provider,
+            http_events=http_events,
+            candidate_count=len(source_rows),
+            failure_category=None,
+            diagnostic_sink=upstream_diagnostic_sink,
+        )
         successful_reads += 1
         rows.extend(source_rows)
     if successful_reads == 0:

@@ -14,13 +14,13 @@ from typing import Any, Callable, Mapping
 
 import requests
 
-from v2_github_live import fetch_all_github_candidates
+from v2_github_live import GITHUB_REPOSITORIES, fetch_all_github_candidates
 from v2_live_shadow_acquisition import (
     SourceAcquisitionError,
     fetch_arxiv_candidates,
     fetch_hacker_news_candidates,
 )
-from v2_official_vendor_live import fetch_all_official_vendor_candidates
+from v2_official_vendor_live import OFFICIAL_VENDOR_SOURCES, fetch_all_official_vendor_candidates
 from v2_shadow_selection import ShadowConfig
 from v2_source_portfolio import SourcePortfolioConfig, run_four_source_shadow
 
@@ -156,16 +156,39 @@ def run_four_source_live(
         "HackerNews": [],
         "ArXiv": [],
     }
+    upstream_diagnostics: dict[str, dict[str, dict[str, object]]] = {
+        "OfficialVendor": {},
+        "GitHub": {},
+    }
+    allowed_upstreams = {
+        "OfficialVendor": frozenset(source.provider for source in OFFICIAL_VENDOR_SOURCES),
+        "GitHub": frozenset(GITHUB_REPOSITORIES),
+    }
 
     def sink(name: str) -> Callable[[Mapping[str, object]], None]:
         def record(event: Mapping[str, object]) -> None:
             diagnostic_events[name].append(dict(event))
         return record
 
+    def upstream_sink(name: str) -> Callable[[Mapping[str, object]], None]:
+        def record(event: Mapping[str, object]) -> None:
+            upstream = event.get("upstream")
+            if not isinstance(upstream, str) or upstream not in allowed_upstreams[name]:
+                return
+            upstream_diagnostics[name][upstream] = {
+                key: event.get(key)
+                for key in (
+                    "status", "candidate_count", "http_attempt_count", "retry_used",
+                    "first_failure_category", "failure_category",
+                )
+            }
+        return record
+
     def vendor_provider() -> list[dict[str, Any]]:
         rows = fetch_all_official_vendor_candidates(
             http_get=http_get,
             diagnostic_sink=sink("OfficialVendor"),
+            upstream_diagnostic_sink=upstream_sink("OfficialVendor"),
         )
         selected = _balanced_upstream_candidates(
             rows, upstream_field="provider", limit=bounded.vendor_limit, run_id=run_id
@@ -177,6 +200,7 @@ def run_four_source_live(
             http_get=http_get,
             token=github_token,
             diagnostic_sink=sink("GitHub"),
+            upstream_diagnostic_sink=upstream_sink("GitHub"),
         )
         selected = _balanced_upstream_candidates(
             rows, upstream_field="repository", limit=bounded.github_limit, run_id=run_id
@@ -242,4 +266,5 @@ def run_four_source_live(
         name: _aggregate_diagnostics(events)
         for name, events in diagnostic_events.items()
     }
+    report["source_acquisition_upstreams"] = upstream_diagnostics
     return report
