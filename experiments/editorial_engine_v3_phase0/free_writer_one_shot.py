@@ -1,4 +1,4 @@
-"""One-shot free-form Gemini writer experiment; no publication side effects."""
+"""Isolated one-call Gemini writing trial. No production, Notion or note side effects."""
 from __future__ import annotations
 
 import json
@@ -7,63 +7,63 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from experiments.editorial_engine_v3_phase0.cases import READY_CASES
-from experiments.editorial_engine_v3_phase0.contract import (
-    validate_article_layout,
-    validate_reader_facing_article,
-)
-
-CASE_ID = "3fa479ff-dca9-8194-a493-cb3a0d2b3a36"
 MODEL = "gemini-3.8-flash"
 OUTPUT = Path("free_writer_review")
-
+SOURCE = "https://arxiv.org/abs/2610.20588v1"
 WRITER_BRIEF = """あなたは優秀な日本語の編集者・ライターです。
-以下の検証済み素材だけを使い、AIの技術ニュースを大人の読者が思わず読み進める記事にしてください。
-タイトル、冒頭、構成、会話、比喩、リズムは自由です。単なる研究要約にしないでください。
-根拠のない事実・数字・体験談は作らず、不明点は不明と伝えてください。
-自然で中性的な日本語を使ってください。完成したMarkdown記事だけを出力してください。
-"""
+以下の研究素材だけを使い、AIの技術ニュースを大人の読者が思わず読み進める記事にしてください。
+タイトル、冒頭、構成、比喩、リズムは自由。単なる研究要約にしないでください。
+根拠のない事実・数字・体験談は作らず、論文の主張と確立した事実を区別してください。
+自然で中性的な日本語を使い、記事内に出典URLを入れてください。
+完成したMarkdown記事だけを出力してください。"""
+
+# Research facts are the previously reviewed one-shot case summary, not a
+# machine-verified extraction of the current arXiv page. Human review required.
+SOURCE_SUMMARY = """研究名: Your Transformer Is Secretly Elastic
+出典: https://arxiv.org/abs/2610.20588v1
+研究が提案するのは、学習済みTransformerの構成要素を順位付けし、
+推論時に使用するニューロンやアテンションヘッドの量を調整する手法。
+複数サイズのモデルを個別に管理する代わりに、一つのモデルから計算予算に応じた動作を選ぶという着想。
+元の実験要約には『計算量50%削減で精度低下0.8%』『最大60%削減』との数値があるが、
+論文本文を今回の実行環境では再照合していない。数値の断定や他モデルへの一般化は禁止。
+再学習不要や数分での変換も研究の主張として扱い、一般的な保証としない。
+研究対象の範囲外への普遍化、実運用コスト削減の保証、実体験の創作は禁止。"""
 
 def build_prompt() -> str:
-    matches = [item.case for item in READY_CASES if item.case.case_id == CASE_ID]
-    if len(matches) != 1:
-        raise RuntimeError("Immutable experiment case not found")
-    case = matches[0]
-    evidence = "\n".join(f"- {item}" for item in case.evidence)
-    facts = "\n".join(f"- {item}" for item in case.facts)
-    sources = "\n".join(f"- {item}" for item in case.sources)
-    return (
-        f"{WRITER_BRIEF}\n\n対象読者: {case.target_reader}\n"
-        f"テーマ: {case.title}\n\nEvidence:\n{evidence}\n"
-        f"\nFacts:\n{facts}\n\nSources:\n{sources}\n"
-    )
+    return f"{WRITER_BRIEF}\n\n研究素材:\n{SOURCE_SUMMARY}\n"
+
+def check_article(article: str) -> list[str]:
+    errors = []
+    if not article.startswith("# "):
+        errors.append("missing_markdown_h1")
+    if SOURCE not in article:
+        errors.append("missing_source_url")
+    if len(article) < 450:
+        errors.append("article_too_short")
+    return errors
 
 def generate_once(client) -> dict:
     if OUTPUT.exists():
-        raise RuntimeError("Output already exists; refuse overwrite or repeat")
-    prompt = build_prompt()
-    response = client.models.generate_content(model=MODEL, contents=prompt)
+        raise RuntimeError("Output exists: refusing repeat")
+    response = client.models.generate_content(model=MODEL, contents=build_prompt())
     article = str(getattr(response, "text", "") or "").strip()
     if not article:
         raise RuntimeError("Empty Gemini response")
-    errors = []
-    for validator in (validate_article_layout, validate_reader_facing_article):
-        try:
-            validator(article)
-        except (ValueError, TypeError) as exc:
-            errors.append(f"{validator.__name__}: {exc}")
+    errors = check_article(article)
     OUTPUT.mkdir(parents=True, exist_ok=False)
     (OUTPUT / "article.md").write_text(article + "\n", encoding="utf-8")
     result = {
-        "case_id": CASE_ID,
         "model": MODEL,
+        "source": SOURCE,
         "provider_attempts": 1,
-        "local_checks": {"layout_and_reader_contract_errors": errors},
-        "factual_verification": "NOT_AUTOMATICALLY_PROVEN",
+        "local_checks": {"errors": errors},
+        "factual_verification": "HUMAN_REVIEW_REQUIRED",
         "quality_verdict": "HUMAN_REVIEW_REQUIRED",
         "publication": "PROHIBITED",
     }
-    (OUTPUT / "review.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (OUTPUT / "review.json").write_text(
+        json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
     return result
 
 def main() -> None:
