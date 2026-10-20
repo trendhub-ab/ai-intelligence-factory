@@ -1,11 +1,11 @@
-"""Isolated one-call Gemini writing trial. No production, Notion or note side effects."""
+"""Isolated bounded Gemini writing trial. No production, Notion or note side effects."""
 from __future__ import annotations
 
 import json
 import os
 from pathlib import Path
 
-MODEL = "gemini-3.8-flash"
+MODELS = ("gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash")
 OUTPUT = Path("free_writer_review")
 SOURCE = "https://arxiv.org/abs/2610.20588v1"
 WRITER_BRIEF = """あなたは優秀な日本語の編集者・ライターです。
@@ -43,7 +43,22 @@ def check_article(article: str) -> list[str]:
 def generate_once(client) -> dict:
     if OUTPUT.exists():
         raise RuntimeError("Output exists: refusing repeat")
-    response = client.models.generate_content(model=MODEL, contents=build_prompt())
+    from google.genai.errors import ServerError
+    attempts = []
+    response = None
+    selected_model = None
+    for model in MODELS:
+        try:
+            response = client.models.generate_content(model=model, contents=build_prompt())
+            selected_model = model
+            attempts.append({"model": model, "status": "success"})
+            break
+        except ServerError as exc:
+            if getattr(exc, "code", None) != 503:
+                raise
+            attempts.append({"model": model, "status": "503_unavailable"})
+    if response is None:
+        raise RuntimeError("All configured writer models returned 503 UNAVAILABLE")
     article = str(getattr(response, "text", "") or "").strip()
     if not article:
         raise RuntimeError("Empty Gemini response")
@@ -51,9 +66,10 @@ def generate_once(client) -> dict:
     OUTPUT.mkdir(parents=True, exist_ok=False)
     (OUTPUT / "article.md").write_text(article + "\n", encoding="utf-8")
     result = {
-        "model": MODEL,
+        "model": selected_model,
+        "attempts": attempts,
         "source": SOURCE,
-        "provider_attempts": 1,
+        "provider_attempts": len(attempts),
         "local_checks": {"errors": errors},
         "factual_verification": "HUMAN_REVIEW_REQUIRED",
         "quality_verdict": "HUMAN_REVIEW_REQUIRED",
@@ -71,7 +87,12 @@ def main() -> None:
     if not key:
         raise RuntimeError("Missing GEMINI_API_KEY")
     from google import genai
-    print(json.dumps(generate_once(genai.Client(api_key=key)), ensure_ascii=False))
+    from google.genai import types
+    client = genai.Client(
+        api_key=key,
+        http_options=types.HttpOptions(retry_options=types.HttpRetryOptions(attempts=1)),
+    )
+    print(json.dumps(generate_once(client), ensure_ascii=False))
 
 if __name__ == "__main__":
     main()
