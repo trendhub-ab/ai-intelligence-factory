@@ -146,6 +146,7 @@ CUSTOMER_ENTRYPOINTS = {
 NON_MEMBER_MODULES = frozenset((
     "experiments/editorial_engine_v3_phase0/cases.py",
     "experiments/editorial_engine_v3_phase0/contract.py",
+    "experiments/editorial_engine_v3_phase0/elastic_one_shot.py",  # isolated editorial experiment; no member surface
     "experiments/editorial_engine_v3_phase0/live.py",
     "experiments/editorial_engine_v3_phase0/prompts.py",
     "experiments/editorial_engine_v3_phase0/proof.py",
