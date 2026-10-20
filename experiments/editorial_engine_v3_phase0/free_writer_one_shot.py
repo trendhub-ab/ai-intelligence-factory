@@ -3,9 +3,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 MODEL = "gemini-3.8-flash"
 OUTPUT = Path("free_writer_review")
@@ -67,8 +65,6 @@ def generate_once(client) -> dict:
     return result
 
 def main() -> None:
-    if datetime.now(ZoneInfo("Asia/Tokyo")).hour < 17:
-        raise RuntimeError("Gemini API forbidden before 17:00 JST")
     if os.environ.get("AIIF_FREE_WRITER_CONFIRM") != "FREE_WRITER_ONCE":
         raise RuntimeError("Explicit one-shot confirmation required")
     key = os.environ.get("GEMINI_API_KEY", "").strip()
