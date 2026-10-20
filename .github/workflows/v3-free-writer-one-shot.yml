@@ -33,6 +33,7 @@ jobs:
       - name: Validate existing offline contracts
         run: |
           python -m compileall -q experiments/editorial_engine_v3_phase0/free_writer_one_shot.py
+          python -m pytest -q tests/test_free_writer_bounded_fallback.py
           python -c 'from experiments.editorial_engine_v3_phase0.free_writer_one_shot import build_prompt, check_article; assert "arxiv.org" in build_prompt(); assert check_article("# test " + "text " * 150 + "https://arxiv.org/abs/2610.20588v1") == []'
       - name: Generate free-form article once
         env:
