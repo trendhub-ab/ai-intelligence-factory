@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Enter RUN_FREE_WRITER_ONCE; one Gemini call, no retries'
+        description: 'Enter RUN_FREE_WRITER_ONCE; up to 3 Gemini calls, one per model; no SDK retries'
         required: true
         type: string
 
