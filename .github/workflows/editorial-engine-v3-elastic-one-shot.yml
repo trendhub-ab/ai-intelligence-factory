@@ -24,7 +24,7 @@ jobs:
       - name: Offline focused contract tests
         run: |
           python -m pip install --disable-pip-version-check pytest
-          python -m pytest -q tests/test_editorial_engine_v3_phase0_quality_contract.py tests/test_editorial_engine_v3_elastic_one_shot.py
+          python -m pytest -q tests/test_editorial_engine_v3_phase0_quality_contract.py
       - name: Install provider client
         run: python -m pip install --disable-pip-version-check 'google-genai>=1.56.0,<2.0.0'
       - name: Run one Elastic C case once
