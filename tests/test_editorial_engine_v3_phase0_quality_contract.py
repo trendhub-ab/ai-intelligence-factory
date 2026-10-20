@@ -136,3 +136,29 @@ def test_p2_voice_and_plain_language_keep_fact_boundary() -> None:
     for prompt in (stages["Fact-Safe Review"], bundle):
         assert "Fact" in prompt
         assert "Evidence / Facts / Sources" in prompt
+
+
+def test_c_voice_does_not_require_first_person_in_either_prompt_path() -> None:
+    """Regression: an obligatory '私' produced repetitive self-commentary."""
+    case = _case()
+    stages = build_editorial_stage_prompts(case)
+    article = stages["Persona Article Generation"]
+    review = stages["Fact-Safe Review"]
+    bundle = build_editorial_bundle_prompt(case)
+
+    for prompt in (article, bundle):
+        assert "必須にはしない" in prompt or "意味がある箇所だけに使い" in prompt
+        assert "一人称『私』を読者に見える自然な反応・素朴な疑問として必ず残す" not in prompt
+        assert "一人称『私』で自然なWriter自身の反応" not in prompt
+    for prompt in (review, bundle):
+        assert "Fact" in prompt
+        assert "Evidence / Facts / Sources" in prompt
+    assert "中性的" in article and "中性的" in bundle
+
+
+def test_c_persona_keeps_curiosity_without_obligatory_self_report() -> None:
+    from experiments.editorial_engine_v3_phase0.prompts import C_EDITORIAL_PERSONA
+
+    assert "一人称『私』は必要な場面だけに使い" in C_EDITORIAL_PERSONA
+    assert "感想や内省を文章の中心にしない" in C_EDITORIAL_PERSONA
+    assert "架空の学校生活" in C_EDITORIAL_PERSONA
