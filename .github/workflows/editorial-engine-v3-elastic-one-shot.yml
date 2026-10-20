@@ -1,0 +1,42 @@
+name: V3 Elastic one-shot C quality proof
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type ELASTIC_ONE_SHOT (exactly one provider invocation)'
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  elastic-one-shot:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirm == 'ELASTIC_ONE_SHOT' && github.run_attempt == 1 }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    concurrency:
+      group: ai-intelligence-gemini-budget
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Offline focused contract tests
+        run: |
+          python -m pip install --disable-pip-version-check pytest
+          python -m pytest -q tests/test_editorial_engine_v3_phase0_quality_contract.py tests/test_editorial_engine_v3_elastic_one_shot.py
+      - name: Install provider client
+        run: python -m pip install --disable-pip-version-check 'google-genai>=1.56.0,<2.0.0'
+      - name: Run one Elastic C case once
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          AIIF_ELASTIC_ONE_SHOT_CONFIRM: ${{ inputs.confirm }}
+        run: python -m experiments.editorial_engine_v3_phase0.elastic_one_shot
+      - name: Upload review artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: v3-elastic-one-shot-review
+          path: elastic_one_shot/
+          if-no-files-found: warn
+          retention-days: 7
