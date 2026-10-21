@@ -348,6 +348,7 @@ def install(pipeline_module: Any) -> Any:
         output_path: str,
         category: str | None = None,
         date_label: str | None = None,
+        article_text: str = "",
     ) -> str:
         path = original_generate_eyecatch(
             title,
@@ -355,6 +356,7 @@ def install(pipeline_module: Any) -> Any:
             output_path,
             category=category,
             date_label=date_label,
+            article_text=article_text,
         )
         if _has_orange_emphasis(path):
             return path
