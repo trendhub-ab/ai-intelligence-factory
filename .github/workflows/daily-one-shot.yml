@@ -84,6 +84,8 @@ jobs:
     timeout-minutes: 45
     env:
       AIIF_RUNTIME_STATE_GITHUB_TOKEN: ${{ github.token }}
+      # Provision as Actions secret; absent key keeps remote copy cache disabled.
+      AIIF_EYECATCH_COPY_FERNET_KEY: ${{ secrets.AIIF_EYECATCH_COPY_FERNET_KEY }}
       AIIF_EDITORIAL_STYLE: ${{ inputs.editorial_style }}
       AIIF_GEMINI_TEMP_EXCLUDED_MODELS: ${{ inputs.excluded_models }}
       ARTICLE_REVALIDATION_EXACT_TARGET: ${{ inputs.exact_target }}
