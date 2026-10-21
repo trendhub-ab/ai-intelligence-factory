@@ -92,6 +92,7 @@ PUBLICATION_POLICY_FILES = (
     "run178_eyecatch_editorial_layout_optimizer.py",
     "run179_eyecatch_font_refinement.py",
     "run180_eyecatch_semantic_layout.py",
+    "eyecatch_copy_runtime_store.py",
     "run181_eyecatch_visual_balance.py",
     "run182_eyecatch_conclusion_emphasis.py",
     "run183_eyecatch_emphasis_scale.py",
