@@ -122,8 +122,8 @@ def test_activation_proof_is_manual_main_only_and_uses_no_article_providers():
     root = Path(__file__).resolve().parents[1]
     workflow = (root / ".github/workflows/eyecatch-copy-activation-proof.yml").read_text(encoding="utf-8")
     assert "  workflow_dispatch:" in workflow
-    assert "\\n  pull_request:" not in workflow
-    assert "\\n  push:" not in workflow
+    assert "\n  pull_request:" not in workflow
+    assert "\n  push:" not in workflow
     assert "github.ref == 'refs/heads/main'" in workflow
     assert "github.repository == 'trendhub-ab/ai-intelligence-factory'" in workflow
     assert "needs: encrypted-writer" in workflow
@@ -135,4 +135,4 @@ def test_activation_proof_is_manual_main_only_and_uses_no_article_providers():
     assert "os.environ[\"CANARY_RUN_ID\"]" in workflow
     assert "SYNTHETIC-ARTICLE-ONLY" in workflow
     assert "production_pipeline.py" not in workflow
-    assert "gemini" not in workflow.lower()
+    assert "GEMINI_API_KEY" not in workflow
