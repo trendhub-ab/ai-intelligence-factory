@@ -98,6 +98,15 @@ def test_read_only_probe_returns_categoric_and_boolean_fields(monkeypatch):
     class FakeSync:
         def __enter__(self): return SimpleNamespace()
         def __exit__(self,*args): pass
+    import sys
+    import types
+    # GitHub zero-provider Integration CI intentionally has no Playwright.
+    # Inject an in-memory module; never launch a browser in offline regressions.
+    fake_playwright = types.ModuleType("playwright")
+    fake_sync_api = types.ModuleType("playwright.sync_api")
+    fake_sync_api.sync_playwright = lambda: FakeSync()
+    monkeypatch.setitem(sys.modules, "playwright", fake_playwright)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", fake_sync_api)
     monkeypatch.setattr(diag.chrome,"_launch_persistent_context", lambda _: FakeContext())
     monkeypatch.setattr(diag.chrome,"_assert_expected_note_account", lambda _: None)
     monkeypatch.setattr(diag,"_list_labels", lambda _: (1,0))
