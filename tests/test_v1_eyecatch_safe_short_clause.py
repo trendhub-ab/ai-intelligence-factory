@@ -47,3 +47,13 @@ def test_copy_cache_roundtrip_and_invalidation(tmp_path, monkeypatch):
     assert len(calls) == 1
     pipeline.generate_note_editorial_eyecatch(title, summary, path, article_text=article + "変更")
     assert len(calls) == 2
+
+
+def test_copy_prompt_contains_article_excerpt_without_extra_call():
+    import run180_eyecatch_semantic_layout as semantic
+    prompt = semantic._layout_prompt(
+        "AI規制の転換", "規制の変更が発表された", "本文から確認できる規制の対象と変更点"
+    )
+    assert "本文から確認できる規制の対象と変更点" in prompt
+    assert "article_excerpt" in prompt
+    assert "新しい事実" in prompt
