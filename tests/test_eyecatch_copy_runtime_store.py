@@ -115,3 +115,24 @@ def test_409_competing_writer_uses_first_committed_copy():
     assert store.save("title", "summary", {"eyecatch_title": "second"})
     assert store.load("title", "summary") == prior
     assert http.put_calls == 1
+
+
+def test_activation_proof_is_manual_main_only_and_uses_no_article_providers():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github/workflows/eyecatch-copy-activation-proof.yml").read_text(encoding="utf-8")
+    assert "  workflow_dispatch:" in workflow
+    assert "\\n  pull_request:" not in workflow
+    assert "\\n  push:" not in workflow
+    assert "github.ref == 'refs/heads/main'" in workflow
+    assert "github.repository == 'trendhub-ab/ai-intelligence-factory'" in workflow
+    assert "needs: encrypted-writer" in workflow
+    assert "needs: [encrypted-writer, encrypted-reader]" in workflow
+    assert "ACTIVATION_PROOF_WRITER=PASS" in workflow
+    assert "ACTIVATION_PROOF_SEPARATE_RUNNER=PASS" in workflow
+    assert "ACTIVATION_PROOF_CLEANUP=PASS" in workflow
+    assert "secrets.AIIF_EYECATCH_COPY_FERNET_KEY" in workflow
+    assert "os.environ[\"CANARY_RUN_ID\"]" in workflow
+    assert "SYNTHETIC-ARTICLE-ONLY" in workflow
+    assert "production_pipeline.py" not in workflow
+    assert "gemini" not in workflow.lower()
