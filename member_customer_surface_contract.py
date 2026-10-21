@@ -144,6 +144,7 @@ CUSTOMER_ENTRYPOINTS = {
 # Other existing modules are explicitly classified as infrastructure/compatibility.
 # A new Python module must be classified before it can introduce a new surface.
 NON_MEMBER_MODULES = frozenset((
+    "operations/forget_only_supplied_editor_audit.py",  # operator-only private editor identity check; no customer surface
     "operations/forget_only_private_swap_once.py",
     "operations/forget_only_draft_identity_diagnostic.py",  # read-only operator audit of held private draft  # operator-only private draft replacement, not a paid-member surface
     "experiments/editorial_engine_v3_phase0/free_writer_one_shot.py",  # isolated review artifact; no customer publication

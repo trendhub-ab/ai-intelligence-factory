@@ -1,0 +1,159 @@
+name: Forget-Only Supplied Editor Identity Audit [READ-ONLY]
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: forget-only-held-draft-identity-audit
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: >-
+      github.run_attempt == 1 &&
+      github.event.issue.number == 71 &&
+      github.event.issue.pull_request == null &&
+      github.event.comment.user.login == 'trendhub-ab' &&
+      github.actor == 'trendhub-ab' &&
+      github.event.comment.body == '/aiif audit forget-only supplied-editor-identity 3f4479ffdca981ca9220cf15ac374db6'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    outputs:
+      start_vm: ${{ steps.ok.outputs.start_vm }}
+    env:
+      NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+      NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+      NOTION_API_VERSION: '2026-03-11'
+      NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+      NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+      NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+      NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install dependency set
+        run: python -m pip install -r requirements.txt
+      - name: Verify private supplied URL and existing held draft without writes
+        run: python -m operations.forget_only_supplied_editor_audit --prepare-only
+      - id: ok
+        run: echo 'start_vm=true' >> "$GITHUB_OUTPUT"
+
+  start-cloud-vm:
+    if: ${{ needs.preflight.outputs.start_vm == 'true' }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start existing authenticated Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  private-draft-audit:
+    if: ${{ needs.preflight.outputs.start_vm == 'true' }}
+    needs: [preflight, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 22
+    env:
+      NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+      NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+      NOTION_API_VERSION: '2026-03-11'
+      NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+      NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+      NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+      NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+      NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+      NOTE_CHROME_CHANNEL: 'chrome'
+      NOTE_CHROME_HEADLESS: 'false'
+      EYECATCH_GITHUB_BRANCH: 'runtime-state'
+      EYECATCH_GITHUB_DIR: 'eyecatch_images'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install production browser dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install playwright
+          sudo apt-get update -qq
+          sudo apt-get install -y fonts-noto-cjk
+      - name: Inspect user-supplied exact editor route without saving or publishing
+        run: xvfb-run -a python -m operations.forget_only_supplied_editor_audit
+
+  stop-cloud-vm:
+    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    needs: [preflight, start-cloud-vm, private-draft-audit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Stop Chrome VM
+        run: |
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          [ "$state" != RUNNING ] || gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+
+  report:
+    if: ${{ always() && github.event.issue.number == 71 && github.event.comment.user.login == 'trendhub-ab' && github.event.comment.body == '/aiif audit forget-only supplied-editor-identity 3f4479ffdca981ca9220cf15ac374db6' }}
+    needs: [preflight, start-cloud-vm, private-draft-audit, stop-cloud-vm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const phases = {
+              preflight: '${{ needs.preflight.result }}',
+              cloud_start: '${{ needs.start-cloud-vm.result }}',
+              identity_audit: '${{ needs.private-draft-audit.result }}',
+              cloud_stop: '${{ needs.stop-cloud-vm.result }}'
+            };
+            const pass = Object.values(phases).every(x => x === 'success');
+            const body = 'FORGET_ONLY_SUPPLIED_EDITOR_AUDIT: '
+              + (pass ? 'PASSED' : 'BLOCKED')
+              + '\\n' + JSON.stringify(phases)
+              + '\\nRun: ' + context.serverUrl + '/' + context.repo.owner + '/'
+              + context.repo.repo + '/actions/runs/' + context.runId
+              + '\\nNo changes to note, Notion queue, or publication.';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: 71, body
+            });
