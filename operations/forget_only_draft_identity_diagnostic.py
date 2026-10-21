@@ -154,7 +154,6 @@ def replace_held_draft_once() -> dict:
     import run291_note_private_draft_audit as private_audit
     import run295_note_private_draft_audit as modern_audit
     from operations import forget_only_private_swap_once as swap
-    from playwright.sync_api import sync_playwright
 
     chrome.install()
     q = exact_queue()
@@ -190,6 +189,7 @@ def replace_held_draft_once() -> dict:
     require(exact_queue()["draft_id"] == q["draft_id"], "post_save_draft_binding_changed")
 
     # Independent authenticated *reload* proof on exactly the same editor ID.
+    from playwright.sync_api import sync_playwright
     with sync_playwright() as p:
         context = chrome._launch_persistent_context(p)
         try:
