@@ -37,3 +37,6 @@ article_audit/
 *_fresh_verify/
 SHA256SUMS.txt
 RUN*_MUTATION_NEGATIVE_CONTROL_*.log
+
+# Generated per-run eyecatch editorial copy is never committed in plaintext.
+*.copy.json
