@@ -32,6 +32,25 @@ def test_queue_refuses_nonheld_draft_before_browser():
             diag.exact_queue()
 
 
+def test_preflight_refuses_to_override_manual_hold():
+    row = {
+        "id":"queue",
+        "properties":{
+            "同期ID":{"rich_text":[{"plain_text":diag.SOURCE_ID}]},
+            "note下書きID":{"rich_text":[{"plain_text":"fake-valid-draft"}]},
+            "投稿状態":{"select":{"name":"投稿準備中"}},
+            "品質状態":{"select":{"name":"Ready"}},
+            "記事タイトル":{"title":[{"plain_text":"Title"}]},
+            "note公開URL":{"url":None},
+            "投稿日":{"date":None},
+        },
+    }
+    with patch.object(diag,"DRAFT_ID_SHA256",diag.digest("fake-valid-draft")),\
+         patch.object(diag.sync,"_query_db",return_value=[row]):
+        with pytest.raises(diag.Refused,match="queue_not_manual_hold"):
+            diag.exact_queue()
+
+
 def test_official_list_matches_old_and_new_by_hash_only():
     old="LEGACY_PRIVATE_TITLE"
     new="REVISED_PRIVATE_TITLE"
@@ -83,6 +102,8 @@ def test_read_only_probe_returns_categoric_and_boolean_fields(monkeypatch):
     monkeypatch.setattr(diag.chrome,"_assert_expected_note_account", lambda _: None)
     monkeypatch.setattr(diag,"_list_labels", lambda _: (1,0))
     monkeypatch.setattr(diag.drafts,"_draft_id_from_edit_url", lambda _: "test")
+    import run291_note_private_draft_audit as private_audit
+    monkeypatch.setattr(private_audit, "_title_value", lambda _: "LEGACY_PRIVATE_TITLE")
     result=diag.browser_probe("test")
     assert result["account_proven"] is True
     assert result["official_list_old_title_matches"] == 1
