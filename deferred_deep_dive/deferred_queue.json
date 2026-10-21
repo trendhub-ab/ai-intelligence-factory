@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-10-16T17:29:26.028042+00:00",
+  "updated_at": "2026-10-21T00:44:28.078802+00:00",
   "items": [
     {
       "key": "https://blog.google/innovation-and-ai/technology/developers-tools/build-with-gemini-4-argon",
@@ -307,6 +307,79 @@
       "deep_dive_priority_score": 78.25
     },
     {
+      "key": "https://api-docs.deepseek.com/updates?aif_revision=09bb6261139b4ff2",
+      "deferred_at": "2026-10-21T00:44:28.078635+00:00",
+      "expires_at": "2026-11-04T00:44:28.078635+00:00",
+      "repo": {
+        "source": "OfficialVendor",
+        "nameWithOwner": "DeepSeek — Opening up the in-house search API â",
+        "originalTitle": "DeepSeek — Opening up the in-house search API â",
+        "displayName": "DeepSeek — Opening up the in-house search API â",
+        "sourceLanguage": "en",
+        "url": "https://api-docs.deepseek.com/updates/?aif_revision=09bb6261139b4ff2",
+        "description": "Opening up the in-house search API â",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-17",
+        "sourceContext": "Opening up the in-house search API â",
+        "primaryUrl": "https://api-docs.deepseek.com/updates/",
+        "sourceDetails": {
+          "vendor": "DeepSeek",
+          "vendor_region": "CN",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://api-docs.deepseek.com/updates/",
+          "candidate_revision": "09bb6261139b4ff2",
+          "vendor_record_kind": "structured_html",
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "400479ff-dca9-81ea-be97-f7d76ae04e7a",
+      "score": 76,
+      "reason": "DeepSeek社内検索APIの外部開放動向。",
+      "commercial_score": 80,
+      "shelf_life_score": 50,
+      "shelf_life": "TREND",
+      "portfolio_topic": "INFRA",
+      "deep_dive_priority_score": 77.4
+    },
+    {
+      "key": "https://github.com/SeeRay11/OpenFlow",
+      "deferred_at": "2026-10-21T00:44:28.078495+00:00",
+      "expires_at": "2026-11-04T00:44:28.078495+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Show HN: OpenFlow – AI Agent Workflow Builder",
+        "originalTitle": "Show HN: OpenFlow – AI Agent Workflow Builder",
+        "displayName": "Show HN: OpenFlow – AI Agent Workflow Builder",
+        "sourceLanguage": "en",
+        "url": "https://github.com/SeeRay11/OpenFlow",
+        "description": "Show HN: OpenFlow – AI Agent Workflow Builder",
+        "stargazerCount": 6,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-20T00:12:44Z",
+        "sourceContext": "HN points=6 comments=0 matched_query=\"AI agent\"",
+        "primaryUrl": "https://github.com/SeeRay11/OpenFlow",
+        "sourceDetails": {
+          "hn_id": "50159710",
+          "hn_url": "https://news.ycombinator.com/item?id=50159710",
+          "external_url": "https://github.com/SeeRay11/OpenFlow",
+          "comments": 0,
+          "matched_query": "\"AI agent\"",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "400479ff-dca9-81e1-b7c8-fa61145b8a8a",
+      "score": 76,
+      "reason": "OSSのエージェント構築ツールとして実務需要が高い",
+      "commercial_score": 80,
+      "shelf_life_score": 65,
+      "shelf_life": "TREND",
+      "portfolio_topic": "DEVTOOLS",
+      "deep_dive_priority_score": 77.4
+    },
+    {
       "key": "https://news.ycombinator.com/item?id=50118863",
       "deferred_at": "2026-10-16T17:29:20.876492+00:00",
       "expires_at": "2026-12-15T17:29:20.876492+00:00",
@@ -342,6 +415,43 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "DEVTOOLS",
       "deep_dive_priority_score": 77.2
+    },
+    {
+      "key": "https://github.com/deepseek-ai/DeepInfer",
+      "deferred_at": "2026-10-21T00:44:28.078702+00:00",
+      "expires_at": "2026-11-04T00:44:28.078702+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "DeepInfer: High-performance inference framework for DeepSeek models",
+        "originalTitle": "DeepInfer: High-performance inference framework for DeepSeek models",
+        "displayName": "DeepInfer: High-performance inference framework for DeepSeek models",
+        "sourceLanguage": "en",
+        "url": "https://github.com/deepseek-ai/DeepInfer",
+        "description": "DeepInfer: High-performance inference framework for DeepSeek models",
+        "stargazerCount": 2108,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-20T09:08:54Z",
+        "sourceContext": "HN points=2108 comments=822 matched_query=DeepSeek",
+        "primaryUrl": "https://github.com/deepseek-ai/DeepInfer",
+        "sourceDetails": {
+          "hn_id": "50163277",
+          "hn_url": "https://news.ycombinator.com/item?id=50163277",
+          "external_url": "https://github.com/deepseek-ai/DeepInfer",
+          "comments": 822,
+          "matched_query": "DeepSeek",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "400479ff-dca9-8156-be77-d9d357873562",
+      "score": 78,
+      "reason": "DeepSeek推論基盤の高パフォーマンス化を実証。",
+      "commercial_score": 75,
+      "shelf_life_score": 50,
+      "shelf_life": "TREND",
+      "portfolio_topic": "INFRA",
+      "deep_dive_priority_score": 76.95
     },
     {
       "key": "https://arxiv.org/abs/2610.22331",
@@ -424,43 +534,6 @@
       "shelf_life_score": 65,
       "shelf_life": "TREND",
       "portfolio_topic": "PRODUCT",
-      "deep_dive_priority_score": 76.75
-    },
-    {
-      "key": "https://news.ycombinator.com/item?id=50085323",
-      "deferred_at": "2026-10-15T10:26:43.816221+00:00",
-      "expires_at": "2026-10-17T10:26:43.816221+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "TV4 postpones show after AI agent erases edited material",
-        "originalTitle": "TV4 postpones show after AI agent erases edited material",
-        "displayName": "TV4 postpones show after AI agent erases edited material",
-        "sourceLanguage": "en",
-        "url": "https://swedenherald.com/article/tv4-postpones-the-challenge-until-2027-after-technical-failure-erases-edited-footage",
-        "description": "TV4 postpones show after AI agent erases edited material",
-        "stargazerCount": 146,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-14T10:28:26Z",
-        "sourceContext": "HN points=146 comments=83 matched_query=\"AI agent\"",
-        "primaryUrl": "https://swedenherald.com/article/tv4-postpones-the-challenge-until-2027-after-technical-failure-erases-edited-footage",
-        "sourceDetails": {
-          "hn_id": "50085323",
-          "hn_url": "https://news.ycombinator.com/item?id=50085323",
-          "external_url": "https://swedenherald.com/article/tv4-postpones-the-challenge-until-2027-after-technical-failure-erases-edited-footage",
-          "comments": 83,
-          "matched_query": "\"AI agent\"",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3fa479ff-dca9-8192-8632-f6667682f8b8",
-      "score": 75,
-      "reason": "実運用における重大なリスクとして参考になる。",
-      "commercial_score": 80,
-      "shelf_life_score": 15,
-      "shelf_life": "FLASH",
-      "portfolio_topic": "AGENT",
       "deep_dive_priority_score": 76.75
     },
     {
@@ -704,94 +777,6 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "DEVTOOLS",
       "deep_dive_priority_score": 76.05
-    },
-    {
-      "key": "https://www.langchain.com/blog/agent-traces-ai-search-langsmith",
-      "deferred_at": "2026-10-16T17:29:20.876573+00:00",
-      "expires_at": "2026-12-15T17:29:20.876573+00:00",
-      "repo": {
-        "source": "X",
-        "nameWithOwner": "agent traces ai search langsmith — langchain.com",
-        "originalTitle": "agent traces ai search langsmith — langchain.com",
-        "displayName": "agent traces ai search langsmith — langchain.com",
-        "sourceLanguage": "en",
-        "url": "https://www.langchain.com/blog/agent-traces-ai-search-langsmith",
-        "description": "X監視で発見した一次情報候補URL。X投稿自体は根拠に使わず、リンク先一次情報だけを検証対象とする。",
-        "stargazerCount": 1,
-        "licenseInfo": null,
-        "publishedAt": null,
-        "sourceContext": "",
-        "primaryUrl": "https://www.langchain.com/blog/agent-traces-ai-search-langsmith",
-        "sourceDetails": {
-          "source_platform": "x",
-          "source_role": "discovery_signal",
-          "raw_source_not_evidence": true,
-          "evidence_status": "discovery_only",
-          "is_evidence": false,
-          "canonical_primary_url": "https://www.langchain.com/blog/agent-traces-ai-search-langsmith",
-          "resolution_status": "candidate_needs_primary_verification",
-          "x_source_authors": [
-            "LangChain"
-          ],
-          "x_source_post_urls": [
-            "https://x.com/LangChain/status/2111140114131046507"
-          ],
-          "x_source_post_ids": [
-            "2111140114131046507"
-          ],
-          "mention_count": 1
-        }
-      },
-      "notion_page_id": "3fb479ff-dca9-8143-91d1-ebee1e3ab7ee",
-      "score": 75,
-      "reason": "エージェント開発のトレーシング手法。",
-      "commercial_score": 78,
-      "shelf_life_score": 75,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "DEVTOOLS",
-      "deep_dive_priority_score": 76.05
-    },
-    {
-      "key": "https://arxiv.org/abs/2609.40324",
-      "deferred_at": "2026-10-01T11:18:06.215087+00:00",
-      "expires_at": "2026-11-30T11:18:06.215087+00:00",
-      "repo": {
-        "source": "ArXiv",
-        "nameWithOwner": "Cogentic: Multi-Agent Orchestration for Automated Proof Discovery",
-        "originalTitle": "Cogentic: Multi-Agent Orchestration for Automated Proof Discovery",
-        "displayName": "Cogentic: Multi-Agent Orchestration for Automated Proof Discovery",
-        "sourceLanguage": "en",
-        "url": "https://arxiv.org/abs/2609.40324v1",
-        "description": "We present Cogentic, a multi-agent harness for automated proof discovery on open research problems. While frontier language models can generate strong mathematical ideas in a single shot, single-shot generation is often insufficient for open problems that require exploring multiple competing conjectures, overcoming subtle technical obstructions, and retaining intermediate progress over a long horizon. Cogentic addresses these challenges through an iterative prove--verify loop in which an orchest",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "2026-09-30T17:55:22Z",
-        "sourceContext": "We present Cogentic, a multi-agent harness for automated proof discovery on open research problems. While frontier language models can generate strong mathematical ideas in a single shot, single-shot generation is often insufficient for open problems that require exploring multiple competing conjectures, overcoming subtle technical obstructions, and retaining intermediate progress over a long horizon. Cogentic addresses these challenges through an iterative prove--verify loop in which an orchestrator allocates a population of independent provers across distinct proof directions, subjects their output to adversarial verification by several specialized components, and promotes confirmed intermediate results into a persistent verified ledger that later rounds build on. The harness is designed to be able to solve research-level math and theoretical computer science problems. Using Gemini as the base model, Cogentic produced novel results on five open problems across online learning, auction theory, and mechanism design. Each result was independently verified by domain experts and is developed in full in companion papers. We list these results, and new ones as they are verified, at https://sites.google.com/view/cogentic .",
-        "primaryUrl": "https://arxiv.org/abs/2609.40324v1",
-        "sourceDetails": {
-          "authors": [
-            "Yang Cai",
-            "Vineet Gupta",
-            "Yanchen Jiang",
-            "Christopher Liaw",
-            "Aranyak Mehta",
-            "Grigoris Velegkas",
-            "Di Wang"
-          ],
-          "categories": [
-            "cs.AI",
-            "cs.GT"
-          ]
-        }
-      },
-      "notion_page_id": "3ec479ff-dca9-8148-b443-f1b321e5b3d5",
-      "score": 78,
-      "reason": "自動数理証明のためのマルチエージェント構成。",
-      "commercial_score": 72,
-      "shelf_life_score": 75,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 75.9
     }
   ]
 }
