@@ -117,7 +117,7 @@ def _layout_prompt(source_title: str, subheadline: str, article_text: str = "") 
 - 説明を詰め込まず、「何の話か」と「なぜ気になるか」が一瞬で伝わる見出しにする。
 
 絶対条件:
-- eyecatch_titleは記事要約の主題と根拠に基づき、新しい言葉で書いてよい。ただし要約・記事タイトルにない事実、数値、性能、因果、評価、固有名詞を発明しない。
+- eyecatch_titleは記事要約の主題と根拠に基づき、新しい言葉で書いてよい。ただし新しい事実、数値、性能、因果、評価、固有名詞を発明しない。
 - 製品名、モデル名、バージョン番号など記事識別に必要な固有情報は維持する。
 - eyecatch_titleは理想15〜45文字、最大52文字。元タイトルがすでに短く強ければ変更しなくてよい。
 - source_titleに存在しない「...」「…」を追加して省略表示にしない。入り切らない場合は意味を保って短く言い換える。
@@ -528,6 +528,9 @@ def install(pipeline_module: Any) -> Any:
         return pipeline_module
 
     deterministic_fallback = ee.generate_note_editorial_eyecatch
+    # Optional encrypted cache. No key => no remote read/write or added provider call.
+    from eyecatch_copy_runtime_store import EyecatchCopyStore
+    remote_copy_store = EyecatchCopyStore()
 
     def _copy_cache_path(output_path: str) -> str:
         return output_path + ".copy.json"
@@ -537,7 +540,7 @@ def install(pipeline_module: Any) -> Any:
             with open(_copy_cache_path(output_path), encoding="utf-8") as fh:
                 payload = json.load(fh)
             fingerprint = hashlib.sha256(
-                json.dumps([title, summary, article_text[:6000]], ensure_ascii=False).encode("utf-8")
+                json.dumps([title, summary, article_text], ensure_ascii=False).encode("utf-8")
             ).hexdigest()
             if payload.get("source_digest") != fingerprint:
                 return None
@@ -549,7 +552,7 @@ def install(pipeline_module: Any) -> Any:
 
     def _save_cached_plan(output_path: str, title: str, summary: str, plan: dict[str, Any], article_text: str = "") -> None:
         fingerprint = hashlib.sha256(
-            json.dumps([title, summary, article_text[:6000]], ensure_ascii=False).encode("utf-8")
+            json.dumps([title, summary, article_text], ensure_ascii=False).encode("utf-8")
         ).hexdigest()
         target = _copy_cache_path(output_path)
         os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
@@ -572,6 +575,8 @@ def install(pipeline_module: Any) -> Any:
         existing_headline = ee.editorial_hook_from_title(title, max_chars=48)
         subheadline = ee.editorial_subheadline(summary, existing_headline)
         cached = _load_cached_plan(output_path, title, summary, article_text)
+        if cached is None:
+            cached = remote_copy_store.load(title, summary, article_text)
         raw_plan = cached if cached is not None else _request_layout_plan(pipeline_module, source_title, subheadline, article_text)
         validated = _validate_layout_plan(source_title, subheadline, raw_plan)
         if validated is not None:
@@ -585,6 +590,8 @@ def install(pipeline_module: Any) -> Any:
                     date_label=date_label,
                 )
                 _save_cached_plan(output_path, title, summary, validated, article_text)
+                # The remote branch is public: the store writes only Fernet ciphertext.
+                remote_copy_store.save(title, summary, validated, article_text)
                 return result
             except Exception as exc:
                 logger = getattr(pipeline_module, "logger", None)
