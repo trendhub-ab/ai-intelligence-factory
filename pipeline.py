@@ -8370,6 +8370,9 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 parsed.get("what_text", "") or parsed.get("source_summary_text", ""),
                 note_eyecatch_path,
                 category=editorial_category,
+                # Bound to the exact finalized manuscript persisted in Notion,
+                # not only its public title/summary or the 6000-char model excerpt.
+                article_text=clean_manuscript,
             )
             logger.info(
                 "[NOTE EDITORIAL EYECATCH] %s -> %s category=%s",
