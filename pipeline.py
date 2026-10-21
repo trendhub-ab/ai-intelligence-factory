@@ -8370,7 +8370,6 @@ def generate_intelligence_report(repo, notion_page_id: str | None = None,
                 parsed.get("what_text", "") or parsed.get("source_summary_text", ""),
                 note_eyecatch_path,
                 category=editorial_category,
-                article_text=clean_manuscript,
             )
             logger.info(
                 "[NOTE EDITORIAL EYECATCH] %s -> %s category=%s",
