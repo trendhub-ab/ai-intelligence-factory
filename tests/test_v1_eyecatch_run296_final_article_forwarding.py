@@ -59,3 +59,24 @@ def test_run296_prompt_keeps_full_article_excerpt_but_no_extra_request(monkeypat
     # The source excerpt stays capped at 6000, though cache identity covers all.
     assert article[:6000] in prompt
     assert "TAIL_ONLY_MARKER_77777" not in prompt
+
+
+def test_final_run248_over_run296_preserves_article_identity(monkeypatch):
+    import run248_first_real_publish_quality_calibration as r248
+
+    pipeline, received = _installed_run296(monkeypatch)
+    # This only probes the actual installed call chain; no PNG I/O or Gemini.
+    monkeypatch.setattr(r248, "_has_orange_emphasis", lambda _path: True)
+    pipeline.build_clean_note_manuscript = lambda *a, **kw: "final manuscript"
+    pipeline.validate_human_appeal_gate = lambda *a, **kw: ("ACCEPTABLE", [])
+    pipeline.validate_fact_gate = lambda *a, **kw: (True, [])
+    pipeline.build_decision_prompt = lambda *a, **kw: "provider-free"
+    r248.install(pipeline)
+
+    actual = "確認済み本文" * 700
+    assert pipeline.generate_note_editorial_eyecatch(
+        "通常記事のタイトル", "元記事の要約", "/tmp/ready-cover.png",
+        category="RESEARCH", article_text=actual,
+    ) == "/tmp/ready-cover.png"
+    assert len(received) == 1
+    assert received[0]["article_text"] == actual
