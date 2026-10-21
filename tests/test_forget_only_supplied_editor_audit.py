@@ -75,6 +75,8 @@ def test_readonly_workflow_is_exact_owner_only():
     assert "github.actor == 'trendhub-ab'" in flow
     assert "/aiif audit forget-only supplied-editor-identity" in flow
     assert "NOTION_API_KEY" in flow
+    assert "sudo apt-get" not in flow
+    assert "fonts-noto-cjk" not in flow
     assert "note_mutation" in script and "notion_mutation" in script
     assert "GEMINI_API_KEY" not in script
     assert "new_draft_created" not in script
