@@ -39,6 +39,26 @@ class OneOffSwapTest(unittest.TestCase):
             with self.assertRaisesRegex(swap.SwapBlocked,"user-approved exact text"):
                 swap.stage_article()
 
+    def test_notions_trimmed_one_final_newline_restored_only_with_full_sha(self):
+        original = "# Sample Title\\n\\n## どんな内容？\\n\\n### 元情報\\n"
+        sha = hashlib.sha256(original.encode("utf-8")).hexdigest()
+        with patch.object(swap, "ARTICLE_SHA256", sha):
+            self.assertEqual(swap._verified_stage_manuscript(original), original)
+            self.assertEqual(swap._verified_stage_manuscript(original[:-1]), original)
+
+    def test_no_content_change_or_extra_newlines_can_bypass_sha(self):
+        original = "# Sample Title\\n\\n## どんな内容？\\n\\n### 元情報\\n"
+        sha = hashlib.sha256(original.encode("utf-8")).hexdigest()
+        with patch.object(swap, "ARTICLE_SHA256", sha):
+            for altered in (
+                original.replace("Sample", "Tampered").rstrip("\\n"),
+                original.rstrip("\\n") + "\\n\\n",
+                original + " ",
+                original[:-2],
+            ):
+                with self.subTest(altered=altered), self.assertRaises(swap.SwapBlocked):
+                    swap._verified_stage_manuscript(altered)
+
     def test_owner_destination_id_is_hash_pinned(self):
         queue={"id":"queue","properties":{
            "同期ID":{"rich_text":[{"plain_text":"abcd"*8}]},
