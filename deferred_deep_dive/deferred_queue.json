@@ -1,44 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-21T00:44:28.078802+00:00",
+  "updated_at": "2026-10-21T00:45:10.258866+00:00",
   "items": [
-    {
-      "key": "https://blog.google/innovation-and-ai/technology/developers-tools/build-with-gemini-4-argon",
-      "deferred_at": "2026-10-14T09:11:21.781701+00:00",
-      "expires_at": "2026-10-28T09:11:21.781701+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "Gemini 4 Argon is now available for developers",
-        "originalTitle": "Gemini 4 Argon is now available for developers",
-        "displayName": "Gemini 4 Argon is now available for developers",
-        "sourceLanguage": "en",
-        "url": "https://blog.google/innovation-and-ai/technology/developers-tools/build-with-gemini-4-argon/",
-        "description": "Gemini 4 Argon is now available for developers",
-        "stargazerCount": 2,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-13T16:39:24Z",
-        "sourceContext": "HN points=2 comments=1 matched_query=Gemini",
-        "primaryUrl": "https://blog.google/innovation-and-ai/technology/developers-tools/build-with-gemini-4-argon/",
-        "sourceDetails": {
-          "hn_id": "50074578",
-          "hn_url": "https://news.ycombinator.com/item?id=50074578",
-          "external_url": "https://blog.google/innovation-and-ai/technology/developers-tools/build-with-gemini-4-argon/",
-          "comments": 1,
-          "matched_query": "Gemini",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3f9479ff-dca9-8117-a995-c92838a5db49",
-      "score": 78,
-      "reason": "開発者向けGemini 4 Argonのリリース。",
-      "commercial_score": 85,
-      "shelf_life_score": 60,
-      "shelf_life": "TREND",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 80.45
-    },
     {
       "key": "https://openai.com/products/release-notes?aif_revision=23a2c359008750a2",
       "deferred_at": "2026-10-16T17:29:20.876296+00:00",
