@@ -51,11 +51,11 @@ def test_run296_final_renderer_forwards_full_article_text(monkeypatch):
 
 def test_run296_prompt_keeps_full_article_excerpt_but_no_extra_request(monkeypatch):
     _installed_run296(monkeypatch)
-    article = "PRECISE_SOURCE_FACTS_ON_PRIMARY_RECORD " * 200
+    article = "PRECISE_SOURCE_FACTS_ON_PRIMARY_RECORD " * 200 + "TAIL_ONLY_MARKER_77777"
     prompt = r180._layout_prompt("精確な記事タイトル", "一次資料を読み解く", article)
     assert "PRECISE_SOURCE_FACTS_ON_PRIMARY_RECORD" in prompt
     assert "article_excerpt" in prompt
     assert "Run296追加条件" in prompt
     # The source excerpt stays capped at 6000, though cache identity covers all.
     assert article[:6000] in prompt
-    assert article[6000:] not in prompt
+    assert "TAIL_ONLY_MARKER_77777" not in prompt
