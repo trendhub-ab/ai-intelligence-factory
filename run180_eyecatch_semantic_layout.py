@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import hashlib
 from typing import Any
 
 from PIL import Image, ImageDraw
@@ -103,7 +104,7 @@ def _source_title_for_direction(title: str) -> str:
 
 def _layout_prompt(source_title: str, subheadline: str) -> str:
     payload = json.dumps(
-        {"source_title": source_title, "subheadline": subheadline}, ensure_ascii=False
+        {"source_title": source_title, "article_summary": subheadline}, ensure_ascii=False
     )
     return f"""あなたは日本語テックメディアのエディトリアル・タイトル担当です。
 1280x670のnoteアイキャッチ左側760pxで、スマートフォン縮小時にも一瞬で読めるタイトルを設計してください。
@@ -116,7 +117,7 @@ def _layout_prompt(source_title: str, subheadline: str) -> str:
 - 説明を詰め込まず、「何の話か」と「なぜ気になるか」が一瞬で伝わる見出しにする。
 
 絶対条件:
-- eyecatch_titleはsource_titleの意味を圧縮するだけ。新しい事実、数値、性能、因果、評価、固有名詞を発明しない。
+- eyecatch_titleは記事要約の主題と根拠に基づき、新しい言葉で書いてよい。ただし要約・記事タイトルにない事実、数値、性能、因果、評価、固有名詞を発明しない。
 - 製品名、モデル名、バージョン番号など記事識別に必要な固有情報は維持する。
 - eyecatch_titleは理想15〜45文字、最大52文字。元タイトルがすでに短く強ければ変更しなくてよい。
 - source_titleに存在しない「...」「…」を追加して省略表示にしない。入り切らない場合は意味を保って短く言い換える。
@@ -528,6 +529,36 @@ def install(pipeline_module: Any) -> Any:
 
     deterministic_fallback = ee.generate_note_editorial_eyecatch
 
+    def _copy_cache_path(output_path: str) -> str:
+        return output_path + ".copy.json"
+
+    def _load_cached_plan(output_path: str, title: str, summary: str) -> dict[str, Any] | None:
+        try:
+            with open(_copy_cache_path(output_path), encoding="utf-8") as fh:
+                payload = json.load(fh)
+            fingerprint = hashlib.sha256(
+                json.dumps([title, summary], ensure_ascii=False).encode("utf-8")
+            ).hexdigest()
+            if payload.get("source_digest") != fingerprint:
+                return None
+            return _validate_layout_plan(_source_title_for_direction(title),
+                                         ee.editorial_subheadline(summary, ee.editorial_hook_from_title(title, max_chars=48)),
+                                         payload.get("plan"))
+        except (OSError, ValueError, TypeError, KeyError):
+            return None
+
+    def _save_cached_plan(output_path: str, title: str, summary: str, plan: dict[str, Any]) -> None:
+        fingerprint = hashlib.sha256(
+            json.dumps([title, summary], ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+        target = _copy_cache_path(output_path)
+        os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
+        temporary = target + ".tmp"
+        with open(temporary, "w", encoding="utf-8") as fh:
+            json.dump({"source_digest": fingerprint, "eyecatch_copy": plan["eyecatch_title"],
+                       "plan": plan}, fh, ensure_ascii=False)
+        os.replace(temporary, target)
+
     def semantic_generate(
         title: str,
         summary: str,
@@ -539,11 +570,12 @@ def install(pipeline_module: Any) -> Any:
         # Subheadline generation is intentionally unchanged. Run229 scope is title only.
         existing_headline = ee.editorial_hook_from_title(title, max_chars=48)
         subheadline = ee.editorial_subheadline(summary, existing_headline)
-        raw_plan = _request_layout_plan(pipeline_module, source_title, subheadline)
+        cached = _load_cached_plan(output_path, title, summary)
+        raw_plan = cached if cached is not None else _request_layout_plan(pipeline_module, source_title, subheadline)
         validated = _validate_layout_plan(source_title, subheadline, raw_plan)
         if validated is not None:
             try:
-                return r178._render_with_validated_plan(
+                result = r178._render_with_validated_plan(
                     title,
                     summary,
                     output_path,
@@ -551,6 +583,8 @@ def install(pipeline_module: Any) -> Any:
                     category=category,
                     date_label=date_label,
                 )
+                _save_cached_plan(output_path, title, summary, validated)
+                return result
             except Exception as exc:
                 logger = getattr(pipeline_module, "logger", None)
                 if logger is not None:
