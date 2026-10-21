@@ -111,6 +111,9 @@ def test_read_only_probe_returns_categoric_and_boolean_fields(monkeypatch):
     monkeypatch.setattr(diag.chrome,"_assert_expected_note_account", lambda _: None)
     monkeypatch.setattr(diag,"_list_labels", lambda _: (1,0))
     monkeypatch.setattr(diag.drafts,"_draft_id_from_edit_url", lambda _: "test")
+    monkeypatch.setattr(diag.drafts,"_open_exact_existing_draft",
+                        lambda page, profile, draft_id: "https://editor.note.com/notes/" + draft_id + "/edit")
+    monkeypatch.setattr(diag.chrome,"_profile_dir", lambda: Path("/tmp/aiif-diagnostic-test"))
     import run291_note_private_draft_audit as private_audit
     monkeypatch.setattr(private_audit, "_title_value", lambda _: "LEGACY_PRIVATE_TITLE")
     result=diag.browser_probe("test")
