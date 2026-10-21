@@ -26,7 +26,7 @@ import ready_draft_regeneration as existing
 
 STAGE_NAME = "AIIF｜Forget-Only記事の差し替え正本（非公開・未反映）"
 ARTICLE_SHA256 = "ed8a3dd92195e364178091ac80d0106cb735886939c1e7873c9af1c6c4c17a9a"
-DRAFT_ID_SHA256 = "DRAFT_SHA_PLACEHOLDER"
+DRAFT_ID_SHA256 = "26441aade090755c0c517cb80e16e33be30f32f99ef6cee398d2f17ee99975fb"
 MASTER_URL = ("https://raw.githubusercontent.com/trendhub-ab/ai-intelligence-factory/"
               "runtime-state/eyecatch_images/"
               "Why_Forget-Only_Unlearning_Needs_Memorization__ecv1_3ddaad6906731d52.png")
