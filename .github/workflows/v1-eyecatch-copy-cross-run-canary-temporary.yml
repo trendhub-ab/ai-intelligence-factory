@@ -1,0 +1,133 @@
+# PR #832 TEMPORARY synthetic-only proof. DELETE after verifying the runs.
+# No real drafts, secret keys, Gemini provider, note publication, or Daily execution.
+name: V1 Eyecatch Copy Cross-Runner Canary TEMP
+on:
+  push:
+    branches:
+      - fix/v1-eyecatch-complete-title-fallback-20261021
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: pr832-copy-canary-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  writer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install offline-copy dependencies only
+        run: python -m pip install 'cryptography==50.0.1' 'requests>=2.32.4,<3'
+      - name: Write synthetic encrypted copy to runtime-state
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CANARY_RUN_ID: ${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import base64
+          import hashlib
+          import os
+          from eyecatch_copy_runtime_store import EyecatchCopyStore
+          key = base64.urlsafe_b64encode(hashlib.sha256(b"PR832-SYNTHETIC-CANARY-ONLY-NOT-A-SECRET").digest()).decode()
+          env = {
+              "GITHUB_REPOSITORY": os.environ["GITHUB_REPOSITORY"],
+              "AIIF_RUNTIME_STATE_GITHUB_TOKEN": os.environ["GITHUB_TOKEN"],
+              "AIIF_EYECATCH_COPY_FERNET_KEY": key,
+          }
+          store = EyecatchCopyStore(env=env)
+          title = "SYNTHETIC-PR832-NOT-A-REAL-DRAFT-" + os.environ["CANARY_RUN_ID"]
+          summary = "SYNTHETIC-ONLY-SUMMARY"
+          text = "SYNTHETIC-ONLY-ARTICLE"
+          plan = {"eyecatch_title": "SYNTHETIC COPY ONLY", "title_lines": ["SYNTHETIC COPY ONLY"]}
+          assert store.enabled
+          assert store.save(title, summary, plan, text), "synthetic encrypted write failed"
+          assert store.load(title, summary, text) == plan, "writer readback mismatch"
+          print("SYNTHETIC_ENCRYPTED_WRITER=PASS")
+          PY
+  reader:
+    needs: writer
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install offline-copy dependencies only
+        run: python -m pip install 'cryptography==50.0.1' 'requests>=2.32.4,<3'
+      - name: Verify separate runner reuses matching encrypted copy
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CANARY_RUN_ID: ${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import base64
+          import hashlib
+          import os
+          from eyecatch_copy_runtime_store import EyecatchCopyStore
+          key = base64.urlsafe_b64encode(hashlib.sha256(b"PR832-SYNTHETIC-CANARY-ONLY-NOT-A-SECRET").digest()).decode()
+          store = EyecatchCopyStore(env={
+              "GITHUB_REPOSITORY": os.environ["GITHUB_REPOSITORY"],
+              "AIIF_RUNTIME_STATE_GITHUB_TOKEN": os.environ["GITHUB_TOKEN"],
+              "AIIF_EYECATCH_COPY_FERNET_KEY": key,
+          })
+          title = "SYNTHETIC-PR832-NOT-A-REAL-DRAFT-" + os.environ["CANARY_RUN_ID"]
+          plan = {"eyecatch_title": "SYNTHETIC COPY ONLY", "title_lines": ["SYNTHETIC COPY ONLY"]}
+          assert store.load(title, "SYNTHETIC-ONLY-SUMMARY", "SYNTHETIC-ONLY-ARTICLE") == plan, "reader readback mismatch"
+          assert store.load(title, "SYNTHETIC-ONLY-SUMMARY", "CHANGED-SYNTHETIC-ARTICLE") is None, "source digest did not invalidate"
+          print("SEPARATE_RUNNER_ENCRYPTED_REUSE=PASS")
+          PY
+  cleanup:
+    if: always()
+    needs: [writer, reader]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install offline-copy dependencies only
+        run: python -m pip install 'cryptography==50.0.1' 'requests>=2.32.4,<3'
+      - name: Remove test-only encrypted cache from runtime-state
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CANARY_RUN_ID: ${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import base64
+          import hashlib
+          import os
+          import requests
+          from eyecatch_copy_runtime_store import EyecatchCopyStore
+          key = base64.urlsafe_b64encode(hashlib.sha256(b"PR832-SYNTHETIC-CANARY-ONLY-NOT-A-SECRET").digest()).decode()
+          store = EyecatchCopyStore(env={
+              "GITHUB_REPOSITORY": os.environ["GITHUB_REPOSITORY"],
+              "AIIF_RUNTIME_STATE_GITHUB_TOKEN": os.environ["GITHUB_TOKEN"],
+              "AIIF_EYECATCH_COPY_FERNET_KEY": key,
+          })
+          title = "SYNTHETIC-PR832-NOT-A-REAL-DRAFT-" + os.environ["CANARY_RUN_ID"]
+          url = store._url(store.source_digest(title, "SYNTHETIC-ONLY-SUMMARY", "SYNTHETIC-ONLY-ARTICLE"))
+          response = requests.get(url, headers=store._headers(), params={"ref": "runtime-state"}, timeout=15)
+          if response.status_code == 404:
+              print("SYNTHETIC_CANARY_CLEANUP=PASS (nothing persisted)")
+          else:
+              response.raise_for_status()
+              sha = response.json()["sha"]
+              result = requests.delete(url, headers=store._headers(), json={
+                  "branch": "runtime-state",
+                  "message": "test(runtime): clean PR832 synthetic cross-run canary",
+                  "sha": sha,
+              }, timeout=20)
+              result.raise_for_status()
+              check = requests.get(url, headers=store._headers(), params={"ref": "runtime-state"}, timeout=15)
+              assert check.status_code == 404, "canary cleanup incomplete"
+              print("SYNTHETIC_CANARY_CLEANUP=PASS")
+          PY
