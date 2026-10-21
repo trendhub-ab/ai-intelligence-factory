@@ -27,7 +27,7 @@
     "run248_first_real_publish_quality_calibration.py": "07f61c65dd77133e2856214486934b9ed0f97cc2",
     "run249_final_publication_surface_gate.py": "47a12ae0ebeafc701a038e3e0b19bca2f02c7511",
     "run194_publication_contract.py": "631e026307e5bbd0d312ab3c31b3fa8d00a7c499",
-    ".github/workflows/daily-one-shot.yml": "75977f1b1d0d38c8a0b9a067470f721d678feeb2",
+    ".github/workflows/daily-one-shot.yml": "d039aac5d7efba6634333131324f466238792fa0",
     "fresh_protocol_quota_lock.py": "c8acf920fb417fcad8528f50a16b3866a3f99237",
     "fresh_model_fallback_budget.py": "ed495c7b4835a6e233414c89904b721f50713910",
     "gemini_provider_resilience.py": "76a20936fe39544f8c34ba0bd9d0ef2a44e7848b",
