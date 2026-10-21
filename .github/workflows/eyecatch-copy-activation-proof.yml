@@ -1,0 +1,138 @@
+# Explicit manual, main-only, provider-free proof of Production Fernet runtime-state cache.
+# Never run user content, Daily, Gemini, Notion or note from this workflow.
+name: Eyecatch Copy Activation Proof
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aiif-eyecatch-copy-activation-proof
+  cancel-in-progress: false
+
+jobs:
+  encrypted-writer:
+    if: github.ref == 'refs/heads/main' && github.repository == 'trendhub-ab/ai-intelligence-factory'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11.16'
+      - name: Install locked cache dependencies
+        run: python -m pip install 'cryptography==50.0.1' 'requests==2.34.2'
+      - name: Write synthetic encrypted copy with configured production key
+        env:
+          AIIF_EYECATCH_COPY_FERNET_KEY: ${{ secrets.AIIF_EYECATCH_COPY_FERNET_KEY }}
+          AIIF_RUNTIME_STATE_GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CANARY_RUN_ID: ${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import os
+          from eyecatch_copy_runtime_store import EyecatchCopyStore
+          store = EyecatchCopyStore()
+          if not store.enabled:
+              raise SystemExit("ACTIVATION_PROOF=NOT_CONFIGURED (Fernet key or runtime token missing)")
+          title = "AIIF-FAKE-EYECATCH-ACTIVATION-" + os.environ["CANARY_RUN_ID"]
+          summary = "SYNTHETIC-SUMMARY-ONLY"
+          article = "SYNTHETIC-ARTICLE-ONLY"
+          plan = {"eyecatch_title": "SYNTHETIC TEST", "title_lines": ["SYNTHETIC TEST"]}
+          if not store.save(title, summary, plan, article):
+              raise SystemExit("ACTIVATION_PROOF=WRITE_FAILED")
+          if store.load(title, summary, article) != plan:
+              raise SystemExit("ACTIVATION_PROOF=WRITER_READ_MISMATCH")
+          print("ACTIVATION_PROOF_WRITER=PASS")
+          PY
+
+  encrypted-reader:
+    needs: encrypted-writer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11.16'
+      - name: Install locked cache dependencies
+        run: python -m pip install 'cryptography==50.0.1' 'requests==2.34.2'
+      - name: Verify second-runner decrypt and exact input binding
+        env:
+          AIIF_EYECATCH_COPY_FERNET_KEY: ${{ secrets.AIIF_EYECATCH_COPY_FERNET_KEY }}
+          AIIF_RUNTIME_STATE_GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CANARY_RUN_ID: ${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import os
+          from eyecatch_copy_runtime_store import EyecatchCopyStore
+          store = EyecatchCopyStore()
+          title = "AIIF-FAKE-EYECATCH-ACTIVATION-" + os.environ["CANARY_RUN_ID"]
+          expected = {"eyecatch_title": "SYNTHETIC TEST", "title_lines": ["SYNTHETIC TEST"]}
+          if store.load(title, "SYNTHETIC-SUMMARY-ONLY", "SYNTHETIC-ARTICLE-ONLY") != expected:
+              raise SystemExit("ACTIVATION_PROOF=READER_MISMATCH")
+          if store.load(title, "SYNTHETIC-SUMMARY-ONLY", "MODIFIED-SYNTHETIC-ARTICLE") is not None:
+              raise SystemExit("ACTIVATION_PROOF=INPUT_INVALIDATION_FAILED")
+          print("ACTIVATION_PROOF_SEPARATE_RUNNER=PASS")
+          PY
+
+  remove-synthetic-canary:
+    if: ${{ always() && needs.encrypted-writer.result != 'skipped' }}
+    needs: [encrypted-writer, encrypted-reader]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11.16'
+      - name: Install locked cache dependencies
+        run: python -m pip install 'cryptography==50.0.1' 'requests==2.34.2'
+      - name: Remove exact synthetic record and prove absence
+        env:
+          AIIF_EYECATCH_COPY_FERNET_KEY: ${{ secrets.AIIF_EYECATCH_COPY_FERNET_KEY }}
+          AIIF_RUNTIME_STATE_GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CANARY_RUN_ID: ${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import os
+          import requests
+          from eyecatch_copy_runtime_store import EyecatchCopyStore
+          store = EyecatchCopyStore()
+          if not store.enabled:
+              print("ACTIVATION_PROOF_CLEANUP=SKIPPED (no configured key)")
+              raise SystemExit(0)
+          title = "AIIF-FAKE-EYECATCH-ACTIVATION-" + os.environ["CANARY_RUN_ID"]
+          digest = store.source_digest(title, "SYNTHETIC-SUMMARY-ONLY", "SYNTHETIC-ARTICLE-ONLY")
+          url = store._url(digest)
+          response = requests.get(url, headers=store._headers(), params={"ref": "runtime-state"}, timeout=15)
+          if response.status_code == 404:
+              print("ACTIVATION_PROOF_CLEANUP=PASS (no residue)")
+              raise SystemExit(0)
+          response.raise_for_status()
+          deletion = requests.delete(
+              url,
+              headers=store._headers(),
+              json={
+                  "branch": "runtime-state",
+                  "message": "test(runtime): remove synthetic activation probe",
+                  "sha": response.json()["sha"],
+              },
+              timeout=20,
+          )
+          deletion.raise_for_status()
+          verify = requests.get(url, headers=store._headers(), params={"ref": "runtime-state"}, timeout=15)
+          if verify.status_code != 404:
+              raise SystemExit("ACTIVATION_PROOF=CLEANUP_INCOMPLETE")
+          print("ACTIVATION_PROOF_CLEANUP=PASS")
+          PY
