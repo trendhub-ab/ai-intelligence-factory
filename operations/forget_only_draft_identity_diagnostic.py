@@ -102,13 +102,14 @@ def browser_probe(draft_id: str) -> dict:
                 raise Refused("official_list_unreadable") from exc
             # Reading the old title/list never clicks a button and never writes.
             from run291_note_private_draft_audit import _title_value
-            route = "https://note.com/notes/" + draft_id + "/edit"
+            # Reuse the existing exact-ID editor resolver: it checks known
+            # browser history and both note.com and editor.note.com, rejecting
+            # every redirect whose resolved draft ID differs from the stored ID.
+            # It never clicks edit/save/new and never mutates note content.
             try:
-                page.goto(route, wait_until="domcontentloaded", timeout=60000)
-                page.wait_for_timeout(1250)
-                actual = str(page.url or "")
-                resolved = drafts._draft_id_from_edit_url(actual)
-                route_exact = resolved == draft_id
+                actual = drafts._open_exact_existing_draft(
+                    page, chrome._profile_dir(), draft_id)
+                route_exact = drafts._draft_id_from_edit_url(actual) == draft_id
                 title_hash = digest(_title_value(page)) if route_exact else ""
             except Exception:
                 route_exact, title_hash = False, ""
@@ -158,6 +159,16 @@ def replace_held_draft_once() -> dict:
     chrome.install()
     q = exact_queue()
     proof = browser_probe(q["draft_id"])
+    print(json.dumps({
+        "status": "read_only_identity_stage",
+        "account_proven": bool(proof["account_proven"]),
+        "same_existing_edit_route": bool(proof["same_existing_edit_route"]),
+        "editor_old_title_match": bool(proof["draft_editor_has_old_title"]),
+        "editor_new_title_match": bool(proof["draft_editor_has_new_title"]),
+        "official_list_old_title_matches": int(proof["official_list_old_title_matches"]),
+        "official_list_new_title_matches": int(proof["official_list_new_title_matches"]),
+        "note_mutation": False, "notion_mutation": False,
+    }, sort_keys=True), flush=True)
     require(proof["account_proven"], "note_account_not_proven")
     require(proof["same_existing_edit_route"], "same_draft_route_not_proven")
     require(proof["draft_editor_has_old_title"] or proof["draft_editor_has_new_title"],
