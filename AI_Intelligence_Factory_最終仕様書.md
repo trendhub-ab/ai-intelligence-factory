@@ -654,6 +654,18 @@ Eyecatch semantic layout Providerは補助処理としてbounded:
 - 503 / timeout / invalid layoutは次Providerまたはdeterministic layoutへfallback
 - layout待機がDaily全体timeoutを占有することを禁止
 
+### 9.4a V1 semantic eyecatch copy / optional encrypted run-crossing cache
+
+V1 semantic layoutがvalidな完成コピーを作成してレンダリングまで成功した場合、同一inputでの再実行はprovider-free copyを優先する。本文を受け取った呼び出しでは本文全体もfingerprint対象とする。現在の通常Production call-siteが渡すのはtitle/summaryであり、本文までbindしたarticle-stage persistenceを証明するものではない。
+
+- ローカル `.copy.json` はrun内の一時保存に限定し、Gitへcommitしない。
+- public repositoryの `runtime-state` にcopy/記事タイトル/要約/本文をplaintextで保存しない。
+- optional遠隔保存は `eyecatch_copy_runtime_store.py` のFernet認証暗号で封印したrecordのみ。pathも秘密鍵によるHMACで匿名化する。
+- `AIIF_EYECATCH_COPY_FERNET_KEY` が未設定/不正、Actions tokenが権限不足、branchが `runtime-state` 以外の場合、遠隔cacheを無効化する。GitHub Actions secretに安定したFernet鍵を登録するまでrun跨ぎの再利用は有効にならない。
+- Contents API取得時のsource digest不一致、復号不能、status!=200/404はcache miss扱いとし、valid layout以外を再利用しない。
+- 409競合時は既存recordを再読込し、blind overwriteしない。403等の権限障害はcacheを保存せず、元のPublication / Eyecatch fail-closed gateは弱めない。
+- 追加Gemini callは0。V2のapproved master、note配送、Notionは変更しない。
+
 ### 9.5 Asset version binding
 
 Eyecatch file名tokenはPublic title SHA + Eyecatch policy SHAへbindされる。image + sidecar manifestを対で扱い、古いPNG URLが残るだけではcurrent assetと認めない。
