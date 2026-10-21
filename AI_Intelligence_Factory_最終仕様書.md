@@ -4,7 +4,7 @@
 Production最終照合日: **2026-10-21**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`cc33bfe35d268f65fa03f4b3def4825060ad9954b882347a15d7c56e96181599`**
+Production Contract Fingerprint: **`498a4c5ecdda1c5104fb1e0874fbbc045ac57fe07d15e8a7e2eb3e5abd906b76`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -656,7 +656,7 @@ Eyecatch semantic layout Providerは補助処理としてbounded:
 
 ### 9.4a V1 semantic eyecatch copy / optional encrypted run-crossing cache
 
-V1 semantic layoutがvalidな完成コピーを作成してレンダリングまで成功した場合、同一inputでの再実行はprovider-free copyを優先する。本文を受け取った呼び出しでは本文全体もfingerprint対象とする。現在の通常Production call-siteが渡すのはtitle/summaryであり、本文までbindしたarticle-stage persistenceを証明するものではない。
+V1 semantic layoutがvalidな完成コピーを作成してレンダリングまで成功した場合、同一inputでの再実行はprovider-free copyを優先する。通常Productionのpublic eyecatch call-siteはNotion本文と同じ `build_clean_note_manuscript(...)` 結果の `clean_manuscript` を `article_text` として渡す。ローカルおよび遠隔暗号化copy cacheのfingerprintは公開タイトル・要約・**最終確定本文の全バイト相当のUTF-8テキスト**を含み、本文の末尾だけが更新されてもcache missとする。モデルへの実際の本文excerptは既存のbounded prompt範囲に留め、Gemini callの回数やReady Gateを変更しない。
 
 - ローカル `.copy.json` はrun内の一時保存に限定し、Gitへcommitしない。
 - public repositoryの `runtime-state` にcopy/記事タイトル/要約/本文をplaintextで保存しない。
