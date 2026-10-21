@@ -262,8 +262,23 @@ def apply(rev: dict) -> dict:
                 "Private note draft replacement did not pass all proofs")
         require(existing.destination_preflight(target)["note_draft_id"]==rev["draft_id"],
                 "Post-save draft identity drift")
+        # Independently reopen the same private draft after save and read back
+        # title/body/image. A save acknowledgement alone is not sufficient.
+        import run291_note_private_draft_audit as private_audit
+        import run295_note_private_draft_audit as modern_audit
+        expected=private_audit._expected_article(target)
+        readback=private_audit._browser_audit(
+            expected,
+            page_auditor=modern_audit._audit_wrapper(private_audit._audit_current_page),
+        )
+        require(readback.get("title_match") is True
+                and readback.get("eyecatch_present") is True
+                and readback.get("prefix_match") is True
+                and readback.get("suffix_match") is True,
+                "Reloaded private draft did not match approved contents")
         return {"status":"EXACT_PRIVATE_SWAP_SUCCESS","draft_id_preserved":True,
                 "ready_article_updated":True,"title_body_cover_verified":True,
+                "independent_reload_audit_passed":True,
                 "gemini_calls":0,"new_draft_created":False,"public_release":False}
     except Exception:
         # A failed operation may have modified Notion/note partly. Freeze Ready
