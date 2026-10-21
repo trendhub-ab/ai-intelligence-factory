@@ -189,6 +189,7 @@ NON_MEMBER_MODULES = frozenset((
     "deep_dive_portfolio.py",
     "deferred_queue_policy.py",
     "editorial_eyecatch.py",
+    "eyecatch_copy_runtime_store.py",  # encrypted transport only; V1 copy stays under Publication Contract
     "editorial_naturalness.py",
     "editorial_quality_memory.py",
     "evidence_authority.py",

@@ -4,7 +4,7 @@
 Production最終照合日: **2026-10-21**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`76ef14645e4bba0103086f19704ac29a9c839bd63ab1c83774757f14b2d8385e`**
+Production Contract Fingerprint: **`cc33bfe35d268f65fa03f4b3def4825060ad9954b882347a15d7c56e96181599`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -653,6 +653,20 @@ Eyecatch semantic layout Providerは補助処理としてbounded:
 - watchdog不可ならProviderを呼ばずFail-Closed
 - 503 / timeout / invalid layoutは次Providerまたはdeterministic layoutへfallback
 - layout待機がDaily全体timeoutを占有することを禁止
+
+### 9.4a V1 semantic eyecatch copy / optional encrypted run-crossing cache
+
+V1 semantic layoutがvalidな完成コピーを作成してレンダリングまで成功した場合、同一inputでの再実行はprovider-free copyを優先する。本文を受け取った呼び出しでは本文全体もfingerprint対象とする。現在の通常Production call-siteが渡すのはtitle/summaryであり、本文までbindしたarticle-stage persistenceを証明するものではない。
+
+- ローカル `.copy.json` はrun内の一時保存に限定し、Gitへcommitしない。
+- public repositoryの `runtime-state` にcopy/記事タイトル/要約/本文をplaintextで保存しない。
+- optional遠隔保存は `eyecatch_copy_runtime_store.py` のFernet認証暗号で封印したrecordのみ。pathも秘密鍵によるHMACで匿名化する。
+- `AIIF_EYECATCH_COPY_FERNET_KEY` が未設定/不正、Actions tokenが権限不足、branchが `runtime-state` 以外の場合、遠隔cacheを無効化する。GitHub Actions secretに安定したFernet鍵を登録するまでrun跨ぎの再利用は有効にならない。
+- Contents API取得時のsource digest不一致、復号不能、status!=200/404はcache miss扱いとし、valid layout以外を再利用しない。
+- 409競合時は既存recordを再読込し、blind overwriteしない。403等の権限障害はcacheを保存せず、元のPublication / Eyecatch fail-closed gateは弱めない。
+- 追加Gemini callは0。V2のapproved master、note配送、Notionは変更しない。
+- 本番鍵の手動登録と鍵をチャット/PRに露出させない運用は `docs/operations/eyecatch-copy-activation.md` に従う。`eyecatch-copy-activation-proof.yml` は `main` 上の `workflow_dispatch` のみを許容し、Actions secretで**合成データのみ**を別runner保存→復元→削除する。Daily・Gemini・note/Notion書込みは行わない。
+- CIや合成データ検証のGREENは、本番記事での生成・再利用の実証とは区別し、本番秘鍵が未登録なら遠隔cacheを無効のままとする。
 
 ### 9.5 Asset version binding
 
