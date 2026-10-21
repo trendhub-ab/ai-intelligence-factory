@@ -459,7 +459,7 @@ def _deterministic_complete_title_plan(title: str, summary: str) -> dict[str, An
 def _safe_existing_headline_clause(title: str) -> str | None:
     """Provider-free fallback: reuse only a self-contained source headline clause."""
     source = _source_title_for_direction(title)
-    parts = re.split(r"\\s*[｜|]\\s*|\\s+[—–―]{1,2}\\s+|\\s*[:：]\\s*", source, maxsplit=1)
+    parts = re.split(r"\s*[｜|]\s*|\s+[—–―]{1,2}\s+|\s*[:：]\s*", source, maxsplit=1)
     if len(parts) < 2:
         return None
     candidate = parts[0].strip()
