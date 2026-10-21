@@ -4,7 +4,7 @@
 Production最終照合日: **2026-10-21**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`498a4c5ecdda1c5104fb1e0874fbbc045ac57fe07d15e8a7e2eb3e5abd906b76`**
+Production Contract Fingerprint: **`f309f88a1dac2aa6529a340640ae42ef7804d98cf506694ae0973a8c47512c19`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -665,6 +665,7 @@ V1 semantic layoutがvalidな完成コピーを作成してレンダリングま
 - Contents API取得時のsource digest不一致、復号不能、status!=200/404はcache miss扱いとし、valid layout以外を再利用しない。
 - 409競合時は既存recordを再読込し、blind overwriteしない。403等の権限障害はcacheを保存せず、元のPublication / Eyecatch fail-closed gateは弱めない。
 - 追加Gemini callは0。V2のapproved master、note配送、Notionは変更しない。
+- 実記事Run #39543411060で検出された `article_text` 引数のラッパー拒否をRun248（最終公開視覚品質ラッパー）とRun296（画像ラッパーとsemantic prompt）で修正し、確定本文をRun180へ透過的に引き渡す。Run296の承認済みGenRec例外画像は変更しない。追加モデル呼出し・品質Gate緩和なし。これはprovider-freeコード結線の保証であり、実記事のReady・画像保存成功の保証ではない。
 - 本番鍵の手動登録と鍵をチャット/PRに露出させない運用は `docs/operations/eyecatch-copy-activation.md` に従う。`eyecatch-copy-activation-proof.yml` は `main` 上の `workflow_dispatch` のみを許容し、Actions secretで**合成データのみ**を別runner保存→復元→削除する。Daily・Gemini・note/Notion書込みは行わない。
 - CIや合成データ検証のGREENは、本番記事での生成・再利用の実証とは区別し、本番秘鍵が未登録なら遠隔cacheを無効のままとする。
 
