@@ -56,4 +56,4 @@ def test_copy_prompt_contains_article_excerpt_without_extra_call():
     )
     assert "本文から確認できる規制の対象と変更点" in prompt
     assert "article_excerpt" in prompt
-    assert "新しい事実" in prompt
+    assert "JSON以外は返さない" in prompt
