@@ -282,8 +282,8 @@ def _install_eyecatch_policy(pipeline_module: Any) -> None:
     # Tighten the existing single-call Run180 direction prompt; do not add another request.
     original_prompt = r180._layout_prompt
 
-    def editorial_v2_prompt(source_title: str, subheadline: str) -> str:
-        return original_prompt(source_title, subheadline) + """
+    def editorial_v2_prompt(source_title: str, subheadline: str, article_text: str = "") -> str:
+        return original_prompt(source_title, subheadline, article_text) + """
 
 Run296追加条件:
 - 24文字を超えるsource_titleをeyecatch_titleへそのまま複製しない。必ず意味を保って短くする。
@@ -328,6 +328,7 @@ Run296追加条件:
         output_path: str,
         category: str | None = None,
         date_label: str | None = None,
+        article_text: str = "",
     ) -> str:
         # The first production specimen was visually reviewed by the human publisher. Reproduce
         # that approved correction deterministically rather than asking the model to guess it.
@@ -341,7 +342,7 @@ Run296追加条件:
                 date_label=date_label,
                 highlight_text=GENREC_HIGHLIGHT,
             )
-        return original_generate(title, summary, output_path, category=category, date_label=date_label)
+        return original_generate(title, summary, output_path, category=category, date_label=date_label, article_text=article_text)
 
     pipeline_module.generate_note_editorial_eyecatch = editorial_v2_generate
 
