@@ -455,6 +455,22 @@ def _deterministic_complete_title_plan(title: str, summary: str) -> dict[str, An
         "highlight_text": "",
     }
 
+def _safe_existing_headline_clause(title: str) -> str | None:
+    """Provider-free fallback: reuse only a self-contained source headline clause."""
+    source = _source_title_for_direction(title)
+    parts = re.split(r"\\s*[｜|]\\s*|\\s+[—–―]{1,2}\\s+|\\s*[:：]\\s*", source, maxsplit=1)
+    if len(parts) < 2:
+        return None
+    candidate = parts[0].strip()
+    if not 10 <= len(candidate) <= EYECATCH_TITLE_HARD_MAX_CHARS:
+        return None
+    if _validate_eyecatch_title(source, candidate) is None:
+        return None
+    if re.search(r"(?:の|を|が|は|に|で|と|へ|から|より|および|及び)$", candidate):
+        return None
+    return candidate
+
+
 def _request_layout_plan(
     pipeline_module: Any, source_title: str, subheadline: str
 ) -> dict[str, Any] | None:
@@ -547,7 +563,15 @@ def install(pipeline_module: Any) -> Any:
         # After the bounded 3.6 -> 3.5 provider route, use a provider-free complete-title
         # plan for bounded titles before the historical renderer so fallback never
         # turns a valid 35-52 character headline into a visibly cut-off ellipsis.
-        complete_plan = _deterministic_complete_title_plan(title, summary)
+        # Prefer a complete, already-present headline clause over squeezing the
+        # entire article title into the image. Never truncate or invent copy.
+        short_title = _safe_existing_headline_clause(title)
+        complete_plan = (
+            _deterministic_complete_title_plan(short_title, summary)
+            if short_title else None
+        )
+        if complete_plan is None:
+            complete_plan = _deterministic_complete_title_plan(title, summary)
         if complete_plan is not None:
             try:
                 return r178._render_with_validated_plan(
