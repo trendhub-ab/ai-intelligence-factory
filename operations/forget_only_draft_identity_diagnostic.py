@@ -51,6 +51,8 @@ def exact_queue() -> dict:
     state = sync._source_state(response.json())
     require(state is not None and state.get("sync_id") == SOURCE_ID,
             "source_not_ready_or_invalid")
+    require(sync._select((response.json().get("properties") or {}).get("記事状態")) == "Ready",
+            "source_status_not_ready")
     require(digest(str(state.get("title") or "")) == NEW_TITLE_SHA256,
             "source_title_changed")
     require(bool(sync._source_current_ready_manuscript(SOURCE_ID)),
@@ -62,7 +64,7 @@ def exact_queue() -> dict:
 def _list_labels(page) -> tuple[int, int]:
     page.goto("https://note.com/notes", wait_until="domcontentloaded", timeout=60000)
     page.wait_for_timeout(1500)
-    require(not page.url.split("?")[0].rstrip("/") != "https://note.com/notes",
+    require(page.url.split("?")[0].rstrip("/") == "https://note.com/notes",
             "official_article_list_not_open")
     require(not bool(page.locator("input[type=password]:visible").count()),
             "note_authentication_required")
