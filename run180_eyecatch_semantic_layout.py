@@ -102,9 +102,9 @@ def _source_title_for_direction(title: str) -> str:
     return clean
 
 
-def _layout_prompt(source_title: str, subheadline: str) -> str:
+def _layout_prompt(source_title: str, subheadline: str, article_text: str = "") -> str:
     payload = json.dumps(
-        {"source_title": source_title, "article_summary": subheadline}, ensure_ascii=False
+        {"source_title": source_title, "article_summary": subheadline, "article_excerpt": article_text[:6000]}, ensure_ascii=False
     )
     return f"""あなたは日本語テックメディアのエディトリアル・タイトル担当です。
 1280x670のnoteアイキャッチ左側760pxで、スマートフォン縮小時にも一瞬で読めるタイトルを設計してください。
@@ -473,12 +473,12 @@ def _safe_existing_headline_clause(title: str) -> str | None:
 
 
 def _request_layout_plan(
-    pipeline_module: Any, source_title: str, subheadline: str
+    pipeline_module: Any, source_title: str, subheadline: str, article_text: str = ""
 ) -> dict[str, Any] | None:
     if bool(getattr(pipeline_module, "SYNTHETIC_REGRESSION_MODE", False)):
         return None
 
-    prompt = _layout_prompt(source_title, subheadline)
+    prompt = _layout_prompt(source_title, subheadline, article_text)
     logger = getattr(pipeline_module, "logger", None)
     timeout_guard = getattr(pipeline_module, "_gemini_call_timeout", None)
     if not callable(timeout_guard):
@@ -532,12 +532,12 @@ def install(pipeline_module: Any) -> Any:
     def _copy_cache_path(output_path: str) -> str:
         return output_path + ".copy.json"
 
-    def _load_cached_plan(output_path: str, title: str, summary: str) -> dict[str, Any] | None:
+    def _load_cached_plan(output_path: str, title: str, summary: str, article_text: str = "") -> dict[str, Any] | None:
         try:
             with open(_copy_cache_path(output_path), encoding="utf-8") as fh:
                 payload = json.load(fh)
             fingerprint = hashlib.sha256(
-                json.dumps([title, summary], ensure_ascii=False).encode("utf-8")
+                json.dumps([title, summary, article_text[:6000]], ensure_ascii=False).encode("utf-8")
             ).hexdigest()
             if payload.get("source_digest") != fingerprint:
                 return None
@@ -547,7 +547,7 @@ def install(pipeline_module: Any) -> Any:
         except (OSError, ValueError, TypeError, KeyError):
             return None
 
-    def _save_cached_plan(output_path: str, title: str, summary: str, plan: dict[str, Any]) -> None:
+    def _save_cached_plan(output_path: str, title: str, summary: str, plan: dict[str, Any], article_text: str = "") -> None:
         fingerprint = hashlib.sha256(
             json.dumps([title, summary], ensure_ascii=False).encode("utf-8")
         ).hexdigest()
@@ -565,13 +565,14 @@ def install(pipeline_module: Any) -> Any:
         output_path: str,
         category: str | None = None,
         date_label: str | None = None,
+        article_text: str = "",
     ) -> str:
         source_title = _source_title_for_direction(title)
         # Subheadline generation is intentionally unchanged. Run229 scope is title only.
         existing_headline = ee.editorial_hook_from_title(title, max_chars=48)
         subheadline = ee.editorial_subheadline(summary, existing_headline)
-        cached = _load_cached_plan(output_path, title, summary)
-        raw_plan = cached if cached is not None else _request_layout_plan(pipeline_module, source_title, subheadline)
+        cached = _load_cached_plan(output_path, title, summary, article_text)
+        raw_plan = cached if cached is not None else _request_layout_plan(pipeline_module, source_title, subheadline, article_text)
         validated = _validate_layout_plan(source_title, subheadline, raw_plan)
         if validated is not None:
             try:
@@ -583,7 +584,7 @@ def install(pipeline_module: Any) -> Any:
                     category=category,
                     date_label=date_label,
                 )
-                _save_cached_plan(output_path, title, summary, validated)
+                _save_cached_plan(output_path, title, summary, validated, article_text)
                 return result
             except Exception as exc:
                 logger = getattr(pipeline_module, "logger", None)
