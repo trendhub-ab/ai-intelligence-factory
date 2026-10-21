@@ -130,13 +130,102 @@ def browser_probe(draft_id: str) -> dict:
         finally:
             context.close()
 
+
+def _held_destination(sync_id: str) -> dict:
+    """In-memory adapter for a *manually held* row; never release the hold."""
+    require(sync_id == SOURCE_ID, "wrong_target")
+    q = exact_queue()
+    resp = sync._request("GET", "https://api.notion.com/v1/pages/" + SOURCE_ID)
+    require(resp.status_code == 200, "source_unreadable")
+    state = sync._source_state(resp.json())
+    require(state is not None and digest(str(state.get("title") or "")) == NEW_TITLE_SHA256,
+            "source_title_changed")
+    return {
+        "sync_id": SOURCE_ID, "note_draft_id": q["draft_id"],
+        "title": str(state["title"]), "posting_state": "保留",
+        "quality_state": "Ready",
+    }
+
+
+def replace_held_draft_once() -> dict:
+    """Guarded same-ID note-only replacement. Notion's manual hold never changes."""
+    from unittest.mock import patch
+    import run222_note_presentation_integrity as presentation
+    import run291_note_private_draft_audit as private_audit
+    import run295_note_private_draft_audit as modern_audit
+    from operations import forget_only_private_swap_once as swap
+    from playwright.sync_api import sync_playwright
+
+    chrome.install()
+    q = exact_queue()
+    proof = browser_probe(q["draft_id"])
+    require(proof["account_proven"], "note_account_not_proven")
+    require(proof["same_existing_edit_route"], "same_draft_route_not_proven")
+    require(proof["draft_editor_has_old_title"] or proof["draft_editor_has_new_title"],
+            "draft_title_unrecognized")
+    require(proof["official_list_old_title_matches"] + proof["official_list_new_title_matches"] >= 1,
+            "official_list_has_no_matching_draft_title")
+
+    # Source is already updated. Never regenerate or change the approved material.
+    manuscript = sync._source_current_ready_manuscript(SOURCE_ID)
+    require(bool(manuscript), "source_manuscript_not_current")
+    approved = swap._verified_stage_manuscript(manuscript)
+    destination = _held_destination(SOURCE_ID)
+    title = destination["title"]
+    presented = presentation.prepare_note_editor_manuscript(approved, title)
+    require(len(presented) >= 200, "prepared_manuscript_too_short")
+
+    route = "https://note.com/notes/" + q["draft_id"] + "/edit"
+    # The production writer expects 投稿準備中. Supply the *verified held*
+    # destination in process memory only; never write to or unhold Notion.
+    with patch.object(drafts, "destination_preflight", side_effect=_held_destination):
+        result = drafts.apply_current_article_to_existing_draft(SOURCE_ID, expected_route=route)
+    require(result.get("status") == "existing_ready_draft_regenerated"
+            and result.get("same_edit_route") is True
+            and result.get("title_verified") is True
+            and result.get("body_verified") is True
+            and result.get("eyecatch_verified") is True
+            and result.get("new_draft_created") is False
+            and result.get("public_release") is False, "private_write_proof_failed")
+    require(exact_queue()["draft_id"] == q["draft_id"], "post_save_draft_binding_changed")
+
+    # Independent authenticated *reload* proof on exactly the same editor ID.
+    with sync_playwright() as p:
+        context = chrome._launch_persistent_context(p)
+        try:
+            page = context.new_page()
+            chrome._assert_expected_note_account(page)
+            page.goto(route, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(1200)
+            require(drafts._draft_id_from_edit_url(str(page.url or "")) == q["draft_id"],
+                    "reload_draft_id_changed")
+            metrics = modern_audit._audit_wrapper(private_audit._audit_current_page)(
+                page, title, presented)
+            require(metrics.get("title_match") is True
+                    and metrics.get("eyecatch_present") is True
+                    and metrics.get("prefix_match") is True
+                    and metrics.get("suffix_match") is True, "independent_reload_failed")
+        finally:
+            context.close()
+    require(exact_queue()["draft_id"] == q["draft_id"], "final_draft_binding_changed")
+    return {"status": "EXACT_HELD_DRAFT_REPLACED", "existing_draft_preserved": True,
+            "title_body_cover_verified": True, "independent_reload_passed": True,
+            "hold_preserved": True, "notion_mutation": False, "new_draft_created": False,
+            "public_release": False, "model_calls": 0}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--prepare-only", action="store_true")
+    parser.add_argument("--apply-held", action="store_true")
+    parser.add_argument("--confirm", default="")
     args = parser.parse_args()
     try:
         q = exact_queue()
-        if args.prepare_only:
+        if args.apply_held:
+            require(args.confirm == "REPLACE_EXACT_HELD_DRAFT_ONCE", "approval_missing")
+            result = replace_held_draft_once()
+        elif args.prepare_only:
             result = {"status":"read_only_preflight_pass", "hold_preserved":True,
                       "note_mutation":False, "notion_mutation":False, "model_calls":0}
         else:
@@ -146,6 +235,12 @@ def main() -> None:
         print(json.dumps({"status":"blocked_read_only", "diagnostic_code":str(exc),
                           "hold_preserved":True, "note_mutation":False,
                           "notion_mutation":False, "model_calls":0}))
+        raise SystemExit(2)
+    except Exception:
+        # Suppress URL/title/manuscript disclosures in public Actions traces.
+        print(json.dumps({"status":"blocked_or_failed", "diagnostic_code":"private_runtime_failure",
+                          "hold_preserved":True, "notion_mutation":False,
+                          "model_calls":0}))
         raise SystemExit(2)
 
 if __name__ == "__main__":
