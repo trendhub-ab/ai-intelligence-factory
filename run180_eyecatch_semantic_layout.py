@@ -549,7 +549,7 @@ def install(pipeline_module: Any) -> Any:
 
     def _save_cached_plan(output_path: str, title: str, summary: str, plan: dict[str, Any], article_text: str = "") -> None:
         fingerprint = hashlib.sha256(
-            json.dumps([title, summary], ensure_ascii=False).encode("utf-8")
+            json.dumps([title, summary, article_text[:6000]], ensure_ascii=False).encode("utf-8")
         ).hexdigest()
         target = _copy_cache_path(output_path)
         os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
