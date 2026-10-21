@@ -74,6 +74,22 @@ def rich_text(value: list[dict] | None) -> str:
                    for v in value or [])
 
 
+def _verified_stage_manuscript(raw: str) -> str:
+    """Accept source bytes or exactly one Notion-trimmed terminal LF.
+
+    Preserve SHA-256 for the original user-approved Markdown, including
+    its final newline. Any other whitespace/content difference fails closed.
+    """
+    require(isinstance(raw, str), "Staged manuscript must be Unicode text")
+    if hashlib.sha256(raw.encode("utf-8")).hexdigest() == ARTICLE_SHA256:
+        return raw
+    if not raw.endswith("\n"):
+        restored = raw + "\n"
+        if hashlib.sha256(restored.encode("utf-8")).hexdigest() == ARTICLE_SHA256:
+            return restored
+    raise SwapBlocked("Staged manuscript is not the user-approved exact text")
+
+
 def stage_article() -> tuple[str, str]:
     res = sync._request("POST", "https://api.notion.com/v1/search",
                         json={"query": STAGE_NAME, "page_size": 50})
@@ -85,9 +101,9 @@ def stage_article() -> tuple[str, str]:
     candidate_blocks = [b for b in children(exact[0]["id"]) if b.get("type") == "code"
                         and (b.get("code") or {}).get("language") == "markdown"]
     require(len(candidate_blocks) == 1, "Expected single stage manuscript code block")
-    article = rich_text(candidate_blocks[0]["code"].get("rich_text"))
-    require(hashlib.sha256(article.encode("utf-8")).hexdigest() == ARTICLE_SHA256,
-            "Staged manuscript is not the user-approved exact text")
+    article = _verified_stage_manuscript(
+        rich_text(candidate_blocks[0]["code"].get("rich_text"))
+    )
     title = article.splitlines()[0].removeprefix("# ").strip()
     require(title and article.startswith("# " + title + "\n"), "Invalid approved article H1")
     require("## どんな内容？" in article and "### 元情報" in article,
