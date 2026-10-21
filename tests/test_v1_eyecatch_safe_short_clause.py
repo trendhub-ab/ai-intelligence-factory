@@ -22,3 +22,28 @@ def test_rejects_dangling_clause():
     assert semantic._safe_existing_headline_clause(
         "DeepSeekを禁止するため｜政府が方針を発表"
     ) is None
+
+
+def test_copy_cache_roundtrip_and_invalidation(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    import run180_eyecatch_semantic_layout as semantic
+    title = "米政府がDeepSeekの排除を指示"
+    summary = "行政機関への対応を求めた。"
+    article = "記事本文の確認済み要約"
+    path = str(tmp_path / "image.png")
+    sub = semantic.ee.editorial_subheadline(
+        summary, semantic.ee.editorial_hook_from_title(title, max_chars=48)
+    )
+    plan = semantic._deterministic_complete_title_plan(title, summary)
+    assert plan is not None
+    calls = []
+    monkeypatch.setattr(semantic, "_request_layout_plan",
+                        lambda *args: calls.append(args) or plan)
+    pipeline = SimpleNamespace(logger=None)
+    semantic.install(pipeline)
+    pipeline.generate_note_editorial_eyecatch(title, summary, path, article_text=article)
+    assert (tmp_path / "image.png.copy.json").exists()
+    pipeline.generate_note_editorial_eyecatch(title, summary, path, article_text=article)
+    assert len(calls) == 1
+    pipeline.generate_note_editorial_eyecatch(title, summary, path, article_text=article + "変更")
+    assert len(calls) == 2
