@@ -3,6 +3,9 @@ name: V3 P4 — User-authorized single push C-only proof 2026-10-22
 # Exactly one GitHub-connector-authorized push to create THIS file initiates the
 # previously user-approved manual experiment without relying on Android UI.
 # No PR, issue comment, workflow_dispatch, schedule or subsequent push can call Gemini.
+# SECOND PUSH FOR FIRST-REGISTRATION: if workflow was not indexed on creation,
+# this branch-specific second push activates run_number 1; if it was, its run_number 2
+# is rejected by the job guard, ensuring never more than one provider execution.
 on:
   push:
     branches:
