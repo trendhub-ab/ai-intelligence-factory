@@ -55,7 +55,22 @@ def diagnose_case(stages: Mapping[str, str]) -> dict[str, Any]:
         key: _field(stages.get(stage, ""), label)
         for key, (stage, label) in _FIELDS.items()
     }
+    draft_retention = {key: _surface_retained(anchor, draft) for key, anchor in anchors.items()}
     retention = {key: _surface_retained(anchor, final) for key, anchor in anchors.items()}
+    stage_attribution = {}
+    for key in anchors:
+        before, after = draft_retention[key], retention[key]
+        if before == "not_evaluable" or after == "not_evaluable":
+            stage_attribution[key] = "not_evaluable"
+        elif before == "review_for_possible_loss":
+            stage_attribution[key] = (
+                "possible_loss_during_article_generation"
+                if after == "review_for_possible_loss" else "surface_reintroduced_in_review"
+            )
+        elif after == "review_for_possible_loss":
+            stage_attribution[key] = "possible_loss_during_fact_safe_review"
+        else:
+            stage_attribution[key] = "surface_preserved"
     # Detect a *measurable* review-stage removal without punishing minimal edits.
     draft_has_writer = "私" in draft
     final_has_writer = "私" in final
@@ -77,6 +92,10 @@ def diagnose_case(stages: Mapping[str, str]) -> dict[str, Any]:
     for key, status in retention.items():
         if status == "review_for_possible_loss":
             flags.append(f"{key}_surface_not_retained")
+        if stage_attribution[key] == "possible_loss_during_article_generation":
+            flags.append(f"{key}_possible_loss_in_article_generation")
+        elif stage_attribution[key] == "possible_loss_during_fact_safe_review":
+            flags.append(f"{key}_possible_loss_in_fact_safe_review")
     return {
         "audit_version": _AUDIT_VERSION,
         "scope": "editorial_surface_diagnostic_only",
@@ -85,6 +104,8 @@ def diagnose_case(stages: Mapping[str, str]) -> dict[str, Any]:
         "writer_voice_visible": final_has_writer,
         "question_punctuation_visible": final_has_question,
         "planning_anchor_status": retention,
+        "planning_anchor_in_article_generation": draft_retention,
+        "possible_loss_stage": stage_attribution,
         "review_stage_changed_prose": draft.strip() != final.strip(),
         "review_flags": flags,
         "human_review_required": True,
