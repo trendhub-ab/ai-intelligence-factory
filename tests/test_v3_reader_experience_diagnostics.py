@@ -56,6 +56,25 @@ def test_flattened_review_is_flagged_but_does_not_pretend_to_grade_interest() ->
     assert result["human_review_required"] is True
 
 
+def test_loss_stage_attributes_missing_question_to_article_generation() -> None:
+    stages = _stages()
+    stages["Persona Article Generation"] = (
+        "# AIに忘れさせるには\\n\\n私は技術の仕組みを理解しました。"
+    )
+    stages["Fact-Safe Review"] = stages["Persona Article Generation"]
+    result = diagnose_case(stages)
+    assert result["possible_loss_stage"]["question"] == "possible_loss_during_article_generation"
+    assert "question_possible_loss_in_article_generation" in result["review_flags"]
+    assert "question_possible_loss_in_fact_safe_review" not in result["review_flags"]
+
+
+def test_loss_stage_attributes_fact_review_flattening_only_when_draft_retained() -> None:
+    result = diagnose_case(_stages(flattened=True))
+    assert result["planning_anchor_in_article_generation"]["question"] == "surface_present"
+    assert result["possible_loss_stage"]["question"] == "possible_loss_during_fact_safe_review"
+    assert "question_possible_loss_in_fact_safe_review" in result["review_flags"]
+
+
 def test_generic_v1_intro_is_a_review_flag_not_a_hard_gate() -> None:
     stages = _stages()
     stages["Fact-Safe Review"] = (
