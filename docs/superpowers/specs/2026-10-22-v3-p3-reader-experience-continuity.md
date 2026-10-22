@@ -3,7 +3,7 @@ Date: 2026-10-22
 Status: EXPERIMENTAL / DRAFT / NO-GO. No publication or Production integration.
 
 ## Why
-The owner found the human-authored, V3-logic-inspired Forget-Only rewrite “遥かに面白く読めます” compared with the V1 note article, but that rewrite was **not** the result of executing the V3 provider workflow. The original Elastic Transformer benchmark remains the accepted quality reference; this Forget-Only example is an additional **reader-positive qualitative comparator**, not a substitute or a claim of provider-model improvement.
+The owner found the assistant-written, V3-logic-inspired Forget-Only rewrite (authored directly in chat, not emitted by the V3 runtime) “遥かに面白く読めます” compared with the V1 note article, but that rewrite was **not** the result of executing the V3 provider workflow. The original Elastic Transformer benchmark remains the accepted quality reference; this Forget-Only example is an additional **reader-positive qualitative comparator**, not a substitute or a claim of provider-model improvement.
 
 The V3 architecture already asks for five stages and preservation of Writer-owned Reaction, Question, Evidence-caused Cognitive Shift, and Discovery. However, structured pipeline checks can pass with a flat final article. P3 therefore makes *loss of these signals* observable rather than adding yet another long prompt or another provider call.
 
