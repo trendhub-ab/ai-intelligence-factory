@@ -5,7 +5,6 @@ entailment, or permission to publish. Shared Phase 0 A/B baselines are immutable
 """
 from __future__ import annotations
 
-from difflib import SequenceMatcher
 import re
 import unicodedata
 from typing import Any, Mapping
@@ -27,7 +26,7 @@ def _field(text: str, field: str) -> str:
 
 def _normalized(text: str) -> str:
     text = unicodedata.normalize("NFKC", str(text or ""))
-    return "".join(c.lower() for c in text if c.isalnum() or c in "ぁ-んァ-ン一-龥")
+    return "".join(c.lower() for c in text if c.isalnum())
 
 
 def _surface_retained(anchor: str, article: str) -> str:
