@@ -37,6 +37,31 @@ def _stages(*, flattened: bool = False) -> dict[str, str]:
     }
 
 
+def test_p3_discovery_is_in_both_live_c_prompts_without_touching_frozen_b() -> None:
+    from experiments.editorial_engine_v3_phase0.cases import READY_CASES
+    from experiments.editorial_engine_v3_phase0.prompts import (
+        READER_DISCOVERY_SCENE,
+        build_editorial_bundle_prompt,
+        build_editorial_stage_prompts,
+        build_persona_only_prompt,
+    )
+    case = READY_CASES[1].case
+    staged = build_editorial_stage_prompts(case)["Persona Article Generation"]
+    bundled = build_editorial_bundle_prompt(case)
+    frozen_b = build_persona_only_prompt(case)
+    for text in (staged, bundled):
+        assert READER_DISCOVERY_SCENE in text
+        assert "読者自身がEvidenceの仕組み" in text
+        assert "架空の利用体験" in text
+        assert "固定文字数" in text
+    assert READER_DISCOVERY_SCENE not in frozen_b
+
+
+def test_p3_diagnostic_module_is_classified_experiment_infrastructure() -> None:
+    import member_customer_surface_contract as contract
+    assert "experiments/editorial_engine_v3_phase0/reader_experience_audit.py" in contract.NON_MEMBER_MODULES
+
+
 def test_healthy_article_retains_writer_question_and_evidence_change() -> None:
     result = diagnose_case(_stages())
     assert result["writer_voice_visible"] is True
