@@ -50,3 +50,22 @@ After 17:00 JST and explicit separately authorized budgeted provider execution, 
 5. Is it engaging enough to publish, judged blind by the owner against the existing Elastic reference and the additional Forget-Only comparator?
 
 Any C that is boring remains NO-GO even if all diagnostics and structural tests pass.
+
+
+## Historical V3 evidence — recovered after first P3 CI run
+
+Read-only inspected existing validated GitHub Actions artifact `editorial-engine-v3-phase0-checkpoint` from Run `39239644474` (no Gemini request). It records three completed C-only cases on `gemini-3.8-flash`:
+
+| Historical case | Persona Article length (Unicode code points) | Fact-Safe length | Exact body equality |
+| --- | ---: | ---: | --- |
+| FFT criticism | 1,055 | 1,055 | Yes |
+| Elastic Transformer | 898 | 898 | Yes |
+| Claude × Google Workspace | 914 | 914 | Yes |
+
+All three final bodies were already identical to Article Generation before Review. Thus, **Review did not create the flatness in these three actual samples.** The bottleneck is the Writer's move from planning artifacts to a reader-facing article, not merely the last safe-review stage. The previously recorded owner evaluation was C=27/60 versus A=46/60 and B=37/60.
+
+An independent conservative surface-overlap replay of the historical stage texts found the Elastic question, evidence pivot, after-view, and discovery to be word-level **surface_present**, yet owner-judged editorial quality remained unsatisfactory. This falsifies using mere anchor phrase retention as a proxy for interestingness. In contrast, FFT lacked lexical overlap with parts of after-view/discovery and Claude lacked parts of evidence-pivot/after-view; these are **possible-loss signals only**, not proof that the ideas are semantically absent.
+
+Based on that observation P3 adds a short `READER_DISCOVERY_SCENE` directive **only to experimental C**, not to frozen A/B: make the Evidence-supported concrete contrast or mechanism comprehensible *before* reporting the conclusion, without invented illustrations, mechanical word quotas, or a new provider call.
+
+This is an experiment, not quality proof. The next live C-only run uses a changed prompt fingerprint and therefore cannot reuse old C outputs as current proof. Three locked cases, provider budget, and manual human GO remain unchanged.
