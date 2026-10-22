@@ -15,6 +15,7 @@ from .cases import READY_CASES, ReplayCase
 from .contract import EDITORIAL_STAGES, validate_article_layout, validate_reader_facing_article
 from .prompts import build_editorial_bundle_prompt, build_persona_only_prompt
 from .runner import build_blind_package, build_current_writer_snapshot
+from .reader_experience_audit import audit_state
 
 DEFAULT_MODEL_CANDIDATES = ("gemini-3.8-flash", "gemini-3.6-flash")
 B_CALLS_PER_CASE = 1
@@ -282,6 +283,9 @@ def _write_evaluation_artifacts(output_dir: Path, state: dict[str, Any]) -> None
         for candidate in package["candidates"]:
             sections.extend(["", f"### Candidate {candidate['label']}", "", candidate["article"]])
     (output_dir / "blind_evaluation.md").write_text("\n".join(sections).strip() + "\n", encoding="utf-8")
+    (output_dir / "c_reader_experience_diagnostics.json").write_text(
+        json.dumps(audit_state(state), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
 
 
 def _validate_checkpoint(checkpoint: dict[str, Any] | None) -> None:

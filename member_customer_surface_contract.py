@@ -148,6 +148,7 @@ NON_MEMBER_MODULES = frozenset((
     "experiments/editorial_engine_v3_phase0/contract.py",
     "experiments/editorial_engine_v3_phase0/live.py",
     "experiments/editorial_engine_v3_phase0/prompts.py",
+    "experiments/editorial_engine_v3_phase0/reader_experience_audit.py",  # P3 experimental, no customer surface
     "experiments/editorial_engine_v3_phase0/proof.py",
     "experiments/editorial_engine_v3_phase0/runner.py",
     "local_skills/__init__.py",
