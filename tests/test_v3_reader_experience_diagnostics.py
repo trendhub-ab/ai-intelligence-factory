@@ -84,7 +84,7 @@ def test_flattened_review_is_flagged_but_does_not_pretend_to_grade_interest() ->
 def test_loss_stage_attributes_missing_question_to_article_generation() -> None:
     stages = _stages()
     stages["Persona Article Generation"] = (
-        "# AIに忘れさせるには\\n\\n私は技術の仕組みを理解しました。"
+        "# AIに忘れさせるには\n\n私は技術の仕組みを理解しました。"
     )
     stages["Fact-Safe Review"] = stages["Persona Article Generation"]
     result = diagnose_case(stages)
