@@ -43,6 +43,20 @@ _OVERFORMAL_REPORT_PHRASES = (
 )
 
 
+# Potential rather than proven provenance issues. Lexical cues cannot prove
+# whether an autobiographical memory or industry forecast is false.
+_POSSIBLE_PAST_BELIEF = re.compile(
+    r"(?:以前は|以前の私は|かつて|もともと)(?:[^。！？\n]{0,36})(?:思っていた|信じていた|考えていた)"
+)
+_POSSIBLE_PROMISES = (
+    "これからのスタンダードになる",
+    "業界標準になる",
+    "試さない手はありません",
+    "必ず変わる",
+    "予感がしています",
+)
+
+
 _AUDIT_VERSION = 1
 
 
@@ -114,7 +128,13 @@ def diagnose_case(stages: Mapping[str, str]) -> dict[str, Any]:
     overformal = [
         phrase for phrase in _OVERFORMAL_REPORT_PHRASES if phrase in final
     ]
+    possible_history = [m.group(0) for m in _POSSIBLE_PAST_BELIEF.finditer(final)]
+    possible_promises = [phrase for phrase in _POSSIBLE_PROMISES if phrase in final]
     flags = []
+    if possible_history:
+        flags.append("possible_fabricated_writer_history")
+    if possible_promises:
+        flags.append("possible_unsupported_promise")
     if formulaic:
         flags.append("formulaic_writer_narration")
     if overformal:
@@ -147,6 +167,8 @@ def diagnose_case(stages: Mapping[str, str]) -> dict[str, Any]:
         "review_stage_changed_prose": draft.strip() != final.strip(),
         "formulaic_writer_phrases": formulaic,
         "overformal_report_phrases": overformal,
+        "possible_writer_history_phrases": possible_history,
+        "possible_promise_phrases": possible_promises,
         "review_flags": flags,
         "human_review_required": True,
     }

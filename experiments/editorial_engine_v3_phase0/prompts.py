@@ -44,6 +44,26 @@ CONVERSATIONAL_VOICE_POLICY = """【P5 会話の温度とテンポ】
 この温度感は出力スタイルだけの指示であり、Evidence / Facts / Sources の事実境界とFact-Safe Reviewの監査基準、言い切れる確実性や数値の強さは絶対に変えない。"""
 
 
+
+FACT_SAFE_FULL_MANUSCRIPT_CONTRACT = """【Fact-Safe Review 最終稿の形式契約／Preview互換】
+Fact-Safe Reviewの成果物は「監査コメント」「差分メモ」「OK」「修正不要」「要約」ではなく、読者に見せる日本語記事の全文そのもの。
+最初の一文字からMarkdown H1の『# 記事タイトル』とし、その次は実際の改行と段落で本文を続ける。タイトル行だけ、空の記事、記事の前にある解説・判定・フェンスは禁止。
+前工程のPersona Article Generationに具体的なFact誤りがなければ、#タイトルから末尾まで完全に同じ全文を返す。誤りがあるときも、原稿全文を保持して根拠のない箇所だけ局所修正し、必ず『# タイトル』で始まる全文を返す。
+JSONの「Fact-Safe Review」キーの値には、この完成原稿だけを文字列として入れる。文字列に監査結果の説明や『変更点』の箇条書きを入れず、別のJSONオブジェクト・配列にも変えない。
+改行はJSON文字列ではエスケープしてよいが、JSONを読み戻すと実際の改行になっていること。記事の先頭にMarkdownフェンスや空白以外の制御文を付けない。
+この指示はレイアウト出力だけを明確にする。Evidence / Facts / Sourcesにない事実を足さず、Fact監査、断定の強さ、一人称と読みやすさの保持は一切緩めない。"""
+
+
+
+P5_FINAL_EDITORIAL_POLISH = """【P5 最終調整：読者への引力と事実の境界】
+まず最初の2〜3文で、読者がつい続きを読みたくなる「テーマ固有の違和感・対比・仕組み」を提示する。技術名、業界一般論、読者への説教、まとめの先出しから始めない。素材が地味なら地味なまま面白い点を見つけ、無理な驚きや連続した疑問文を強制しない。
+正確な数字・条件・仕組みを丁寧に解く一方、軽い会話のリズムを保つ。「重要な示唆」「判断しました」「〜すべきだ」と堅い結論に着地する代わりに、具体的な疑問や小さな発見から次に確かめたい一点につなぐ。同じ感情の型や決まり文句を繰り返さず、男女に偏らない中性的な文章にする。
+Writerが実際に信じていた「以前の私は」「もともと私は」など架空の過去を創作しない。Before Viewは読者が抱きうる仮説であって、作者の自伝ではない。Writerの反応は今提示されたEvidenceに触れている場面だけに自然に残す。
+入力が個別の技術報告なのに「いつも」「普通は」「一般的だった」「みんな」「定着しないケースがある」など業界全体への根拠のない普遍化をしない。「これから業界標準になる」「必ず変わる」などの大きな予言で結ばない。情景を補うための架空の作業履歴、導入失敗談、利用者経験を作らない。
+特定プラン名・価格・「追加コストなし」・機能提供範囲や実装環境を、Evidence / Facts / Sources に明示されていないのに推測で補わない。数値、制約、比較対象、因果の強さは入力どおり。誤字の自動修復で事実を変えない。
+Fact-Safe Reviewは、冒頭・例え・中盤・締めまで、過剰な断定や根拠のない一般論、架空の過去、異言語文字の紛れ込みを一文ずつ確認する。誤りがある場合は最小修正し、Markdown H1から始まる完成原稿全文を返す。異言語が出典の正当な引用に含まれる場合は引用を勝手に消さない。"""
+
+
 def _evidence_block(case: Phase0Case) -> str:
     evidence = "\n".join(f"- {row}" for row in case.evidence)
     facts = "\n".join(f"- {row}" for row in case.facts)
@@ -169,10 +189,16 @@ Notion DBの判断区分・運用ラベル（TRY / WATCH / PASS / AVOIDなど）
 
 {CONVERSATIONAL_VOICE_POLICY}
 
+{P5_FINAL_EDITORIAL_POLISH}
+
 完成稿のみを出力する。"""
     review = f"""{boundary}
 
 【Fact-Safe Review】
+{FACT_SAFE_FULL_MANUSCRIPT_CONTRACT}
+
+{P5_FINAL_EDITORIAL_POLISH}
+
 直前のPersona Article Generationを監査する。unchanged判定を先に置かない。まず導入・見出し・背景説明・本文・判断・Actionまで、全稿の factual assertion をEvidence / Facts / Sourcesと照合する。
 導入・背景説明も監査対象であり、読みやすくするための前提説明だからという理由でFact境界を免除しない。
 全文照合の結果、具体的な欠陥がないと確認できた場合だけ本文を変更しない。欠陥がある場合は、最小の局所修正を行い、最終完成稿だけを返す。
@@ -266,6 +292,8 @@ Future Imagination または人への含意はEvidenceで支えられる場合�
 記事は意味のある『# タイトル』で始め、実際の改行と段落で読みやすく組み立てる。JSONとしてエスケープした改行は復元後に実改行とし、見える文字の『\\n』を段落区切りの代わりに置かない。見出しだけで本文がない稿を返さない。
 
 5. Fact-Safe Review
+{FACT_SAFE_FULL_MANUSCRIPT_CONTRACT}
+
 unchanged判定を先に置かない。まず導入・見出し・背景説明・本文・判断・Actionまで、全稿の factual assertion をEvidence / Facts / Sourcesと照合する。導入・背景説明も監査対象であり、前提説明だからという理由で免除しない。
 全文照合後に具体的欠陥がないと確認できた場合だけ本文を変更しない。欠陥があれば、最小の局所修正で削除・弱化・問いへの変更を行う。
 - true-but-unstated: 真に見えても入力にない背景知識
@@ -300,6 +328,8 @@ Notion DBの判断区分・運用ラベル（TRY / WATCH / PASS / AVOIDなど）
 
 {CONVERSATIONAL_VOICE_POLICY}
 
+{P5_FINAL_EDITORIAL_POLISH}
+
 【全工程共通】
 外部Factを追加しない。数字・固有名詞・性能・比較・条件・提供範囲・背景説明・因果説明はEvidence / Facts / Sourcesの範囲だけを書く。
 
@@ -310,5 +340,5 @@ Markdownフェンスや前置きは付けず、次の5キーだけを持つ有�
   "Editorial Discovery": "Surface / Interesting Tension / Evidence Pivot / Deeper Insight / Editorial Thesis / Narrative Pathを含む成果物",
   "Cognitive Shift": "Before View / Evidence Encounter / After View / What I Now Find Interestingを含む成果物",
   "Persona Article Generation": "writer-owned anchor / Writer Question / before→after / What I Now Find Interestingを自然に残し、Narrative Path固有の構成で書いた初稿全文",
-  "Fact-Safe Review": "全稿のFact境界を照合し、必要なら入力外の背景説明と強すぎる断定だけを最小修正した最終記事全文。修正不要と確認できた場合だけ初稿をそのまま返す"
+  "Fact-Safe Review": "必ずMarkdown H1『# タイトル』で始まる最終記事の全文。監査コメントや差分説明ではない。Fact誤りがなければPersona Article Generationの初稿全文をそのまま収録する。修正時も記事全文を返す"
 }}"""
