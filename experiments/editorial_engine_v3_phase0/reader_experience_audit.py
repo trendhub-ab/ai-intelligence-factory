@@ -78,7 +78,7 @@ _CONSULTING_STYLE_SECTION = (
 # A broad signal catches other possible accidental English fragments without
 # blocking legitimate technical vocabulary (unlike the narrow publication guard).
 _SUSPICIOUS_LATIN_AFTER_JAPANESE = re.compile(
-    r"(?<=[\u3040-\u30FF\u3400-\u9FFF])\\s+[a-z]{3,20}(?=[。！？])"
+    r"(?<=[\u3040-\u30FF\u3400-\u9FFF])\s+[a-z]{3,20}(?=[。！？])"
 )
 
 
