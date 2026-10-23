@@ -31,6 +31,7 @@ _FORMULAIC_WRITER_PHRASES = (
     # Real 2026-10-23 P5 C drafts: surface cues for human review, not bans.
     "皆さんはどう感じますか",
     "私がここで一番気になったのは",
+    "私が特に気になったのは",
     "でも、ちょっと待ってください",
 )
 
