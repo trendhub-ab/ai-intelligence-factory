@@ -85,3 +85,14 @@ def test_p5_concrete_writer_question_does_not_trigger_formulaic_flag() -> None:
     result = diagnose_case(_minimal_stage(article))
     assert "formulaic_writer_narration" not in result["review_flags"]
     assert result["formulaic_writer_phrases"] == []
+
+
+def test_p5_planning_does_not_invent_old_writer_beliefs_or_performative_high_emotion() -> None:
+    case = READY_CASES[1].case
+    stages = build_editorial_stage_prompts(case)
+    bundle = build_editorial_bundle_prompt(case)
+    assert "HIGHを既定にしない" in stages["Writer Reaction"]
+    assert "HIGHを既定にせず" in bundle
+    assert "架空の自伝" in stages["Cognitive Shift"]
+    assert "架空のWriterの過去の信念ではない" in bundle
+    assert "Evidenceを読むと直感・仮説" in stages["Cognitive Shift"]
