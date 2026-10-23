@@ -78,7 +78,7 @@ def build_editorial_stage_prompts(case: Phase0Case) -> dict[str, str]:
 - Curiosity: 何をもっと知りたくなったか
 - Question: 何がまだ分からず、何を確かめたいか
 - Future Imagination: これが普通になった時に、どんな未来の変化をまず想像するか
-- Emotion Intensity: LOW | MEDIUM | HIGH のいずれか。Evidenceの強さとテーマに合わせる
+- Emotion Intensity: LOW | MEDIUM | HIGH のいずれか。HIGHを既定にしない。Evidenceが明確な反転や意外性を支えるときだけ強くする
 
 GenericなAI賛美は禁止。ReactionはEvidenceに反応して生まれるものであり、Evidenceの代わりではない。
 外部Factは追加しない。"""
@@ -102,9 +102,9 @@ Dramaを捏造しない。Evidenceが最初の期待を確認する場合は『�
 【Cognitive Shift】
 {C_EDITORIAL_PERSONA}
 
-Writer ReactionとEditorial Discoveryを受けて、Writerの理解がEvidenceによってどう動いたかを明示する。
+Writer ReactionとEditorial Discoveryを受けて、Evidenceを読むと直感・仮説のどこが修正されるかを明示する。Before Viewを『以前の私は信じていた』という架空の自伝に変換しない。
 必須項目:
-- Before View: Evidenceを深く読む前の見方
+- Before View: Evidenceを深く読む前に生じうる読者の直感・仮説。過去の自分が実際に信じていたという履歴ではない
 - Evidence Encounter: 何に触れて理解が動いたか
 - After View: Evidence後の見方
 - What I Now Find Interesting: 今、いちばん面白いと感じる点
@@ -212,7 +212,7 @@ def build_editorial_bundle_prompt(case: Phase0Case) -> str:
 - Question
 - Future Imagination
 - Emotion Intensity: LOW | MEDIUM | HIGH
-Evidence固有の反応にする。GenericなAI賛美は禁止。本文はまだ書かない。
+Evidence固有の反応にする。Emotion IntensityはHIGHを既定にせず、驚きの程度をEvidenceに合わせる。GenericなAI賛美は禁止。本文はまだ書かない。
 
 2. Editorial Discovery
 - Surface
@@ -225,7 +225,7 @@ Writer ReactionとEvidenceの間から、記事の本当の核心を発見する
 構成順は固定しない。同じ骨格を別テーマへ使い回さない。導入・見出し・段落順を、Reaction / Question / Shift のラベル順へ機械的に揃えない。
 
 3. Cognitive Shift
-- Before View
+- Before View: 読者が抱きうる仮説・直感。架空のWriterの過去の信念ではない
 - Evidence Encounter
 - After View
 - What I Now Find Interesting
