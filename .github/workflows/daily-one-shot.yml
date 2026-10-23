@@ -31,7 +31,7 @@ on:
           - local_skills_canary_validation
           - local_skills_production_validation
       editorial_style:
-        description: 'Article tone: classic = current AIIF; human_narrative = narrative-forward human tone; duo_narrative = フェルン×クレハ'
+        description: 'Article tone: classic (default); human_narrative; duo_narrative; v3_p5 (LocalSkills + frozen P5 voice)'
         required: true
         default: 'classic'
         type: choice
@@ -39,6 +39,7 @@ on:
           - classic
           - human_narrative
           - duo_narrative
+          - v3_p5
       excluded_models:
         description: 'Optional run-scoped Gemini exclusion: empty or one allowlisted model'
         required: false
@@ -101,7 +102,7 @@ jobs:
             *) echo "::error::Unknown ONE-SHOT mode"; exit 1 ;;
           esac
           case "${{ inputs.editorial_style }}" in
-            classic|human_narrative|duo_narrative) ;;
+            classic|human_narrative|duo_narrative|v3_p5) ;;
             *) echo "::error::Unknown editorial style"; exit 1 ;;
           esac
           case "${{ inputs.excluded_models }}" in

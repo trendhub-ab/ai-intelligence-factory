@@ -1,10 +1,10 @@
 # AI Intelligence Factory — 現行Production仕様
 
-仕様最終変更日: **2026-10-22**
-Production最終照合日: **2026-10-22**
+仕様最終変更日: **2026-10-24**
+Production最終照合日: **2026-10-24**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`f4cbf2f0562a697abbfce8e369a571729a9baf920e0f314e74e088e15c75d165`**
+Production Contract Fingerprint: **`4df548919caa02c4d3c041f872c92ae66e6e08bb77d82de0f030fe992053d3a5`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -157,8 +157,9 @@ ONE-SHOTが受理するStyle:
 - `classic`
 - `human_narrative`
 - `duo_narrative`
+- `v3_p5`（手動選択時のみ、LocalSkills + 凍結P5 Writerの表現方針）
 
-未知StyleはFail-Closed。`duo_narrative` はフェルン／クレハを使う任意Styleであり、通常のFull Dailyでは自動選択しない。
+未知StyleはFail-Closed。`duo_narrative` はフェルン／クレハを使う任意Styleであり、通常のFull Dailyでは自動選択しない。ONE-SHOTのdefaultは従来どおり `classic` で、`v3_p5` は自動選択されない。
 
 ### 2.5 Production Entry Point
 
@@ -401,6 +402,13 @@ Gemini Writer call前にLocal Skillsが次を固定する。
 - Evidence不足を物語性で補わない
 
 A+導入のために追加Provider callを要求しない。
+
+### 6.2a V3 P5 Writer opt-in integration（2026-10-24 開発候補）
+
+- `local_skills/v3_p5_writer.py` はP5 PR #852（commit `95016a65701979063f56130bf181bca831661f5d`）の6つの編集方針を逐語で凍結保存。P5.1 / P5.2の劣化版は採用しない。
+- `AIIF_EDITORIAL_STYLE=v3_p5` のときだけ、GeminiのARTICLE表現方針に適用する。A+ LocalSkillsのPre-Write Contract、MANAGEMENT DATA、Decision、Evidence / Fact / Reader / Publication Gateは既存のまま維持する。Provider call数も増やさない。
+- これは **Productionの既存一回呼び出しに対するP5文体アダプター** であり、隔離実験V3 Cの「5段階JSON生成」をそのまま実装するものではない。単体の83点は編集者による主観評価であり、統合後の品質点を保証しない。
+- レガシーStyleを保持し、P5検証未完了時は `classic` へ即時切戻し可能。Ready・公開・note配送・会員DBの自動変更は禁止。まず専用検証モードで実記事に対するブラインド比較を実施する。正式main統合には明示のMERGE GOを必要とする。
 
 ### 6.3 Provider-free fallback
 
