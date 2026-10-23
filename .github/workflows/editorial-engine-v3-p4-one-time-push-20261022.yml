@@ -4,8 +4,8 @@ name: V3 P4 — User-authorized single push C-only proof 2026-10-22
 # previously user-approved manual experiment without relying on Android UI.
 # No PR, issue comment, workflow_dispatch, schedule or subsequent push can call Gemini.
 # SECOND PUSH FOR FIRST-REGISTRATION: if workflow was not indexed on creation,
-# GitHub workflow runs #1 and #2 failed YAML parsing before creating jobs, confirmed via jobs API.
-# This corrected YAML permits only run_number 3, attempt 1; all subsequent runs skip.
+# Runs #1/#2 failed YAML parsing; #3 reached Gemini but got 503 with zero generated C.
+# This explicitly authorized retry permits ONLY run number 4, first attempt; all others skip.
 on:
   push:
     branches:
@@ -21,7 +21,7 @@ jobs:
   once:
     name: Immutable P3 C-only — 3 canonical cases
     if: >-
-      ${{ github.event_name == 'push' && github.run_number == 3 && github.run_attempt == 1 && github.ref == 'refs/heads/feature/editorial-engine-v3-p4-pinned-live-proof' && github.repository == 'trendhub-ab/ai-intelligence-factory' && github.event.head_commit.message == 'fire(v3): user-authorized one-time P4 C-only proof 2026-10-22' }}
+      ${{ github.event_name == 'push' && github.run_number == 4 && github.run_attempt == 1 && github.ref == 'refs/heads/feature/editorial-engine-v3-p4-pinned-live-proof' && github.repository == 'trendhub-ab/ai-intelligence-factory' && github.event.head_commit.message == 'fire(v3): user-authorized P4 C-only retry 2026-10-23' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     concurrency:
@@ -116,7 +116,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: editorial-engine-v3-p4-user-authorized-once-20261022
+          name: editorial-engine-v3-p4-user-authorized-retry-20261023
           path: phase0_artifacts
           retention-days: 14
           if-no-files-found: warn
