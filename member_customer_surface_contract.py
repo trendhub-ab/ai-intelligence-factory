@@ -155,6 +155,7 @@ NON_MEMBER_MODULES = frozenset((
     "local_skills/production_canary.py",
     "local_skills/publication_canonicalizer.py",
     "local_skills/writer.py",
+    "local_skills/v3_p5_writer.py",  # Frozen P5 editorial voice only; no member/customer access
     "tools/capture_note_session.py",
     "tools/editorial_ab.py",
     "x_discovery/__init__.py",
