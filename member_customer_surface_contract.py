@@ -147,6 +147,7 @@ NON_MEMBER_MODULES = frozenset((
     "experiments/editorial_engine_v3_phase0/cases.py",
     "experiments/editorial_engine_v3_phase0/contract.py",
     "experiments/editorial_engine_v3_phase0/live.py",
+    "experiments/editorial_engine_v3_phase0/one_shot_fallback.py",  # Disposable P5.1 C-only provider proof, not a member/customer surface
     "experiments/editorial_engine_v3_phase0/prompts.py",
     "experiments/editorial_engine_v3_phase0/reader_experience_audit.py",  # P3 experimental, no customer surface
     "experiments/editorial_engine_v3_phase0/proof.py",
