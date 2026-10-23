@@ -57,6 +57,31 @@ _POSSIBLE_PROMISES = (
 )
 
 
+# These are surface cues only. A matching phrase may be legitimate if
+# supported by the underlying source; never infer a factual failure from one.
+_POSSIBLE_LIVED_EXPERIENCE = (
+    "自分に気づくことがあります",
+    "私も使ってみました",
+    "以前から使っていました",
+)
+_POSSIBLE_UNSUPPORTED_GENERALIZATION = (
+    "いつも頭を悩ませる",
+    "いつも悩む",
+    "一般的でした",
+    "当たり前のように",
+    "デジタル技術の背骨",
+)
+_CONSULTING_STYLE_SECTION = (
+    "今、私たちが取るべきアクション",
+    "私たちが取るべきアクション",
+)
+# A broad signal catches other possible accidental English fragments without
+# blocking legitimate technical vocabulary (unlike the narrow publication guard).
+_SUSPICIOUS_LATIN_AFTER_JAPANESE = re.compile(
+    r"(?<=[\u3040-\u30FF\u3400-\u9FFF])\\s+[a-z]{3,20}(?=[。！？])"
+)
+
+
 _AUDIT_VERSION = 1
 
 
@@ -130,7 +155,19 @@ def diagnose_case(stages: Mapping[str, str]) -> dict[str, Any]:
     ]
     possible_history = [m.group(0) for m in _POSSIBLE_PAST_BELIEF.finditer(final)]
     possible_promises = [phrase for phrase in _POSSIBLE_PROMISES if phrase in final]
+    lived = [phrase for phrase in _POSSIBLE_LIVED_EXPERIENCE if phrase in final]
+    generalizations = [phrase for phrase in _POSSIBLE_UNSUPPORTED_GENERALIZATION if phrase in final]
+    action_headings = [phrase for phrase in _CONSULTING_STYLE_SECTION if phrase in final]
+    stray_words = [match.group(0).strip() for match in _SUSPICIOUS_LATIN_AFTER_JAPANESE.finditer(final)]
     flags = []
+    if lived:
+        flags.append("possible_fabricated_lived_experience")
+    if generalizations:
+        flags.append("possible_unsupported_generalization")
+    if action_headings:
+        flags.append("consulting_style_action_heading")
+    if stray_words:
+        flags.append("suspicious_stray_english")
     if possible_history:
         flags.append("possible_fabricated_writer_history")
     if possible_promises:
@@ -169,6 +206,10 @@ def diagnose_case(stages: Mapping[str, str]) -> dict[str, Any]:
         "overformal_report_phrases": overformal,
         "possible_writer_history_phrases": possible_history,
         "possible_promise_phrases": possible_promises,
+        "possible_lived_experience_phrases": lived,
+        "possible_generalization_phrases": generalizations,
+        "consulting_action_phrases": action_headings,
+        "suspicious_stray_english_phrases": stray_words,
         "review_flags": flags,
         "human_review_required": True,
     }
