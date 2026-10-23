@@ -5,8 +5,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "editorial-engine-v3-manual-c-only.yml"
-V3_PIN = "c497c8080a4a1a601bf47603f30207e0e87a90c3"
-BASELINE_RUN = "39020858078"
+V3_PIN = "03b3c237442c4c2b335440d363796c0def175c20"
+BASELINE_RUN = "39239644474"
 
 
 def _workflow() -> str:
@@ -20,10 +20,12 @@ def test_v3_dispatch_requires_exact_confirmation_and_one_attempt() -> None:
     assert "workflow_dispatch:" in events
     assert "confirm:" in events
     assert "required: true" in events
-    assert "RUN_V3_C_ONLY" in events
+    assert "RUN_V3_P4_C_ONLY" in events
     assert "github.event_name == 'workflow_dispatch'" in text
-    assert "inputs.confirm == 'RUN_V3_C_ONLY'" in text
+    assert "inputs.confirm == 'RUN_V3_P4_C_ONLY'" in text
     assert "github.run_attempt == 1" in text
+    assert "github.ref == 'refs/heads/feature/editorial-engine-v3-p4-pinned-live-proof'" in text
+    assert "github.actor == 'trendhub-ab'" in text
     for automatic_event in (
         "push:", "pull_request:", "schedule:", "workflow_run:",
         "repository_dispatch:", "issue_comment:", "pull_request_target:",
@@ -41,6 +43,8 @@ def test_v3_dispatch_uses_only_immutable_reviewed_code_and_checkpoint() -> None:
     assert "persist-credentials: false" in text
     assert "ref: feature/editorial-engine-v3-phase0" not in text
     assert "ref: main" not in text
+    assert "assert data['selected_model'] == 'gemini-3.8-flash'" in text
+    assert "assert len(data['cases']) == 3" in text
 
 
 def test_v3_dispatch_is_single_model_and_c_only() -> None:
@@ -54,6 +58,8 @@ def test_v3_dispatch_is_single_model_and_c_only() -> None:
     assert "model_candidates:" not in text
     assert "regenerate_c_only:" not in text
     assert "python -m experiments.editorial_engine_v3_phase0.live" in text
+    assert "AIIF_PHASE0_MODELS: 'gemini-3.8-flash'" in text
+    assert "READER_DISCOVERY_SCENE" in text
 
 
 def test_v3_dispatch_enforces_jst_time_readonly_budget_and_no_prod_secrets() -> None:
@@ -81,11 +87,14 @@ def test_v3_dispatch_runs_contract_tests_and_structural_proof() -> None:
         "tests/test_editorial_engine_v3_phase0_live.py",
         "tests/test_editorial_engine_v3_phase0_quality_contract.py",
         "tests/test_editorial_engine_v3_phase0_proof.py",
+        "tests/test_v3_reader_experience_diagnostics.py",
     ):
         assert name in text
     assert "proof snapshot-baseline --output-dir phase0_artifacts" in text
     assert "proof verify --output-dir phase0_artifacts" in text
     assert "if: ${{ always() }}" in text
     assert "uses: actions/upload-artifact@v7" in text
-    assert "retention-days: 7" in text
+    assert "retention-days: 14" in text
     assert "if-no-files-found: warn" in text
+    assert "c_reader_experience_diagnostics.json" in text
+    assert "proof_verdict.json" in text
