@@ -77,7 +77,7 @@ def test_exact_supplied_source_quote_does_not_trigger_filler_rejection() -> None
 
 def test_technical_english_and_real_code_not_blanket_blocked() -> None:
     validate_reader_facing_article("# 計算\n\nPythonで benchmark を実行する。")
-    validate_reader_facing_article("# 関数\n\n\`echo hello\` というコマンドを試す。")
+    validate_reader_facing_article("# 関数\n\n`echo hello` というコマンドを試す。")
     validate_reader_facing_article("# 外国語\n\n英語の用例では hello と書く。")
 
 
