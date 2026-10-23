@@ -31,6 +31,18 @@ _FORMULAIC_WRITER_PHRASES = (
 )
 
 
+# Literal signs of business-report wording in real P4 drafts. Merely a human
+# review aid: a technical article can have a justified formal passage.
+_OVERFORMAL_REPORT_PHRASES = (
+    "非常に重要な教訓",
+    "ことが求められます",
+    "重要な示唆を与え",
+    "価値は十分にあります",
+    "検証を進めてみるのがよさそうです",
+    "継続して利用することが現実的です",
+)
+
+
 _AUDIT_VERSION = 1
 
 
@@ -99,9 +111,14 @@ def diagnose_case(stages: Mapping[str, str]) -> dict[str, Any]:
     formulaic = [
         phrase for phrase in _FORMULAIC_WRITER_PHRASES if phrase in final
     ]
+    overformal = [
+        phrase for phrase in _OVERFORMAL_REPORT_PHRASES if phrase in final
+    ]
     flags = []
     if formulaic:
         flags.append("formulaic_writer_narration")
+    if overformal:
+        flags.append("overformal_report_tone")
     if draft_has_writer and not final_has_writer:
         flags.append("first_person_removed_in_fact_review")
     if not final_has_writer:
@@ -129,6 +146,7 @@ def diagnose_case(stages: Mapping[str, str]) -> dict[str, Any]:
         "possible_loss_stage": stage_attribution,
         "review_stage_changed_prose": draft.strip() != final.strip(),
         "formulaic_writer_phrases": formulaic,
+        "overformal_report_phrases": overformal,
         "review_flags": flags,
         "human_review_required": True,
     }
