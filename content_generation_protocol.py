@@ -359,6 +359,10 @@ def editorial_style_rules(style_name: str | None = None) -> str:
         return _human_narrative_editorial_style_rules()
     if normalized == EDITORIAL_STYLE_DUO_NARRATIVE:
         return _duo_narrative_editorial_style_rules()
+    if normalized == "v3_p5":
+        from local_skills.v3_p5_writer import build_v3_p5_writer_contract
+
+        return build_v3_p5_writer_contract()
     raise ValueError(f"unknown editorial style: {style_name!r}")
 
 
