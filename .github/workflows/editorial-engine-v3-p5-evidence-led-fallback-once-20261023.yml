@@ -1,0 +1,153 @@
+name: V3 P5 — one-shot evidence-led C-only model fallback
+
+# Explicit user authorization on 2026-10-23 after 17:00 JST.
+# One-shot isolated push workflow; cannot recur on another commit or rerun.
+on:
+  push:
+    branches:
+      - feature/editorial-engine-v3-p5-evidence-led-fallback-proof-20261023
+    paths:
+      - '.github/workflows/editorial-engine-v3-p5-evidence-led-fallback-once-20261023.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p5-c-only:
+    name: Immutable P5 C-only editorial quality trial — no publishing
+    if: >-
+      ${{ github.event_name == 'push' && github.run_number == 1 && github.run_attempt == 1 && github.ref == 'refs/heads/feature/editorial-engine-v3-p5-evidence-led-fallback-proof-20261023' && github.repository == 'trendhub-ab/ai-intelligence-factory' && github.event.head_commit.message == 'fire(v3-p5): user-authorized evidence-led C-only model fallback 2026-10-23' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    concurrency:
+      group: ai-intelligence-gemini-budget
+      cancel-in-progress: false
+    steps:
+      - name: Enforce Japan time 17+ before provider work
+        run: |
+          python - <<'PY'
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          assert datetime.now(ZoneInfo("Asia/Tokyo")).hour >= 17, "API prohibited before 17 JST"
+          print("JST_17_GATE=PASS")
+          PY
+
+      - name: Checkout immutable GREEN P5, not mutable trigger branch or production
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: fa11167fb25b6d77eb35c993250dbc5fff1b8137
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11.16'
+
+      - name: Install focused offline tests and bounded model client
+        run: |
+          python -m pip install --disable-pip-version-check 'pytest==8.4.2'
+          python -m pip install --disable-pip-version-check 'google-genai>=1.56.0,<2.0.0'
+
+      - name: Offline test current P5 voice, reader discovery and C-only invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q \
+            tests/test_editorial_engine_v3_phase0.py \
+            tests/test_editorial_engine_v3_phase0_live.py \
+            tests/test_editorial_engine_v3_phase0_quality_contract.py \
+            tests/test_editorial_engine_v3_phase0_proof.py \
+            tests/test_v3_reader_experience_diagnostics.py \
+            tests/test_v3_p5_editorial_experience.py \
+            tests/test_v3_p5_conversational_voice.py \
+            tests/test_v3_p5_preview_h1_contract.py \
+            tests/test_v3_p5_final_voice_polish.py \
+            tests/test_v3_p5_compact_colloquial.py \
+            tests/test_v3_p5_evidence_led_style.py
+          python - <<'PY'
+          from experiments.editorial_engine_v3_phase0.cases import READY_CASES
+          from experiments.editorial_engine_v3_phase0.prompts import (
+              EDITORIAL_EXPERIENCE_POLICY, CONVERSATIONAL_VOICE_POLICY,
+              build_editorial_bundle_prompt, build_editorial_stage_prompts,
+              build_persona_only_prompt,
+          )
+          assert len(READY_CASES) == 3
+          for item in READY_CASES:
+              c = build_editorial_bundle_prompt(item.case)
+              stage = build_editorial_stage_prompts(item.case)["Persona Article Generation"]
+              b = build_persona_only_prompt(item.case)
+              assert EDITORIAL_EXPERIENCE_POLICY in c and EDITORIAL_EXPERIENCE_POLICY in stage
+              assert CONVERSATIONAL_VOICE_POLICY in c and CONVERSATIONAL_VOICE_POLICY in stage
+              assert EDITORIAL_EXPERIENCE_POLICY not in b and CONVERSATIONAL_VOICE_POLICY not in b
+          print("P5_C_VOICE_AND_READER_EXPERIENCE=PASS")
+          PY
+
+          python -m py_compile experiments/editorial_engine_v3_phase0/one_shot_fallback.py
+
+      - name: Restore immutable A/B checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: editorial-engine-v3-phase0-checkpoint
+          path: phase0_baseline
+          github-token: ${{ github.token }}
+          run-id: 39239644474
+
+      - name: Verify and snapshot frozen three-case A/B before provider calls
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from experiments.editorial_engine_v3_phase0.cases import READY_CASES
+          state=json.loads(Path('phase0_baseline/checkpoint.json').read_text(encoding='utf-8'))
+          assert state['selected_model']=='gemini-3.8-flash'
+          assert len(state['cases'])==3
+          assert [c['case_id'] for c in state['cases']]==[item.case.case_id for item in READY_CASES]
+          assert all(c['outputs'].get('A_CURRENT_WRITER') and c['outputs'].get('B_PERSONA_ONLY') for c in state['cases'])
+          print('FROZEN_AB_SOURCE=PASS')
+          PY
+          python -m experiments.editorial_engine_v3_phase0.proof snapshot-baseline --output-dir phase0_baseline
+
+      - name: Final JST 17+ and bounded fallback integrity check
+        run: |
+          python - <<'PY'
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          from experiments.editorial_engine_v3_phase0.one_shot_fallback import CANDIDATE_MODELS
+          assert datetime.now(ZoneInfo('Asia/Tokyo')).hour >= 17
+          assert CANDIDATE_MODELS == ('gemini-3-flash-preview', 'gemini-3.6-flash', 'gemini-3.8-flash')
+          print('FALLBACK_17JST_AND_MODEL_SCOPE=PASS')
+          PY
+
+      - name: Three-case C-only model-lock fallback on provider 429 or 503
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          AIIF_PHASE0_CASE_COOLDOWN_SECONDS: '45'
+          AIIF_PHASE0_REGENERATE_C_ONLY: 'true'
+        run: python -m experiments.editorial_engine_v3_phase0.one_shot_fallback
+
+      - name: Verify complete C-only proof and unchanged original A/B
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f phase0_artifacts/fallback_selection.json
+          model="$(python -c 'import json; print(json.load(open("phase0_artifacts/fallback_selection.json"))["selected_model"])')"
+          case "$model" in
+            gemini-3-flash-preview|gemini-3.6-flash|gemini-3.8-flash) ;;
+            *) exit 1 ;;
+          esac
+          AIIF_PHASE0_MODELS="$model" python -m experiments.editorial_engine_v3_phase0.proof verify --output-dir phase0_artifacts
+
+      - name: Upload full C evidence and minimal fallback attempt metadata
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: v3-p5-evidence-led-bounded-fallback-20261023
+          path: |
+            phase0_artifacts
+            phase0_fallback_attempts/fallback_attempt_summary.json
+          if-no-files-found: warn
+          retention-days: 14
