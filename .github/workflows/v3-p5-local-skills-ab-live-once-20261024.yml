@@ -1,0 +1,63 @@
+name: V3 P5 x LocalSkills bounded A/B live — ONE SHOT
+# Read-only, artifact-only. No Daily, publication, note, Notion, main mutation.
+on:
+  push:
+    branches: [feature/v3-p5-localskills-ab-live-proof-20261024]
+    paths: ['.github/workflows/v3-p5-local-skills-ab-live-once-20261024.yml']
+permissions:
+  contents: read
+jobs:
+  proof:
+    if: >-
+      ${{ github.event_name == 'push' && github.repository == 'trendhub-ab/ai-intelligence-factory' && github.ref == 'refs/heads/feature/v3-p5-localskills-ab-live-proof-20261024' && github.run_number == 1 && github.run_attempt == 1 && github.event.head_commit.message == 'fire(v3-p5-ab): owner-authorized bounded four-call comparison 2026-10-24' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    concurrency:
+      group: ai-intelligence-gemini-budget
+      cancel-in-progress: false
+    steps:
+      - name: Checkout immutable PR858 GREEN writer + frozen comparison script
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: 88dcee3db2bc024c63e5ef0fc2d62934d66fe911
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11.16'
+      - name: Install client and production prompt dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Provider-free source parity and safety preflight
+        run: |
+          python -m py_compile experiments/p5_localskills_ab_once.py
+          python -m experiments.p5_localskills_ab_once --mode preflight
+      - name: Bounded comparison, two official sources, Classic vs frozen P5
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python -m experiments.p5_localskills_ab_once --mode live
+      - name: Fail closed on incomplete source-paired proof
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          j=json.loads(Path("p5_ab_artifacts/manifest.json").read_text(encoding="utf-8"))
+          assert j["status"]=="TECHNICAL_PASS"
+          assert j["calls_started"]==j["calls_completed"]==4
+          assert j["publication"] is False and j["notion_write"] is False
+          assert j["full_production_gates_executed"] is False
+          assert len(j["cases"])==2
+          for c in j["cases"]:
+              assert c["common_prompt_except_style"]=="IDENTICAL"
+              for style in ("classic","v3_p5"):
+                  assert c[style]["has_note_draft"] and c[style]["has_split"]
+                  assert c[style]["has_management"] and c[style]["has_decision"] and c[style]["has_score"]
+          print("P5_AB_PROOF_COMPLETE=PASS calls=4 paired=2")
+          PY
+      - name: Preserve source-labeled proof privately as Actions artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: v3-p5-local-skills-two-source-ab-proof-20261024
+          path: p5_ab_artifacts/
+          if-no-files-found: ignore
+          retention-days: 14
