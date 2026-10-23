@@ -92,7 +92,7 @@ Writer ReactionとEvidenceの緊張関係から、本文の核心を発見する
 - Evidence Pivot: どのEvidenceが見方を変える、または鋭くするか
 - Deeper Insight: 見出しの一段下にある本当の意味
 - Editorial Thesis: 記事全体を貫く一文
-- Narrative Path: このEvidenceとテーマに最も合う読み進め方。どこから入り、何を後で明かすかを決める
+- Narrative Path: このEvidenceとテーマに最も合う読み進め方。読者が最初に出会う具体的な違和感→次に確かめるEvidenceの条件・仕組み→そこで分かる意味を決める。証拠が支えない展開は作らない
 
 Dramaを捏造しない。Evidenceが最初の期待を確認する場合は『期待→さらに面白い』でもよい。
 構成順は固定しない。同じ骨格を別テーマへ使い回さない。導入・見出し・段落順は、Reaction / Question / Shift のラベル順ではなく、そのテーマで最も自然なNarrative Pathにする。
@@ -220,8 +220,8 @@ Evidence固有の反応にする。GenericなAI賛美は禁止。本文はまだ
 - Evidence Pivot
 - Deeper Insight
 - Editorial Thesis
-- Narrative Path: このEvidenceとテーマに合う読み進め方を決める
-Writer ReactionとEvidenceの間から、記事の本当の核心を発見する。Dramaは捏造しない。
+- Narrative Path: このEvidenceとテーマに合う読み進め方を決める。読者に先に見せる具体的な違和感、根拠となる仕組み・条件、そこから理解する意味を配置する。書き手の感情ラベル順にはしない
+Writer ReactionとEvidenceの間から、記事の本当の核心を発見する。Narrative Pathには、読者に先に見せる具体的なEvidenceと、後で理解できる仕組みや制約を選び、Writerの感想を報告する順序と混同しない。Dramaは捏造しない。
 構成順は固定しない。同じ骨格を別テーマへ使い回さない。導入・見出し・段落順を、Reaction / Question / Shift のラベル順へ機械的に揃えない。
 
 3. Cognitive Shift
