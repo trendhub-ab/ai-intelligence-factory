@@ -70,6 +70,15 @@ _MIXED_SCRIPT_TYPO = re.compile(
 )
 
 
+# Known stray, lower-case English filler inserted after Japanese prose.
+# This is intentionally narrow rather than a ban on English technical terms.
+# Broad suspicious tokens are reported for human editorial review separately.
+_STRAY_ENGLISH_FILLER = re.compile(
+    r"(?<=[\u3040-\u30FF\u3400-\u9FFF])\s+(?:dream|wow|oops|lol|great|nice)(?=[。！？])",
+    re.IGNORECASE,
+)
+
+
 # Publication-only metadata tokens. Fail closed rather than silently rewriting prose.
 _INTERNAL_VERDICT = re.compile(
     r"(?<![A-Za-z0-9_])(?:TRY|WATCH|PASS|AVOID)(?![A-Za-z0-9_])"
@@ -93,6 +102,12 @@ def validate_reader_facing_article(article: str, *, source_quotes: Iterable[str]
         raise ValueError("internal decision label leaked into reader-facing article")
     if _MIXED_SCRIPT_TYPO.search(cleaned):
         raise ValueError("mixed-script typo leaked into Japanese reader-facing article")
+    # Code examples (inline or fenced) may legitimately quote English words.
+    # Exact user-supplied source quotations were already exempted above.
+    prose = re.sub(r"(?ms)^\s*```[^\n]*\n.*?^\s*```\s*$", "", cleaned)
+    prose = re.sub(r"`+[^\n`]*`+", "", prose)
+    if _STRAY_ENGLISH_FILLER.search(prose):
+        raise ValueError("stray English filler leaked into Japanese reader-facing article")
 
 
 @dataclass(frozen=True, slots=True)
