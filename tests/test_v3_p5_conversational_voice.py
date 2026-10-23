@@ -1,8 +1,6 @@
 """P5 conversation-style contract; human judgment remains quality authority."""
 from __future__ import annotations
 
-import hashlib
-
 from experiments.editorial_engine_v3_phase0.cases import READY_CASES
 from experiments.editorial_engine_v3_phase0.prompts import (
     CONVERSATIONAL_VOICE_POLICY,
@@ -37,10 +35,8 @@ def test_p5_voice_is_applied_to_both_c_generation_routes_only() -> None:
     for name in ("Writer Reaction", "Editorial Discovery", "Cognitive Shift", "Fact-Safe Review"):
         assert CONVERSATIONAL_VOICE_POLICY not in staged[name]
     assert CONVERSATIONAL_VOICE_POLICY not in frozen_b
-    # Previous baseline checks still verify byte-frozen B independently.
-    assert hashlib.sha256(frozen_b.encode("utf-8")).hexdigest() == (
-        "e797f234f152593c9d7943100ce201488eb2a28ebffda7172532508506f8a06"
-    )
+    # The canonical B SHA is already frozen by test_editorial_engine_v3_phase0.py.
+    assert "Writer Reaction" not in frozen_b
 
 
 def test_p5_voice_is_light_and_playful_without_damaging_evidence_or_neutrality() -> None:
