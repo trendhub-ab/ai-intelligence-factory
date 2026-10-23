@@ -15,6 +15,22 @@ _FIELDS = {
     "after_view": ("Cognitive Shift", "After View"),
     "discovery": ("Cognitive Shift", "What I Now Find Interesting"),
 }
+# Human-review prompts only; these expressions are not automatic quality gates.
+# Record exact phrases rather than counting first-person pronouns, questions, or
+# legitimate discussion of technical limits as stylistic defects.
+_FORMULAIC_WRITER_PHRASES = (
+    "私が特に注目したのは",
+    "ここで私の中で",
+    "ここで私は見方を",
+    "以前の私は",
+    "以前は私は",
+    "私は大きな期待を",
+    "非常に実用的",
+    "非常に重要な教訓",
+    "いま私が最も面白いと感じているのは",
+)
+
+
 _AUDIT_VERSION = 1
 
 
@@ -80,7 +96,12 @@ def diagnose_case(stages: Mapping[str, str]) -> dict[str, Any]:
     fixed_v1_intro = len(headings) >= 3 and headings[:3] == [
         "どんな内容？", "なぜ重要？", "結論は？"
     ]
+    formulaic = [
+        phrase for phrase in _FORMULAIC_WRITER_PHRASES if phrase in final
+    ]
     flags = []
+    if formulaic:
+        flags.append("formulaic_writer_narration")
     if draft_has_writer and not final_has_writer:
         flags.append("first_person_removed_in_fact_review")
     if not final_has_writer:
@@ -107,6 +128,7 @@ def diagnose_case(stages: Mapping[str, str]) -> dict[str, Any]:
         "planning_anchor_in_article_generation": draft_retention,
         "possible_loss_stage": stage_attribution,
         "review_stage_changed_prose": draft.strip() != final.strip(),
+        "formulaic_writer_phrases": formulaic,
         "review_flags": flags,
         "human_review_required": True,
     }
