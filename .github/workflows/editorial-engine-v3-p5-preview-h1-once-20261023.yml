@@ -1,0 +1,151 @@
+name: V3 P5 — single-run Preview H1 full-manuscript C-only proof
+
+# Explicit user authorization on 2026-10-23 after 17:00 JST.
+# One-shot isolated push workflow; cannot recur on another commit or rerun.
+on:
+  push:
+    branches:
+      - feature/editorial-engine-v3-p5-preview-h1-proof-20261023
+    paths:
+      - '.github/workflows/editorial-engine-v3-p5-preview-h1-once-20261023.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  p5-c-only:
+    name: Immutable P5 C-only editorial quality trial — no publishing
+    if: >-
+      ${{ github.event_name == 'push' && github.run_number == 1 && github.run_attempt == 1 && github.ref == 'refs/heads/feature/editorial-engine-v3-p5-preview-h1-proof-20261023' && github.repository == 'trendhub-ab/ai-intelligence-factory' && github.event.head_commit.message == 'fire(v3-p5): user-authorized Preview H1-full-manuscript proof 2026-10-23' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    concurrency:
+      group: ai-intelligence-gemini-budget
+      cancel-in-progress: false
+    steps:
+      - name: Enforce Japan time 17+ before provider work
+        run: |
+          python - <<'PY'
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          assert datetime.now(ZoneInfo("Asia/Tokyo")).hour >= 17, "API prohibited before 17 JST"
+          print("JST_17_GATE=PASS")
+          PY
+
+      - name: Checkout immutable GREEN P5, not mutable trigger branch or production
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: 70517ebc4ca028567e03b115bfe94eb25a1fb226
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11.16'
+
+      - name: Install focused offline tests and bounded model client
+        run: |
+          python -m pip install --disable-pip-version-check 'pytest==8.4.2'
+          python -m pip install --disable-pip-version-check 'google-genai>=1.56.0,<2.0.0'
+
+      - name: Offline test current P5 voice, reader discovery and C-only invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q \
+            tests/test_editorial_engine_v3_phase0.py \
+            tests/test_editorial_engine_v3_phase0_live.py \
+            tests/test_editorial_engine_v3_phase0_quality_contract.py \
+            tests/test_editorial_engine_v3_phase0_proof.py \
+            tests/test_v3_reader_experience_diagnostics.py \
+            tests/test_v3_p5_editorial_experience.py \
+            tests/test_v3_p5_conversational_voice.py \
+            tests/test_v3_p5_preview_h1_contract.py
+          python - <<'PY'
+          from experiments.editorial_engine_v3_phase0.cases import READY_CASES
+          from experiments.editorial_engine_v3_phase0.prompts import (
+              EDITORIAL_EXPERIENCE_POLICY, CONVERSATIONAL_VOICE_POLICY,
+              build_editorial_bundle_prompt, build_editorial_stage_prompts,
+              build_persona_only_prompt,
+          )
+          assert len(READY_CASES) == 3
+          for item in READY_CASES:
+              c = build_editorial_bundle_prompt(item.case)
+              stage = build_editorial_stage_prompts(item.case)["Persona Article Generation"]
+              b = build_persona_only_prompt(item.case)
+              assert EDITORIAL_EXPERIENCE_POLICY in c and EDITORIAL_EXPERIENCE_POLICY in stage
+              assert CONVERSATIONAL_VOICE_POLICY in c and CONVERSATIONAL_VOICE_POLICY in stage
+              assert EDITORIAL_EXPERIENCE_POLICY not in b and CONVERSATIONAL_VOICE_POLICY not in b
+          print("P5_C_VOICE_AND_READER_EXPERIENCE=PASS")
+          PY
+
+      - name: Restore immutable three-case A/B baseline
+        uses: actions/download-artifact@v4
+        with:
+          name: editorial-engine-v3-phase0-checkpoint
+          path: phase0_artifacts
+          github-token: ${{ github.token }}
+          run-id: 39239644474
+
+      - name: Verify and snapshot A/B baseline before any provider calls
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from experiments.editorial_engine_v3_phase0.cases import READY_CASES
+          state=json.loads(Path('phase0_artifacts/checkpoint.json').read_text(encoding='utf-8'))
+          assert state['selected_model'] == 'gemini-3.8-flash'
+          assert len(state['cases']) == 3
+          assert [case['case_id'] for case in state['cases']] == [item.case.case_id for item in READY_CASES]
+          assert all(case['outputs'].get('A_CURRENT_WRITER') and case['outputs'].get('B_PERSONA_ONLY') for case in state['cases'])
+          print("FROZEN_AB_SOURCE=PASS")
+          PY
+          python -m experiments.editorial_engine_v3_phase0.proof snapshot-baseline --output-dir phase0_artifacts
+
+      - name: Mark explicit mixed-model comparison and lock C to Gemini 3 Flash Preview
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path=Path('phase0_artifacts/checkpoint.json')
+          state=json.loads(path.read_text(encoding='utf-8'))
+          assert state['selected_model'] == 'gemini-3.8-flash'
+          assert len(state['cases']) == 3
+          state['baseline_selected_model']='gemini-3.8-flash'
+          state['comparison_model_exception']='ONE_OFF_MIXED_MODEL_C_3_FLASH_PREVIEW'
+          state['selected_model']='gemini-3-flash-preview'
+          for key in ('c_refinement_fingerprint','c_completed_case_ids','c_refinement_provider_calls_total','c_refinement_provider_attempts_total'):
+              state.pop(key,None)
+          path.write_text(json.dumps(state,ensure_ascii=False,indent=2),encoding='utf-8')
+          print("MIXED_MODEL_ONE_OFF=3.8_AB_VS_3_FLASH_PREVIEW_C")
+          PY
+
+      - name: Final 17 JST gate
+        run: |
+          python -c 'from datetime import datetime; from zoneinfo import ZoneInfo; assert datetime.now(ZoneInfo("Asia/Tokyo")).hour >= 17, "No Gemini before 17 JST"'
+
+      - name: Perform bounded P5 three-case C-only generation
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          AIIF_PHASE0_MODELS: 'gemini-3-flash-preview'
+          AIIF_PHASE0_CASE_COOLDOWN_SECONDS: '45'
+          AIIF_PHASE0_REGENERATE_C_ONLY: 'true'
+          AIIF_PHASE0_OUTPUT_DIR: phase0_artifacts
+        run: python -m experiments.editorial_engine_v3_phase0.live
+
+      - name: Verify complete C proof and unchanged original A/B
+        if: ${{ always() }}
+        env:
+          AIIF_PHASE0_MODELS: 'gemini-3-flash-preview'
+        run: python -m experiments.editorial_engine_v3_phase0.proof verify --output-dir phase0_artifacts
+
+      - name: Upload blind human quality evidence and proof
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: v3-p5-g3-preview-h1-review-20261023
+          path: phase0_artifacts
+          if-no-files-found: warn
+          retention-days: 14
