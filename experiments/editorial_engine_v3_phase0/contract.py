@@ -60,6 +60,16 @@ def validate_article_layout(article: str) -> None:
 
 
 
+# Reject isolated Hangul inserted within Japanese words in experimental C output.
+# An independently quoted source phrase is exempted by source_quotes below.
+# Standalone foreign-language names/terms are not automatically banned.
+_JAPANESE_WORD = r"\u3040-\u30FF\u3400-\u9FFF"
+_HANGUL_CHAR = r"\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF"
+_MIXED_SCRIPT_TYPO = re.compile(
+    rf"(?:[{_JAPANESE_WORD}][{_HANGUL_CHAR}]|[{_HANGUL_CHAR}][{_JAPANESE_WORD}])"
+)
+
+
 # Publication-only metadata tokens. Fail closed rather than silently rewriting prose.
 _INTERNAL_VERDICT = re.compile(
     r"(?<![A-Za-z0-9_])(?:TRY|WATCH|PASS|AVOID)(?![A-Za-z0-9_])"
@@ -67,11 +77,11 @@ _INTERNAL_VERDICT = re.compile(
 
 
 def validate_reader_facing_article(article: str, *, source_quotes: Iterable[str] = ()) -> None:
-    """Reject leaked internal decision labels in C article prose.
+    """Reject leaked internal labels and intraword mixed-script typos in C prose.
 
-    Exact, explicitly supplied source quotations may contain the same ordinary
-    English words; this is not a blanket word ban. Quotation exemption applies
-    only to matching full quoted source snippets, not arbitrary author prose.
+    The narrow Hangul/Japanese adjacency check does not ban other languages.
+    Exact explicitly supplied source quotations are exempted once only;
+    arbitrary authored text never receives a blanket quote exemption.
     """
     validate_article_layout(article)
     cleaned = article
@@ -81,6 +91,8 @@ def validate_reader_facing_article(article: str, *, source_quotes: Iterable[str]
             cleaned = cleaned.replace(quote, "", 1)
     if _INTERNAL_VERDICT.search(cleaned):
         raise ValueError("internal decision label leaked into reader-facing article")
+    if _MIXED_SCRIPT_TYPO.search(cleaned):
+        raise ValueError("mixed-script typo leaked into Japanese reader-facing article")
 
 
 @dataclass(frozen=True, slots=True)
