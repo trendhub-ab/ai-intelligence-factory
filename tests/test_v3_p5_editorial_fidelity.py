@@ -58,6 +58,7 @@ def test_recent_p5_formulas_are_editorial_flags_not_publication_gates() -> None:
     text = (
         "# 新しい見方\n\n皆さんはどう感じますか？"
         "私がここで一番気になったのは、この数値です。"
+        "私が特に気になったのは、その条件です。"
         "でも、ちょっと待ってください。"
         "想定条件を見てから判断したい。"
     )
@@ -65,6 +66,7 @@ def test_recent_p5_formulas_are_editorial_flags_not_publication_gates() -> None:
     assert "formulaic_writer_narration" in diagnosis["review_flags"]
     assert "皆さんはどう感じますか" in diagnosis["formulaic_writer_phrases"]
     assert "私がここで一番気になったのは" in diagnosis["formulaic_writer_phrases"]
+    assert "私が特に気になったのは" in diagnosis["formulaic_writer_phrases"]
     assert diagnosis["not_a_quality_score"] is True
     assert diagnosis["not_publication_authority"] is True
     # Review flags must never become arbitrary hard rejection of natural Japanese.
