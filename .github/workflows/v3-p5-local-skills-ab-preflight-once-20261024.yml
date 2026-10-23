@@ -1,0 +1,27 @@
+name: V3 P5 x LocalSkills A/B offline preflight — ONE SHOT
+on:
+  push:
+    branches: [feature/v3-p5-localskills-ab-live-proof-20261024]
+    paths: ['.github/workflows/v3-p5-local-skills-ab-preflight-once-20261024.yml']
+permissions:
+  contents: read
+jobs:
+  verified:
+    if: >-
+      ${{ github.event_name == 'push' && github.run_number == 1 && github.run_attempt == 1 && github.repository == 'trendhub-ab/ai-intelligence-factory' && github.event.head_commit.message == 'verify(v3-p5-ab): owner-authorized offline prompt pair preflight 2026-10-24' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: 88dcee3db2bc024c63e5ef0fc2d62934d66fe911
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11.16'
+      - name: Install production imports only, no API credentials
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Validate script syntax and full canonical A+ prompt parity
+        run: |
+          python -m py_compile experiments/p5_localskills_ab_once.py
+          python -m experiments.p5_localskills_ab_once --mode preflight
