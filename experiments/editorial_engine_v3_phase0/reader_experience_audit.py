@@ -48,6 +48,13 @@ _OVERFORMAL_REPORT_PHRASES = (
 _POSSIBLE_PAST_BELIEF = re.compile(
     r"(?:以前は|以前の私は|かつて|もともと)(?:[^。！？\n]{0,36})(?:思っていた|信じていた|考えていた)"
 )
+# Exact wording observed in the real P5.1 C manuscripts; human-review only.
+# A surface match alone does not prove an invented personal history.
+_POSSIBLE_UNMARKED_PAST_BELIEF = (
+    "サイズをあらかじめ選ぶのが当たり前だと思っていた",
+    "説明するより自分でやったほうが早いと思ってきた",
+)
+
 _POSSIBLE_PROMISES = (
     "これからのスタンダードになる",
     "業界標準になる",
@@ -154,6 +161,9 @@ def diagnose_case(stages: Mapping[str, str]) -> dict[str, Any]:
         phrase for phrase in _OVERFORMAL_REPORT_PHRASES if phrase in final
     ]
     possible_history = [m.group(0) for m in _POSSIBLE_PAST_BELIEF.finditer(final)]
+    possible_history.extend(
+        phrase for phrase in _POSSIBLE_UNMARKED_PAST_BELIEF if phrase in final
+    )
     possible_promises = [phrase for phrase in _POSSIBLE_PROMISES if phrase in final]
     lived = [phrase for phrase in _POSSIBLE_LIVED_EXPERIENCE if phrase in final]
     generalizations = [phrase for phrase in _POSSIBLE_UNSUPPORTED_GENERALIZATION if phrase in final]
