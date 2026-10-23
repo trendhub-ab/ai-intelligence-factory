@@ -27,6 +27,24 @@ Read-only inspection of P4 `checkpoint.json` found the problem begins **upstream
 
 **P5 therefore edits C planning too:** Before View means a possible *reader intuition / working hypothesis*, never something the Writer actually remembers believing. HIGH is not the default emotional setting. This preserves the five output keys and the question/discovery semantics without requiring invented autobiographical scenes.
 
+## 2026-10-23 addendum — conversational warmth, not just reader discovery
+
+The owner independently reviewed all three provider-generated P4 manuscripts and added a second objection: the *voice is too serious overall*. The original FFT body contains office-memo language such as 「この事例は、技術評価や判断を行う上で非常に重要な教訓を残しています」, while Elastic and Claude repeatedly narrate 「私が特に注目したのは」 and summarise business implications. The first P5 reader-first revision alone did not directly target sentence-level voice.
+
+**Reader experience target:** an AI-loving writer who can't resist sharing an interesting finding, explaining its technical basis clearly but conversationally to an adult. Casual and intellectually rigorous, sometimes gently playful, always gender-neutral. Not a business briefing, exaggerated youth dialogue, loud hype, or a forced stand-up joke. The user-accepted Elastic Transformer example remains the human benchmark. We do not insert example jokes or canned hooks into input Evidence, or mechanically require 'え' in every introduction.
+
+**Style direction, not a claim about provider output:**
+
+- Formal (avoid): 「この事例は、技術評価や判断を行う上で非常に重要な教訓を残しています。」
+- Conversational alternative (based on the **same** P4 facts): 「数式の上では速い。でも、実際に動かすと遅い。えっ、どういうこと？ その答えが、今回の話のいちばん面白いところです。」
+- The latter is a copywriting illustration, **not a measured generated improvement** or a fixed script to repeat in every article.
+
+Implementation adds `CONVERSATIONAL_VOICE_POLICY` **only to C generation**, in both staged and bundled paths. It encourages varied short/long sentence rhythm, natural questions, neutral conversational endings, careful light humor only when actual Evidence supports a surprise, and replacing heavy abstract conclusions with concise, specific explanation. It explicitly forbids fabricated experiences, made-up dialogue, exaggerated numerical claims and formulaic reuse.
+
+`reader_experience_audit.py` adds an exact-literal `overformal_report_tone` review flag, independently of factual checks. As with earlier lexical diagnostics, **it is not a score, hard gate, quality GO or source validation**, and its absence does not imply an entertaining article.
+
+Unchanged: frozen A/B prompt and case identities, Fact-Safe Review's assertions, three-case C-only provider budget, News/Production Delivery, member surfaces, Notion, note and main. No API call is made by this revision.
+
 ## P5 change scope
 
 P5 branches directly from P3 SHA `03b3c237442c4c2b335440d363796c0def175c20`. It does not inherit P4's temporary push-trigger proof workflow.
