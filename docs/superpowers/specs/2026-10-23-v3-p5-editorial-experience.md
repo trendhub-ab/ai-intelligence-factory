@@ -16,6 +16,17 @@ The owner read the three **real provider-generated** P4 C drafts and agreed with
 
 **Root diagnosis:** The current prompts repeatedly demand explicit Writer Reaction → before/after → first-person shift narration. The model often interprets this as article structure, despite repeated warnings not to. The improvement target is the **transition from editor planning to reader-visible evidence**, not more exclamation marks, youth slang or extra Gemini calls.
 
+### Planning-stage evidence from the real P4 checkpoint
+
+Read-only inspection of P4 `checkpoint.json` found the problem begins **upstream of prose generation**:
+
+- FFT `Cognitive Shift.Before View`: a purported personal prior conviction that AI mathematical proofs would directly yield major runtime speedups; that biographical history is not present in Evidence.
+- Elastic `Before View`: a claimed prior belief that multiple model sizes *had to be* prebuilt. Evidence supports an intuitive tension, not a factual autobiography.
+- Claude Workspace `Before View`: an alleged previous habitual browser/tab workflow, also not grounded as an actual writer experience.
+- All three `Writer Reaction` stages selected `Emotion Intensity: HIGH`, mechanically amplifying generic excitement irrespective of topic.
+
+**P5 therefore edits C planning too:** Before View means a possible *reader intuition / working hypothesis*, never something the Writer actually remembers believing. HIGH is not the default emotional setting. This preserves the five output keys and the question/discovery semantics without requiring invented autobiographical scenes.
+
 ## P5 change scope
 
 P5 branches directly from P3 SHA `03b3c237442c4c2b335440d363796c0def175c20`. It does not inherit P4's temporary push-trigger proof workflow.
