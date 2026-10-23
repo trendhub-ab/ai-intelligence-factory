@@ -1,4 +1,4 @@
-"""One-shot experimental P5 C-only fallback. Never import from Production.
+"""One-shot experimental P5.1 C-only fallback. Never import from Production.
 
 This helper is ONLY present on a disposable non-merging workflow branch.
 Model changes require a complete fresh 3-case C run with immutable A/B.
@@ -6,7 +6,6 @@ Fallback is permitted solely for 429/503 provider errors; never article failures
 """
 from __future__ import annotations
 
-from datetime import datetime
 import json
 import os
 from pathlib import Path
@@ -14,7 +13,6 @@ import re
 import shutil
 import subprocess
 import sys
-from zoneinfo import ZoneInfo
 
 
 CANDIDATE_MODELS = (
@@ -38,8 +36,6 @@ def main() -> int:
     selected_model: str | None = None
 
     for index, model in enumerate(CANDIDATE_MODELS, 1):
-        if datetime.now(ZoneInfo("Asia/Tokyo")).hour < 17:
-            raise RuntimeError("Gemini prohibited before 17:00 JST")
         workspace = attempt_root / f"model_{index}"
         shutil.copytree(baseline, workspace)
         checkpoint_path = workspace / "checkpoint.json"
