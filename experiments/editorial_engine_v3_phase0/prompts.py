@@ -49,6 +49,17 @@ P5_FINAL_EDITORIAL_POLISH = """【P5 最終調整：読者への引力と事実�
 「いつも」「一般的だった」「定着しないケース」「業界標準になる」などの根拠のない普遍化・断定は不可。プラン名・料金・「追加コストなし」は Evidence / Facts / Sources から確認できる範囲だけ。Fact-Safe Reviewは導入・本文・結論の事実の強さと文字混入を点検し、必要箇所のみ局所修正。誤字の自動修復で事実を変えない。口語でも根拠は変えない。"""
 
 
+P5_STYLE_CONTRAST_EXAMPLES = """【P5 対照例：会話調は具体性でつくる】
+悪い例 → 良い方向の例。どれも文体だけの見本。素材のEvidence / Facts / Sourcesにない事実は足さない。例文をそのままコピーしない。
+×「私が特に注目したのは、その高い実用性です」
+○「再学習なしでモデルの計算量を変えられる。えっ、どうやって？内部ユニットを順位付けするのが鍵だ」
+×「AI導入では以前からいつも費用が問題でした」「仕事中、タブを往復する自分に気づくことがあります」
+○「ClaudeをDocsの中から呼べる。これならコピペの往復を減らせそう。実際、どこまで直接編集できる？」
+×「今、私たちが取るべきアクション」「重要な示唆を与える」
+○「試すなら、まず自社の条件で動くか確かめたい」
+仕組みを分かりやすくする比喩は歓迎。「計算量のつまみ」のように、何に対応するか本文で説明する。
+好奇心は今あるEvidenceへの反応だけに限り、書き手の架空の回想・使用経験を作らない。事実を強く言い切ったり、商品プランを付け足したりしない。"""
+
 def _evidence_block(case: Phase0Case) -> str:
     evidence = "\n".join(f"- {row}" for row in case.evidence)
     facts = "\n".join(f"- {row}" for row in case.facts)
@@ -173,6 +184,8 @@ Notion DBの判断区分・運用ラベル（TRY / WATCH / PASS / AVOIDなど）
 {EDITORIAL_EXPERIENCE_POLICY}
 
 {CONVERSATIONAL_VOICE_POLICY}
+
+{P5_STYLE_CONTRAST_EXAMPLES}
 
 {P5_FINAL_EDITORIAL_POLISH}
 
@@ -312,6 +325,8 @@ Notion DBの判断区分・運用ラベル（TRY / WATCH / PASS / AVOIDなど）
 {EDITORIAL_EXPERIENCE_POLICY}
 
 {CONVERSATIONAL_VOICE_POLICY}
+
+{P5_STYLE_CONTRAST_EXAMPLES}
 
 {P5_FINAL_EDITORIAL_POLISH}
 
