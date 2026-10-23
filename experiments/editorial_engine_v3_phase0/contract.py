@@ -74,7 +74,7 @@ _MIXED_SCRIPT_TYPO = re.compile(
 # This is intentionally narrow rather than a ban on English technical terms.
 # Broad suspicious tokens are reported for human editorial review separately.
 _STRAY_ENGLISH_FILLER = re.compile(
-    r"(?<=[\u3040-\u30FF\u3400-\u9FFF])\\s+(?:dream|wow|oops|lol|great|nice)(?=[。！？])",
+    r"(?<=[\u3040-\u30FF\u3400-\u9FFF])\s+(?:dream|wow|oops|lol|great|nice)(?=[。！？])",
     re.IGNORECASE,
 )
 
@@ -104,8 +104,8 @@ def validate_reader_facing_article(article: str, *, source_quotes: Iterable[str]
         raise ValueError("mixed-script typo leaked into Japanese reader-facing article")
     # Code examples (inline or fenced) may legitimately quote English words.
     # Exact user-supplied source quotations were already exempted above.
-    prose = re.sub(r"(?ms)^\\s*```[^\\n]*\\n.*?^\\s*```\\s*$", "", cleaned)
-    prose = re.sub(r"`+[^\\n`]*`+", "", prose)
+    prose = re.sub(r"(?ms)^\s*```[^\n]*\n.*?^\s*```\s*$", "", cleaned)
+    prose = re.sub(r"`+[^\n`]*`+", "", prose)
     if _STRAY_ENGLISH_FILLER.search(prose):
         raise ValueError("stray English filler leaked into Japanese reader-facing article")
 
