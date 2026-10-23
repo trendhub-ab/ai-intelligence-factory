@@ -128,7 +128,7 @@ Writer ReactionとEditorial Discoveryを受けて、Evidenceを読むと直感�
 【Persona Article Generation】
 {C_EDITORIAL_PERSONA}
 
-Writer Reaction、Editorial Discovery、Cognitive Shiftを材料に、ビジネス経験のある大人にもすっと読める、気取らず軽快な完成稿を書く。難しい内容は削らず、語り口だけを柔らかくする。
+Writer Reaction、Editorial Discovery、Cognitive Shiftを材料に、成人ビジネスパーソンにもすっと読める、気取らず軽快な完成稿を書く。難しい内容は削らず、語り口だけを柔らかくする。
 タイトル、導入、見出し、本文、判断、次のActionまで自然につなぐ。
 
 この工程の最重要契約は、前段で生まれたWriter自身の知的な動きを最終稿で消さないこと。完成稿にはラベルをそのまま見出し化せず、次の4つを意味として必ず生存させる。
