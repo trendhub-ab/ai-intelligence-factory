@@ -235,17 +235,15 @@ def apply_p5_editorial_one_shot(
         case, parsed, source_info, writer_boundary=writer_boundary
     )
 
-    # Pure original P5 is strictly validation-only. Bypass the integrated
-    # AIIF system persona and explicit token cap, so model call conditions
-    # match the pre-integration P5 creative path (the model itself may differ).
-    # The first management call and all downstream gates remain unchanged.
-    writer_call_options = {"p5_writer_pure": True} if writer_boundary == "original" else {}
+    # The Production provider interface currently enforces its own editor
+    # system instruction. Do NOT silently claim this path reproduces #852.
+    # The pure baseline provider call is separately tested in the isolated
+    # Phase0 route until the original provider interface supports overrides.
     editorial_response, editorial_grounding = call(
         bundle_prompt, repo, source_info,
         request_kind="deep_dive",  # existing per-run/model quota pathway
         request_context=request_context + ":p5_five_stages",
         request_origin=request_origin,
-        **writer_call_options,
     )
     article, stages = _extract_bundle(getattr(editorial_response, "text", "") or "")
     if tuple(stages) != P5_REQUIRED_STAGES:
