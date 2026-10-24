@@ -31,7 +31,7 @@ on:
           - local_skills_canary_validation
           - local_skills_production_validation
       editorial_style:
-        description: 'Article tone: classic (default); human_narrative; duo_narrative; v3_p5 (LocalSkills + frozen P5 voice)'
+        description: 'classic default; v3_p5 = full P5 five-stage Writer + A+ LocalSkills (extra Deep Dive call, validation-only)'
         required: true
         default: 'classic'
         type: choice
@@ -105,6 +105,15 @@ jobs:
             classic|human_narrative|duo_narrative|v3_p5) ;;
             *) echo "::error::Unknown editorial style"; exit 1 ;;
           esac
+          # Until a fresh P5 five-stage article passes human editorial + unchanged
+          # Production publication gates, never allow experimental P5 to enter a
+          # full Daily that can fan out to note/Notion publication.
+          if [ "${{ inputs.editorial_style }}" = "v3_p5" ]; then
+            case "${{ inputs.mode }}" in
+              article_validation|local_skills_production_validation|production_e2e_validation) ;;
+              *) echo "::error::V3 P5 full editorial engine is validation-only until owner publication GO"; exit 1 ;;
+            esac
+          fi
           case "${{ inputs.excluded_models }}" in
             ""|gemini-3.5-flash-lite|gemini-3.1-flash-lite|gemini-3.5-flash|gemini-3.6-flash|gemini-3.7-flash|gemini-3.8-flash|gemini-3-flash-preview) ;;
             *) echo "::error::Unknown run-scoped Gemini exclusion"; exit 1 ;;
