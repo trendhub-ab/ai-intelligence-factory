@@ -417,6 +417,21 @@ def install(pipeline_module):
                 str(getattr(p, "AIIF_EDITORIAL_STYLE", "classic")) == "v3_p5"
                 and kwargs.get("count_as_deep_dive") is True
             )
+            if getattr(p, "_P5_ORIGINAL_WRITER_SEND_ACTIVE", False) is True:
+                # The frozen Production provider adds low thinking even when
+                # the authenticated P5 Writer passes an empty config. Remove
+                # ONLY that exact injected config at this final send boundary.
+                # Never change gemini_provider_resilience.py: it is protected
+                # by the Fresh Protocol content hash.
+                context = str(kwargs.get("request_context") or "")
+                if (not p5_deep_dive
+                        or kwargs.get("request_kind") != "deep_dive"
+                        or not context.endswith(":p5_five_stages")):
+                    raise RuntimeError("Unverified original P5 creative send context")
+                provider_config = kwargs.get("config")
+                if provider_config not in (None, {}, {"thinking_config": {"thinking_level": "low"}}):
+                    raise RuntimeError("Unexpected Gemini creative override for original P5")
+                kwargs = dict(kwargs, config=None)
             if p5_deep_dive:
                 try:
                     send_guard.pre_send(model_name, p5_active=True)
