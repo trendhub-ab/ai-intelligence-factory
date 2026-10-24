@@ -155,7 +155,6 @@ NON_MEMBER_MODULES = frozenset((
     "local_skills/production_canary.py",
     "local_skills/publication_canonicalizer.py",
     "local_skills/writer.py",
-    "local_skills/v3_p5_writer.py",  # Frozen P5 editorial voice only; no member/customer access
     "local_skills/v3_p5_contract.py",  # Canonical P5 five-stage editorial validation; no member/customer access
     "local_skills/v3_p5_prompts.py",  # Canonical P5 five-stage bundled prompt; no member/customer access
     "local_skills/v3_p5_one_shot.py",  # Optional Article Writer runtime; no member/customer access
