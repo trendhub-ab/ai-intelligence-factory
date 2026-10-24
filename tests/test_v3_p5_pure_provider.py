@@ -188,3 +188,60 @@ def test_p5_original_config_marker_cannot_hide_generation_overrides():
     assert _deep_dive_generation_config(P5OriginalWriterConfig(), "screening") == {
         "thinking_config": {"thinking_level": "low"},
     }
+
+
+def test_actual_resilience_provider_passes_no_config_only_for_original_writer():
+    """End-to-end local provider adapter: not just helper's expected return."""
+    from contextlib import nullcontext
+    from gemini_provider_resilience import install as install_resilience
+    from local_skills.v3_p5_call_contract import P5OriginalWriterConfig
+
+    sent = []
+    def provider(model_name, prompt, **kwargs):
+        sent.append((model_name, kwargs.get("config"), kwargs.get("count_as_deep_dive")))
+        return SimpleNamespace(text="mock response", candidates=[])
+
+    class MockAPIError(Exception):
+        pass
+    class MockBudgetError(RuntimeError):
+        pass
+    p = SimpleNamespace(
+        GEMINI_API_KEY="",
+        _generate_via_chat=provider,
+        _mark_model_unavailable=lambda *args: None,
+        _mark_model_exhausted=lambda *args: None,
+        _extract_retry_delay=lambda *args: 1,
+        _is_gemini_transport_timeout=lambda err: False,
+        APIError=MockAPIError,
+        GeminiBudgetExceededError=MockBudgetError,
+        GeminiCallTimeoutError=TimeoutError,
+        PendingRetryBudgetExceededError=MockBudgetError,
+        DeepDiveRunBudgetExceededError=MockBudgetError,
+        NoAvailableModelError=RuntimeError,
+        DEEP_DIVE_MODEL_BUDGET=SimpleNamespace(can_request=lambda: True),
+        PENDING_RETRY_REQUEST_BUDGET=SimpleNamespace(can_request=lambda: True),
+        SESSION_EXHAUSTED_MODELS=set(),
+        SESSION_UNAVAILABLE_MODELS=set(),
+        GEMINI_DEEP_DIVE_CALL_PACING_SECONDS=0,
+        GEMINI_DEEP_DIVE_CALL_TIMEOUT_SECONDS=10,
+        GEMINI_SCREENING_CALL_TIMEOUT_SECONDS=10,
+        _gemini_call_timeout=lambda *_: nullcontext(),
+        logger=SimpleNamespace(warning=lambda *args: None),
+    )
+    install_resilience(p)
+    special = P5OriginalWriterConfig()
+    response, chosen = p._call_model_pool(
+        "exact P5 prompt", special, "deep_dive", 0, ["gemini-3.8-flash"],
+        deep_dive=True, request_origin="article_revalidation",
+    )
+    assert chosen == "gemini-3.8-flash" and response.text == "mock response"
+    assert sent == [("gemini-3.8-flash", None, True)]
+    # Ordinary Deep Dive continues to receive the established low-thinking rule.
+    p._call_model_pool(
+        "regular managed prompt", {}, "deep_dive", 0, ["gemini-3.8-flash"],
+        deep_dive=True, request_origin="new",
+    )
+    assert sent[-1] == (
+        "gemini-3.8-flash", {"thinking_config": {"thinking_level": "low"}}, True
+    )
+
