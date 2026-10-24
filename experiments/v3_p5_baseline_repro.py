@@ -13,8 +13,8 @@ import os
 import time
 from pathlib import Path
 
-from experiments.editorial_engine_v3_phase0.cases import READY_CASES
-from experiments.editorial_engine_v3_phase0.prompts import (
+from experiments.v3_p5_golden_cases import READY_CASES
+from experiments.v3_p5_golden_prompt_snapshot import (
     build_editorial_bundle_prompt as selected_p5_prompt,
 )
 from local_skills.v3_p5_call_contract import pure_p5_writer_config
