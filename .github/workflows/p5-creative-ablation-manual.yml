@@ -47,7 +47,7 @@ jobs:
 
       - name: Focused provider-free experiments and handoff tests
         run: |
-          python -m pytest -q tests/test_v3_p5_controlled_ablation.py tests/test_v3_p5_confidential_handoff.py tests/test_v3_p5_api_workflow_safety.py
+          python -m pytest -q -k 'v3_p5_controlled_ablation or v3_p5_confidential_handoff or v3_p5_api_workflow_safety'
 
       - name: Check recipient is truly private before ANY Gemini send
         env:
