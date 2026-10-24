@@ -64,8 +64,12 @@ def call_p5_pure_writer(
         source_info.get("primary_url") or repo.get("url") or ""
     ).startswith(("https://", "http://")):
         raise P5PureProviderError("Insufficient verified text or primary URL")
-    if not prompt.startswith("【Evidence / Facts / Sources") and "1. Writer Reaction" not in prompt:
-        raise P5PureProviderError("Pure provider only accepts the canonical P5 bundle prompt")
+    if not all(token in prompt for token in (
+        "1. Writer Reaction", "2. Editorial Discovery",
+        "3. Cognitive Shift", "4. Persona Article Generation",
+        "5. Fact-Safe Review",
+    )):
+        raise P5PureProviderError("Pure provider only accepts the canonical five-stage P5 prompt")
     guarded_pool = [
         name for name in getattr(p, "DEEP_DIVE_MODEL_POOL", ())
         if name in ALLOWED_NONPREVIEW_MODELS
