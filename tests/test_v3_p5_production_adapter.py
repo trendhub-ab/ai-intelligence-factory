@@ -280,6 +280,15 @@ def test_p5_original_writer_isolation_is_identical_to_selected_baseline_and_mana
 def test_original_writer_isolation_requires_validation_origin_and_preserves_management():
     p, sent = _fake_runtime("v3_p5", followup=_bundle())
     p.AIIF_P5_WRITER_BOUNDARY = "original"
+    # Test-only pure provider implementation. Production must not infer this
+    # from the generic Deep Dive provider with its system instruction.
+    baseline_calls = []
+    def pure_provider(prompt, repo, source_info, **kw):
+        baseline_calls.append((prompt, dict(kw)))
+        sent.append(prompt)
+        return (SimpleNamespace(text=_bundle(), candidates=[]),
+                {"grounding_status": "Source Native"})
+    p.call_p5_baseline_pure_writer = pure_provider
     prompt = p.build_decision_prompt(evidence_result={"state": "SUFFICIENT"})
     response, _ = p.call_gemini_grounded_deep_dive(
         prompt,
@@ -287,6 +296,8 @@ def test_original_writer_isolation_requires_validation_origin_and_preserves_mana
         _source(), request_kind="deep_dive", request_origin="article_revalidation",
     )
     assert len(sent) == 2
+    assert len(baseline_calls) == 1
+    assert baseline_calls[0][1]["request_origin"] == "article_revalidation"
     assert sent[1] == build_editorial_bundle_prompt(
         _source_case(
             {"name": "Test", "url": "https://example.org/official-report"},
@@ -315,3 +326,18 @@ def test_unknown_p5_writer_boundary_rejected_fail_closed():
     )
     with pytest.raises(P5EditorialContractError, match="writer boundary"):
         _p5_prompt(case, {}, _source(), writer_boundary="no-gate")
+
+
+
+def test_original_writer_refuses_unverified_production_system_instruction():
+    p, sent = _fake_runtime("v3_p5", followup=_bundle())
+    p.AIIF_P5_WRITER_BOUNDARY = "original"
+    with pytest.raises(P5EditorialContractError, match="separately verified pure provider"):
+        p.call_gemini_grounded_deep_dive(
+            p.build_decision_prompt(evidence_result={"state": "SUFFICIENT"}),
+            {"name": "Test", "url": "https://example.org/official-report"},
+            _source(), request_kind="deep_dive",
+            request_origin="article_revalidation",
+        )
+    # The management call can run, but never the degraded second writer call.
+    assert len(sent) == 1
