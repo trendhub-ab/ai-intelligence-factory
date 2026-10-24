@@ -204,14 +204,15 @@ def install(pipeline_module):
                 "persist_results=False is mandatory for all P5 proof runs"
             )
         prior = getattr(p, "_P5_NONPERSISTING_VALIDATION_ACTIVE", False)
-        new_proof = style == "v3_p5" and boundary == "original" and persistent is False
+        p5_validation = style == "v3_p5" and persistent is False
+        new_proof = p5_validation and boundary == "original"
         prior_pool = getattr(p, "DEEP_DIVE_MODEL_POOL", None)
         prior_deep_pool_call = getattr(p, "_call_deep_dive_pool", None)
         prior_client = getattr(p, "client", None)
         isolated_client = None
         setattr(p, "_P5_NONPERSISTING_VALIDATION_ACTIVE", new_proof)
         try:
-            if new_proof and prior_pool is not None:
+            if p5_validation and prior_pool is not None:
                 model_pool = ordered_p5_pool(prior_pool)
                 if not model_pool:
                     raise RuntimeError("P5 isolated validation has no permitted 3.8/3.6 model")
@@ -256,7 +257,7 @@ def install(pipeline_module):
             if isolated_client is not None:
                 p.client = prior_client
                 isolated_client.close()
-            if new_proof and prior_pool is not None:
+            if p5_validation and prior_pool is not None:
                 p.DEEP_DIVE_MODEL_POOL = prior_pool
                 if callable(prior_deep_pool_call):
                     p._call_deep_dive_pool = prior_deep_pool_call
