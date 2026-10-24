@@ -398,7 +398,29 @@ def install(pipeline_module):
                 except Exception as exc:
                     budget_error = getattr(p, "DeepDiveRunBudgetExceededError", RuntimeError)
                     raise budget_error(str(exc)) from exc
-            return original_model_send(model_name, *args, **kwargs)
+            # Counter.reserve() is the cross-run source of truth for requests
+            # sent from this repository. The regular 3.6 budget defaults to
+            # 18; constrain it to THREE only for a P5 deep-dive send.
+            # Do not mutate Classic's configured cap after this attempt.
+            daily = getattr(p, "PERSISTENT_GEMINI_COUNTER", None)
+            budgets = getattr(daily, "model_budgets", None)
+            cap_active = bool(p5_deep_dive and model_name == "gemini-3.6-flash"
+                              and isinstance(budgets, dict))
+            if p5_deep_dive and model_name == "gemini-3.6-flash" and callable(original_model_send) and not cap_active and hasattr(p, "GEMINI_API_KEY"):
+                raise RuntimeError("P5 requires the repository's persistent Gemini counter")
+            had_key = cap_active and model_name in budgets
+            old_cap = budgets.get(model_name) if cap_active else None
+            if cap_active:
+                default_cap = getattr(daily, "default_budget", 3)
+                budgets[model_name] = min(int(old_cap if had_key else default_cap), 3)
+            try:
+                return original_model_send(model_name, *args, **kwargs)
+            finally:
+                if cap_active:
+                    if had_key:
+                        budgets[model_name] = old_cap
+                    else:
+                        budgets.pop(model_name, None)
         p._generate_via_chat = p5_guarded_model_send
         p._P5_SEND_GUARD = send_guard
 
