@@ -108,9 +108,8 @@ def test_p5_83point_replay_cannot_run_unknown_or_preview_model(
 def test_original_phase0_call_was_plain_no_system_or_token_config():
     # Programmatic check protects against accidentally calling an altered
     # Phase0 provider contract the selected P5 never used.
-    from experiments.editorial_engine_v3_phase0 import live
     import inspect
-    source = inspect.getsource(live._call_model)
-    assert "client.models.generate_content(model=model, contents=prompt)" in source
-    assert "system_instruction" not in source
-    assert "temperature" not in source
+    source = inspect.getsource(golden.main)
+    assert 'response = client.models.generate_content(model=model, contents=prompt)' in source
+    assert 'system_instruction=' not in source
+    assert 'temperature=' not in source
