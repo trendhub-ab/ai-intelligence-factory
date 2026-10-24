@@ -1,0 +1,90 @@
+name: P5 Golden Three-Case 3.8 to 3.6 Once 20261024
+# No Production publishing, note/Notion writes, other branches or dispatch.
+on:
+  push:
+    branches: [experiment/v3-p5-golden-38-to-36-live-20261024]
+    paths: ['.github/workflows/v3-p5-golden-38-to-36-once-20261024.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+jobs:
+  proof:
+    if: >-
+      ${{ github.repository == 'trendhub-ab/ai-intelligence-factory' &&
+          github.event_name == 'push' &&
+          github.run_number == 1 &&
+          github.run_attempt == 1 &&
+          github.event.head_commit.message == 'fire(p5): once-only 3.8 then 3.6 golden three-case proof 20261024' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      PYTHONUNBUFFERED: '1'
+      AIIF_EDITORIAL_STYLE: v3_p5
+      AIIF_P5_WRITER_BOUNDARY: original
+    steps:
+      - name: Checkout pinned audited P5 proof implementation
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: 3f4d9ae3901731cf85dd4c48972832c5419303b8
+          persist-credentials: false
+      - name: Set up Python 3.11
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11.16'
+      - name: Install normal provider and test dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt pytest==8.4.2
+      - name: Verify golden prompt invariants and call ceilings without provider
+        run: |
+          python -m py_compile experiments/v3_p5_golden_38_36_live_20261024.py
+          python -m pytest -q tests/test_v3_p5_baseline_repro.py tests/test_v3_p5_production_adapter.py tests/test_v3_p5_pure_provider.py
+          python -m experiments.v3_p5_golden_38_36_live_20261024
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from experiments import v3_p5_golden_38_36_live_20261024 as r
+          s=json.loads((r.OUTPUT/'manifest.json').read_text())
+          assert s['status']=='PRECHECK_PASSED_NO_API'
+          assert s['model_priority']==['gemini-3.8-flash','gemini-3.6-flash']
+          assert s['max_by_model']['gemini-3.6-flash']==3
+          assert s['call_count_total']==0
+          assert s['source_baseline_commit']=='95016a65701979063f56130bf181bca831661f5d'
+          assert s['human_editorial_approval'] is False
+          assert not any((s['publication'], s['notion_write'], s['note_write']))
+          print('P5_GOLDEN_PREFLIGHT=PASS; provider_calls=0; 3.6_limit=3', flush=True)
+          PY
+      - name: Run owner-approved one-shot bounded 3.8 then 3.6 live proof
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          P5_GOLDEN_LIVE_CONFIRM: P5_GOLDEN_38_TO_36_ONCE
+        run: python -m experiments.v3_p5_golden_38_36_live_20261024
+      - name: Verify exactly one-model original P5 three-case set
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('p5_golden_38_to_36_live_20261024')
+          s=json.loads((p/'manifest.json').read_text())
+          assert s['status']=='THREE_CASES_VALID_NEEDS_HUMAN_EDITORIAL_AND_FACT_REVIEW'
+          assert s['model_used'] in ['gemini-3.8-flash','gemini-3.6-flash']
+          assert s['call_count_by_model']['gemini-3.6-flash'] <= 3
+          assert s['call_count_by_model']['gemini-3.8-flash'] <= 3
+          assert s['call_count_total'] <= 6
+          assert not s['publication'] and not s['notion_write'] and not s['note_write']
+          assert not s['full_production_fact_gate'] and not s['human_editorial_approval']
+          for name in ('FFT', 'Elastic', 'Claude'):
+              assert (p/f'golden_{name}.md').stat().st_size > 400
+              q=json.loads((p/'by_model'/s['model_used']/f'{name}_stages.json').read_text())
+              assert list(q)==['Writer Reaction','Editorial Discovery',
+                'Cognitive Shift','Persona Article Generation','Fact-Safe Review']
+          print('P5_GOLDEN_TECHNICAL_COMPARE=SUCCESS; editorial and Fact gates pending', flush=True)
+          PY
+      - name: Archive manuscripts, stage intermediates, model budget receipts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: v3-p5-golden-38-to-36-once-20261024
+          path: p5_golden_38_to_36_live_20261024/
+          retention-days: 14
+          if-no-files-found: ignore
