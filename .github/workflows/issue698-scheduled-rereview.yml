@@ -63,7 +63,7 @@ jobs:
           ENABLE_JAPANESE_DISPLAY_LABEL: ${{ vars.ENABLE_JAPANESE_DISPLAY_LABEL || 'false' }}
           GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
           GEMINI_PERSISTENT_COUNTER_PATH: '.runtime/gemini_daily_usage.json'
-          GEMINI_COUNTER_BRANCH: 'main'
+          GEMINI_COUNTER_BRANCH: 'runtime-state'
           GEMINI_QUOTA_TIMEZONE: 'America/Los_Angeles'
           GEMINI_36_FLASH_DAILY_BUDGET: '18'
           GEMINI_37_FLASH_DAILY_BUDGET: '18'
@@ -95,7 +95,7 @@ jobs:
           ENABLE_JAPANESE_DISPLAY_LABEL: ${{ vars.ENABLE_JAPANESE_DISPLAY_LABEL || 'false' }}
           GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
           GEMINI_PERSISTENT_COUNTER_PATH: '.runtime/gemini_daily_usage.json'
-          GEMINI_COUNTER_BRANCH: 'main'
+          GEMINI_COUNTER_BRANCH: 'runtime-state'
           GEMINI_QUOTA_TIMEZONE: 'America/Los_Angeles'
           GEMINI_36_FLASH_DAILY_BUDGET: '18'
           GEMINI_37_FLASH_DAILY_BUDGET: '18'

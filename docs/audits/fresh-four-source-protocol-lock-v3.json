@@ -27,7 +27,7 @@
     "run248_first_real_publish_quality_calibration.py": "b6d29b5ed16cdd9b35e27535d75764c8cc31d4f6",
     "run249_final_publication_surface_gate.py": "47a12ae0ebeafc701a038e3e0b19bca2f02c7511",
     "run194_publication_contract.py": "631e026307e5bbd0d312ab3c31b3fa8d00a7c499",
-    ".github/workflows/daily-one-shot.yml": "0035267de1ee9d2263990d851343ae6218ca66a4",
+    ".github/workflows/daily-one-shot.yml": "3078ed2c87207a0724e88c331290646b4afd2c40",
     "fresh_protocol_quota_lock.py": "c8acf920fb417fcad8528f50a16b3866a3f99237",
     "fresh_model_fallback_budget.py": "ed495c7b4835a6e233414c89904b721f50713910",
     "gemini_provider_resilience.py": "76a20936fe39544f8c34ba0bd9d0ef2a44e7848b",
@@ -76,5 +76,13 @@
     "pre_article": 6,
     "article": 4
   },
-  "source_boundary_precision_contract": "unchanged_production_checker_scopes_unsupported_management_fields_only"
+  "source_boundary_precision_contract": "unchanged_production_checker_scopes_unsupported_management_fields_only",
+  "storage_only_amendment_20261025": {
+    "path": ".github/workflows/daily-one-shot.yml",
+    "prior_frozen_blob": "0035267de1ee9d2263990d851343ae6218ca66a4",
+    "updated_frozen_blob": "3078ed2c87207a0724e88c331290646b4afd2c40",
+    "allowed_change": "exactly 3 GEMINI_COUNTER_BRANCH values from main to runtime-state",
+    "original_logical_limits_unchanged": true,
+    "note": "Main protected. Single runtime-state GitHub quota ledger retains CAS and model-request safety cap."
+  }
 }
