@@ -41,6 +41,7 @@ COMMAND_TO_MODE = {
     "/aiif run stale_ready_portfolio_audit": "stale_ready_portfolio_audit",
     "/aiif run v2_shadow_observation": "v2_shadow_observation",
     "/aiif run v2_shadow_deep_dive": "v2_shadow_deep_dive",
+    "/aiif run p5_ablation_once": "p5_ablation_once",
 }
 
 

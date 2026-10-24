@@ -42,6 +42,7 @@ jobs:
        github.event.comment.body == '/aiif run stale_ready_portfolio_audit' ||
        github.event.comment.body == '/aiif run v2_shadow_observation' ||
        github.event.comment.body == '/aiif run v2_shadow_deep_dive' ||
+       github.event.comment.body == '/aiif run p5_ablation_once' ||
        startsWith(github.event.comment.body, '/aiif run article_validation ') ||
        startsWith(github.event.comment.body, '/aiif eyecatch finalize ') ||
        startsWith(github.event.comment.body, '/aiif note body_resync ') ||
@@ -76,7 +77,7 @@ jobs:
           set -euo pipefail
           test "$AUTHORIZED" = "true"
           case "$MODE" in
-            article_validation|pending_retry_validation|ready_rescue_validation|production_e2e_validation|production_e2e_preflight|full|local_skills_canary_validation|local_skills_canary_github|local_skills_canary_hackernews|local_skills_canary_arxiv|local_skills_canary_officialvendor|local_skills_production_validation|x_discovery_stage2|stale_ready_portfolio_audit|v2_shadow_observation|v2_shadow_deep_dive) ;;
+            article_validation|pending_retry_validation|ready_rescue_validation|production_e2e_validation|production_e2e_preflight|full|local_skills_canary_validation|local_skills_canary_github|local_skills_canary_hackernews|local_skills_canary_arxiv|local_skills_canary_officialvendor|local_skills_production_validation|x_discovery_stage2|stale_ready_portfolio_audit|v2_shadow_observation|v2_shadow_deep_dive|p5_ablation_once) ;;
             article_validation_exact|ready_eyecatch_finalize|ready_note_body_resync|ready_note_cover_apply|ready_draft_regenerate|ready_draft_regenerate_resume)
               [[ "$TARGET_SYNC_ID" =~ ^[0-9a-f]{32}$ ]] || { echo "::error::Invalid exact sync_id"; exit 1; }
               ;;
@@ -157,6 +158,10 @@ jobs:
               target='v2-shadow-deep-dive.yml'
               payload='{"ref":"main","inputs":{"confirm":"RUN_V2_SHADOW_DEEP_DIVE"}}'
               ;;
+            p5_ablation_once)
+              target='p5-creative-ablation-manual.yml'
+              payload='{"ref":"main","inputs":{"confirm":"RUN_P5_ABLATION_ONCE"}}'
+              ;;
             ready_eyecatch_finalize)
               target='ready-eyecatch-finalize-once.yml'
               payload="$(printf '{"ref":"main","inputs":{"sync_id":"%s","confirm":"RUN_ONCE"}}' "$TARGET_SYNC_ID")"
@@ -208,6 +213,11 @@ jobs:
               echo '- Notion/note writes authorized: `false`'
               echo '- Production authority changed: `false`'
               echo '- confirmation injected: `RUN_V2_SHADOW_OBSERVATION`'
+            elif [ "$MODE" = 'p5_ablation_once' ]; then
+              echo '- P5 experimental model calls: at most 5'
+              echo '- reviewed P5 source SHA: `ce4485980e6f71a61d4ba5b78682ee89cb8c71d9`'
+              echo '- outputs: encrypted artifact only; key to private Telegram'
+              echo '- Production / Notion / note write: false'
             elif [ "$MODE" = 'v2_shadow_deep_dive' ]; then
               echo '- model credentials passed by bridge: `false`'
               echo '- downstream workflow model request budget: `1`'
