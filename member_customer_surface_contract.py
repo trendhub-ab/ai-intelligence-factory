@@ -152,6 +152,7 @@ NON_MEMBER_MODULES = frozenset((
     "experiments/v3_p5_private_golden_guard.py",  # hash-only provenance; private manuscripts never bundled
     "experiments/v3_p5_golden_prompt_snapshot.py",  # frozen five-stage prompt; no customer surface
     "experiments/v3_p5_baseline_repro.py",  # validation-only P5 proof; no customer write
+    "experiments/v3_p5_controlled_ablation.py",  # operator-only private P5 comparison; no customer publication
     "local_skills/__init__.py",
     "local_skills/a_plus.py",
     "local_skills/compiler.py",
