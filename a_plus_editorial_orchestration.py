@@ -14,6 +14,8 @@ from typing import Any
 
 from editorial_naturalness import build_naturalness_retry_contract as _base_naturalness_retry_contract
 
+from local_skills.v3_p5_rate_contract import P5SendGuard, ordered_p5_pool
+
 from local_skills.a_plus import (
     build_prewrite_contract,
     can_use_local_fallback,
@@ -171,6 +173,8 @@ def install(pipeline_module):
     original_retry = p.should_attempt_dynamic_retry
     original_call = p.call_gemini_grounded_deep_dive
     original_generate = p.generate_intelligence_report
+    original_model_send = getattr(p, "_generate_via_chat", None)
+    send_guard = P5SendGuard()
 
     state: dict[str, Any] = {
         "last_parsed": None,
@@ -194,17 +198,44 @@ def install(pipeline_module):
         # a nonpersisting, single-process editorial validation. The real
         # pipeline's fifth positional argument is persist_results=True.
         persistent = args[4] if len(args) > 4 else kwargs.get("persist_results", True)
-        if style == "v3_p5" and boundary == "original" and persistent is not False:
+        if style == "v3_p5" and persistent is not False:
             raise RuntimeError(
-                "P5 original Writer on new material requires persist_results=False; "
-                "no article, Notion or note promotion is authorized"
+                "P5 has no human editorial approval authority: "
+                "persist_results=False is mandatory for all P5 proof runs"
             )
         prior = getattr(p, "_P5_NONPERSISTING_VALIDATION_ACTIVE", False)
-        setattr(p, "_P5_NONPERSISTING_VALIDATION_ACTIVE",
-                style == "v3_p5" and boundary == "original" and persistent is False)
+        new_proof = style == "v3_p5" and boundary == "original" and persistent is False
+        prior_pool = getattr(p, "DEEP_DIVE_MODEL_POOL", None)
+        prior_client = getattr(p, "client", None)
+        isolated_client = None
+        setattr(p, "_P5_NONPERSISTING_VALIDATION_ACTIVE", new_proof)
         try:
+            if new_proof and prior_pool is not None:
+                model_pool = ordered_p5_pool(prior_pool)
+                if not model_pool:
+                    raise RuntimeError("P5 isolated validation has no permitted 3.8/3.6 model")
+                p.DEEP_DIVE_MODEL_POOL = model_pool
+            # The native Gemini SDK can retry invisibly inside send_message.
+            # For real pipeline calls, isolate the client and force ONE SDK
+            # attempt per guarded logical provider send. No global client
+            # mutation survives the nonpersisting validation call.
+            if style == "v3_p5" and callable(original_model_send):
+                genai = getattr(p, "genai", None)
+                api_key = getattr(p, "GEMINI_API_KEY", None)
+                if genai is None or not api_key:
+                    raise RuntimeError("P5 live proof requires auditable Gemini client credentials")
+                isolated_client = genai.Client(
+                    api_key=api_key,
+                    http_options={"timeout": 120000, "retry_options": {"attempts": 1}},
+                )
+                p.client = isolated_client
             return original_generate(*args, **kwargs)
         finally:
+            if isolated_client is not None:
+                p.client = prior_client
+                isolated_client.close()
+            if new_proof and prior_pool is not None:
+                p.DEEP_DIVE_MODEL_POOL = prior_pool
             setattr(p, "_P5_NONPERSISTING_VALIDATION_ACTIVE", prior)
 
     @wraps(original_prompt)
@@ -351,6 +382,25 @@ def install(pipeline_module):
                     state["force_local_fallback"] = False
                     return result
             raise
+
+    if callable(original_model_send):
+        @wraps(original_model_send)
+        def p5_guarded_model_send(model_name, *args, **kwargs):
+            # The real native pool (including its internal retry loop) resolves
+            # this function from pipeline globals for EVERY physical SDK send.
+            p5_deep_dive = (
+                str(getattr(p, "AIIF_EDITORIAL_STYLE", "classic")) == "v3_p5"
+                and kwargs.get("count_as_deep_dive") is True
+            )
+            if p5_deep_dive:
+                try:
+                    send_guard.pre_send(model_name, p5_active=True)
+                except Exception as exc:
+                    budget_error = getattr(p, "DeepDiveRunBudgetExceededError", RuntimeError)
+                    raise budget_error(str(exc)) from exc
+            return original_model_send(model_name, *args, **kwargs)
+        p._generate_via_chat = p5_guarded_model_send
+        p._P5_SEND_GUARD = send_guard
 
     p.generate_intelligence_report = generate_intelligence_report_a_plus
     p.build_decision_prompt = build_decision_prompt_a_plus
