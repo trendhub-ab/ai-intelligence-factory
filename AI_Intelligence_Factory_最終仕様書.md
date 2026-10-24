@@ -1,10 +1,10 @@
 # AI Intelligence Factory — 現行Production仕様
 
-仕様最終変更日: **2026-10-24**
-Production最終照合日: **2026-10-24**
+仕様最終変更日: **2026-10-25**
+Production最終照合日: **2026-10-25**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`f30660ea15b0285b76f963b0b0bb12af309ad992d59fe03bb463d64a881a669b`**
+Production Contract Fingerprint: **`5615ac14f38e02b14bb89c8fac000ddbe7aabb2f309bc4b7e7e0a926b87909a5`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -402,6 +402,14 @@ Gemini Writer call前にLocal Skillsが次を固定する。
 - Evidence不足を物語性で補わない
 
 A+導入のために追加Provider callを要求しない。
+
+### 6.2c Gemini共通永続利用回数台帳（runtime-state、2026-10-25）
+
+- GitHub `main`の必須PR・CI保護を変更せず、Gemini永続Counterは既存の書込可能ブランチ`runtime-state`、正本パス`.runtime/gemini_daily_usage.json`に統一する。既存`article-revalidation-apply.yml`の運用ブランチを全モデル使用ワークフローに展開し、mainの古い2026-09-02台帳を正本へ戻さない。
+- Daily ONE-SHOT／P5 A–E／Inventory／Issue 668/683/698再検証／Ready再生成・アイキャッチ・Recovery／実記事Regressionはすべて同じ保存先とrepository scopeを共有する。GH_PATによるContents APIのCAS `sha`、HTTP 409競合時の再読込、provider送信前の予約、model別・Run別上限、共通Gemini concurrency lockを維持する。
+- `runtime-state`への試験書込・再読込は利用回数0件で成功（commit `a3c5ff91f910887c3138369dc406332cd4e9adda`）。初回実呼び出し時はAmerica/Los_Angeles日付に合わせて既存Counterが日次正規化される。手動AI Studioなどrepository外の呼び出しはカウント対象外であり、Google providerのquotaを保証するものではない。
+- `issue668-stage2-live-rerun.yml`はmainへのpush連動による意図しない実API再発火を防ぐため`workflow_dispatch`専用とし、主担当者による明示起動を要する。既存のモデル選択やEvidence/Fact/Publication Gateは変更しない。
+- Counter書込エラー時にはGemini呼び出し前にfail closedする。counter無効化・保護mainへの書込再導入・run専用別台帳・同時実行制限解除は認めない。
 
 ### 6.2b P5 A–E原因切り分け ChatOps（2026-10-24、未昇格の実験）
 
