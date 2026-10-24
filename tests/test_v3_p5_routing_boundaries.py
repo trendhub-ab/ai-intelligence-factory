@@ -367,4 +367,3 @@ def test_real_p5_send_boundary_removes_only_shared_low_thinking_override():
         }, **base,
     ) == "mock_sent"
     assert sent[-1][1] == {"thinking_config": {"thinking_level": "low"}}
-

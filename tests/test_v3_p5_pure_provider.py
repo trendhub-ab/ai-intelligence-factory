@@ -255,4 +255,3 @@ def test_actual_resilience_provider_passes_no_config_only_for_original_writer():
     assert sent[-1] == (
         "gemini-3.8-flash", {"thinking_config": {"thinking_level": "low"}}, True
     )
-
