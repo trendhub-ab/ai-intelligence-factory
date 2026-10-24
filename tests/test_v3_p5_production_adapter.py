@@ -206,3 +206,40 @@ def test_one_shot_option_preserves_existing_sources_and_publication_gates():
     assert '("なぜ重要？",' in source
     assert '("結論は？",' in source
     assert 'f"### Sources / Evidence\\n"' in source
+
+
+def test_p5_first_pass_decision_stays_in_management_but_never_leaks_to_second_prompt():
+    case = _source_case(
+        {"name": "Test", "url": "https://example.org/official-report"},
+        _source(), SimpleNamespace(EVIDENCE_SUFFICIENT="SUFFICIENT"),
+    )
+    incoming = {
+        "source_summary_text": "この手法は動向注視。",
+        "decision_text": "WATCH",
+        "decision_reason_text": "現時点ではWATCHの理由として独立検証が必要。",
+        "action_text": "注視（WATCH）しつつ研究で確認する。",
+    }
+    prompt = _p5_prompt(case, incoming, _source())
+    assert "現時点" in prompt
+    assert "研究で確認する。" in prompt
+    assert "WATCH" not in prompt
+    assert "Decision (existing canonical management classification)" not in prompt
+    assert "【Production A+ LocalSkills / Gate Authority｜全5段階で遵守】" in prompt
+
+
+def test_p5_precise_observed_watch_leak_is_corrected_and_original_fact_gate_stays_strict():
+    observed = P5_FINAL + "\n\n現段階では**注視（WATCH）**しつつ、実験で検証したい。"
+    final, stages = _extract_bundle(_bundle(final=observed))
+    assert "WATCH" not in final
+    assert final.endswith("現段階では**注視**しつつ、実験で検証したい。")
+    assert stages["Fact-Safe Review"] == final
+    assert stages["Persona Article Generation"] == P5_FINAL
+
+    for invalid in (
+        P5_FINAL + "\n何よりもWATCHすべき。",
+        P5_FINAL + "\nこの結果はTRYだ。",
+        P5_FINAL + "\n注視（WATCH）しつつ、WATCH。",
+        P5_FINAL + "\n注視（WATCH）と注視（WATCH）。",
+    ):
+        with pytest.raises(P5EditorialContractError, match="stage validation"):
+            _extract_bundle(_bundle(final=invalid))
