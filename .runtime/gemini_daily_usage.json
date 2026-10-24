@@ -49,5 +49,10 @@
   "quota_date": "2026-10-20",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-10-21T04:42:35.788816+00:00"
+  "updated_at": "2026-10-21T04:42:35.788816+00:00",
+  "storage_backend_probe": {
+    "verified_date_jst": "2026-10-24",
+    "purpose": "shared Daily and P5 Gemini quota ledger GitHub contents API CAS write proof",
+    "provider_calls": 0
+  }
 }
