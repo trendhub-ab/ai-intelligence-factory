@@ -153,3 +153,38 @@ def test_p5_provider_38_36_only_with_reverse_order_and_preview_never_selected():
                         "gemini-3-flash-preview", "gemini-3.8-flash"))
     call_p5_pure_writer(p, PROMPT, {}, SOURCE, request_origin="article_revalidation")
     assert sends[0][4] == ["gemini-3.8-flash", "gemini-3.6-flash"]
+
+
+
+def test_original_p5_provider_config_reaches_deep_dive_without_forced_low_thinking():
+    """Catch real integration regression: downstream resilience used to add thinking=low."""
+    from local_skills.v3_p5_call_contract import P5OriginalWriterConfig
+    from gemini_provider_resilience import _deep_dive_generation_config
+    p, sends = runtime(("gemini-3.6-flash", "gemini-3.8-flash"))
+    _, _ = call_p5_pure_writer(
+        p, PROMPT, {}, SOURCE, request_origin="article_revalidation",
+    )
+    assert len(sends) == 1
+    marker = sends[0][1]
+    assert type(marker) is P5OriginalWriterConfig
+    assert marker == {}
+    assert _deep_dive_generation_config(marker, "deep_dive") is None
+    assert _deep_dive_generation_config({}, "deep_dive") == {
+        "thinking_config": {"thinking_level": "low"},
+    }
+    assert _deep_dive_generation_config(None, "deep_dive") == {
+        "thinking_config": {"thinking_level": "low"},
+    }
+
+
+def test_p5_original_config_marker_cannot_hide_generation_overrides():
+    from local_skills.v3_p5_call_contract import P5OriginalWriterConfig
+    from gemini_provider_resilience import _deep_dive_generation_config
+    marker = P5OriginalWriterConfig()
+    marker["system_instruction"] = "Unapproved hidden persona"
+    with pytest.raises(ValueError, match="cannot contain overrides"):
+        _deep_dive_generation_config(marker, "deep_dive")
+    # Passing the marker for unrelated provider kinds cannot disable normal config.
+    assert _deep_dive_generation_config(P5OriginalWriterConfig(), "screening") == {
+        "thinking_config": {"thinking_level": "low"},
+    }
