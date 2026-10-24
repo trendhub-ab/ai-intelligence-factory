@@ -88,7 +88,18 @@ def _is_quality_reasoning_kind(kind: str) -> bool:
 
 
 def _deep_dive_generation_config(config: dict | None, kind: str) -> dict | None:
-    """Use low thinking for ordinary Deep Dive without weakening repair reasoning."""
+    """Use low thinking for ordinary Deep Dive; preserve verified original P5.
+
+    A plain {} means normal Deep Dive and MUST retain low thinking. Only the
+    preflight-authorized marker returned by pure_p5_writer_config() may bypass
+    these creative overrides. Return None, not {}, so the transport omits the
+    Gemini config entirely, matching the selected original Phase0 call shape.
+    """
+    from local_skills.v3_p5_call_contract import P5OriginalWriterConfig
+    if type(config) is P5OriginalWriterConfig and kind == "deep_dive":
+        if config:
+            raise ValueError("Original P5 config marker cannot contain overrides")
+        return None
     if _is_quality_reasoning_kind(kind):
         return config
     merged = dict(config or {})
