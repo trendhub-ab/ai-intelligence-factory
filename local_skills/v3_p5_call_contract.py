@@ -12,6 +12,20 @@ class P5BaselineCallContractError(ValueError):
     """Refuse unsafe or misleading baseline call reproduction."""
 
 
+class P5OriginalWriterConfig(dict):
+    """Audited empty-config marker for the original P5 writer only.
+
+    The canonical Deep Dive resilience adapter normally adds low-thinking
+    overrides even when an ordinary {} is passed. This marker allows that
+    one provider adapter to leave the historic Writer config completely
+    unspecified, while Classic and managed P5 retain their normal controls.
+    Do not serialize this marker into a Google SDK request.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+
 def pure_p5_writer_config(
     config: dict,
     *,
@@ -45,4 +59,4 @@ def pure_p5_writer_config(
         )
     # Deliberately identical to the selected original Phase0
     # client.models.generate_content(model=model, contents=prompt) call.
-    return {}
+    return P5OriginalWriterConfig()
