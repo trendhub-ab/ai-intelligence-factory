@@ -19,6 +19,7 @@ def pure_p5_writer_config(
     writer_boundary: str,
     request_origin: str,
     request_kind: str,
+    nonpersisting_new_validation: bool = False,
 ) -> dict:
     """Return baseline-equivalent generation configuration, proof-only.
 
@@ -29,7 +30,10 @@ def pure_p5_writer_config(
     if (
         editorial_style != "v3_p5"
         or writer_boundary != "original"
-        or request_origin != "article_revalidation"
+        or not (
+            request_origin == "article_revalidation"
+            or (request_origin == "new" and nonpersisting_new_validation is True)
+        )
         or request_kind != "deep_dive"
     ):
         raise P5BaselineCallContractError(
