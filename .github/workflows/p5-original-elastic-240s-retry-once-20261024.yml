@@ -1,0 +1,122 @@
+name: P5 Elastic 3.8 One-Call 240s Timeout Proof
+on:
+  pull_request:
+    types: [synchronize]
+    paths:
+      - '.github/workflows/p5-original-elastic-240s-retry-once-20261024.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+
+jobs:
+  p5-original-one-call:
+    if: >-
+      github.run_attempt == 1 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'experiment/v3-p5-original-writer-isolation-20261024'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact same-repository experiment PR
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install guarded dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements.txt pytest playwright
+      - name: Provider-free pinned source and continuity preflight
+        run: |
+          python -m pytest -q tests/test_v3_p5_baseline_repro.py tests/test_v3_p5_private_golden_guard.py
+          python -m experiments.v3_p5_baseline_repro
+      - name: ONE Gemini 3.8 Flash original-P5 Elastic proof, no retries or publication
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          from google import genai
+          from experiments.v3_p5_baseline_repro import build_manifest, frozen_case_prompts
+          from experiments.v3_p5_golden_cases import READY_CASES
+          from experiments.v3_p5_private_golden_guard import review_stage_continuity
+          from local_skills.v3_p5_one_shot import _extract_bundle
+
+          model = "gemini-3.8-flash"
+          path = Path("p5_original_elastic_private_review")
+          path.mkdir(exist_ok=True)
+          manifest = build_manifest(model)
+          manifest.update({
+              "status": "PREPARED_NO_API_YET",
+              "case": "Elastic",
+              "source_case_id": READY_CASES[1].case.case_id,
+              "nonpersisting": True,
+              "no_retries": True,
+              "max_provider_attempts": 1,
+              "publication_approval": False,
+          })
+          def save():
+              (path / "manifest.json").write_text(
+                  json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+              )
+
+          save()
+          prompts = frozen_case_prompts()
+          assert len(prompts) == 3
+          assert prompts[1][0] == READY_CASES[1].case.case_id
+          assert manifest["selected_model_allowed"] is True
+          api_key = os.environ.get("GEMINI_API_KEY")
+          if not api_key:
+              manifest["status"] = "TECHNICAL_NO_GO_MISSING_CREDENTIAL"
+              save()
+              raise RuntimeError("GEMINI_API_KEY is not configured in Actions")
+          client = genai.Client(
+              api_key=api_key,
+              http_options={"timeout": 240000, "retry_options": {"attempts": 1}},
+          )
+          try:
+              manifest["provider_attempts"] = 1
+              manifest["status"] = "ONE_REQUEST_STARTED"
+              save()
+              response = client.models.generate_content(
+                  model=model, contents=prompts[1][1]
+              )
+              raw = str(getattr(response, "text", "") or "")
+              article, stages = _extract_bundle(raw)
+              check = review_stage_continuity(stages)
+              (path / "candidate_elastic.md").write_text(article + "\n", encoding="utf-8")
+              (path / "five_stages.json").write_text(
+                  json.dumps(stages, ensure_ascii=False, indent=2), encoding="utf-8"
+              )
+              (path / "continuity_diagnostics.json").write_text(
+                  json.dumps(check, ensure_ascii=False, indent=2), encoding="utf-8"
+              )
+              manifest["candidate_sha256"] = hashlib.sha256(article.encode()).hexdigest()
+              manifest["status"] = "VALID_FIVE_STAGES_HUMAN_EDITORIAL_AND_FACT_REVIEW_REQUIRED"
+              print("P5_ELASTIC_38_ONE_CALL=VALID; publication_approved=false")
+          except Exception as exc:
+              manifest["status"] = "TECHNICAL_NO_GO"
+              manifest["error_type"] = type(exc).__name__
+              print("P5_ELASTIC_38_ONE_CALL=NO_GO; error_type="+type(exc).__name__)
+              raise
+          finally:
+              save()
+              client.close()
+          PY
+      - name: Upload short-lived private editorial review artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: p5-original-elastic-38-240s-second-proof-20261024
+          path: p5_original_elastic_private_review/
+          if-no-files-found: warn
+          retention-days: 1
