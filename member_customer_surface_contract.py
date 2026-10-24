@@ -163,6 +163,7 @@ NON_MEMBER_MODULES = frozenset((
     "local_skills/v3_p5_prompts.py",  # Canonical P5 five-stage bundled prompt; no member/customer access
     "local_skills/v3_p5_call_contract.py",  # original Writer config contract; validation only
     "local_skills/v3_p5_pure_provider.py",  # validated isolated Writer call; no customer surface
+    "local_skills/v3_p5_rate_contract.py",  # validation-only provider send guard; no member/customer data
     "local_skills/v3_p5_one_shot.py",  # Optional Article Writer runtime; no member/customer access
     "tools/capture_note_session.py",
     "tools/editorial_ab.py",
