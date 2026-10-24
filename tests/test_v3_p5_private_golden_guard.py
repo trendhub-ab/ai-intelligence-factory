@@ -62,10 +62,26 @@ def test_private_archive_verification_and_export_do_not_need_gemini(tmp_path: Pa
         label: "# Editorial reference\n\n" + f"Dummy local fixture for {label}." * 18
         for label in guard.LABELS
     }
+    import json
+    stage_records = {
+        label: {
+            "Writer Reaction": "Question: verified sample only",
+            "Editorial Discovery": "Evidence Pivot: local-only",
+            "Cognitive Shift": "After View: offline",
+            "Persona Article Generation": text,
+            "Fact-Safe Review": text,
+        }
+        for label, text in samples.items()
+    }
+    stage_bytes = {
+        label: json.dumps(stages, ensure_ascii=False, indent=2).encode("utf-8")
+        for label, stages in stage_records.items()
+    }
     archives = tmp_path / "private_fixture.zip"
     with zipfile.ZipFile(archives, "w") as zipped:
         for label, text in samples.items():
             zipped.writestr(f"正本_{label}.md", text.encode("utf-8"))
+            zipped.writestr(f"5段階_{label}.json", stage_bytes[label])
     hashes = {
         case_id: hashlib.sha256(samples[label].encode()).hexdigest()
         for case_id, label in zip(guard.CASE_IDS, guard.LABELS)
@@ -74,7 +90,11 @@ def test_private_archive_verification_and_export_do_not_need_gemini(tmp_path: Pa
         case_id: len(samples[label])
         for case_id, label in zip(guard.CASE_IDS, guard.LABELS)
     }
-    with patch.dict(guard.ARTICLE_DIGESTS, hashes), patch.dict(guard.ORIGINAL_CHARS, sizes):
+    stage_hashes = {
+        case_id: hashlib.sha256(stage_bytes[label]).hexdigest()
+        for case_id, label in zip(guard.CASE_IDS, guard.LABELS)
+    }
+    with patch.dict(guard.ARTICLE_DIGESTS, hashes), patch.dict(guard.ORIGINAL_CHARS, sizes), patch.dict(guard.STAGE_JSON_DIGESTS, stage_hashes):
         assert guard.verify_private_golden_archive(archives) == samples
         exported = tmp_path / "review-only"
         manifest = guard.export_verified_private_goldens(archives, exported)
@@ -87,7 +107,16 @@ def test_private_archive_verification_and_export_do_not_need_gemini(tmp_path: Pa
         with zipfile.ZipFile(archives, "w") as zipped:
             for label, text in samples.items():
                 zipped.writestr(f"正本_{label}.md", text + " tampered")
+                zipped.writestr(f"5段階_{label}.json", stage_bytes[label])
         with pytest.raises(guard.PrivateGoldenMismatch, match="altered"):
+            guard.verify_private_golden_archive(archives)
+
+        # Identical finished manuscripts are not sufficient if stage records drift.
+        with zipfile.ZipFile(archives, "w") as zipped:
+            for label, text in samples.items():
+                zipped.writestr(f"正本_{label}.md", text.encode("utf-8"))
+                zipped.writestr(f"5段階_{label}.json", stage_bytes[label] + b" ")
+        with pytest.raises(guard.PrivateGoldenMismatch, match="five-stage"):
             guard.verify_private_golden_archive(archives)
 
 
