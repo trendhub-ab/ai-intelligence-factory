@@ -206,6 +206,7 @@ def install(pipeline_module):
         prior = getattr(p, "_P5_NONPERSISTING_VALIDATION_ACTIVE", False)
         new_proof = style == "v3_p5" and boundary == "original" and persistent is False
         prior_pool = getattr(p, "DEEP_DIVE_MODEL_POOL", None)
+        prior_deep_pool_call = getattr(p, "_call_deep_dive_pool", None)
         prior_client = getattr(p, "client", None)
         isolated_client = None
         setattr(p, "_P5_NONPERSISTING_VALIDATION_ACTIVE", new_proof)
@@ -215,6 +216,27 @@ def install(pipeline_module):
                 if not model_pool:
                     raise RuntimeError("P5 isolated validation has no permitted 3.8/3.6 model")
                 p.DEEP_DIVE_MODEL_POOL = model_pool
+                # Run260's health router can reorder even a two-model pool
+                # back to 3.6-first. For this isolated proof, go directly
+                # through the *current* canonical model pool provider (which
+                # owns persistent quota, audit, pacing and 503 fallbacks).
+                # Never replace that provider itself.
+                if callable(prior_deep_pool_call) and callable(
+                    getattr(p, "_call_model_pool", None)
+                ):
+                    def p5_locked_deep_pool(prompt, config=None, kind="deep_dive",
+                                            request_context="", request_origin="new"):
+                        current_models = ordered_p5_pool(
+                            getattr(p, "DEEP_DIVE_MODEL_POOL", ())
+                        )
+                        if not current_models:
+                            raise RuntimeError("P5 no eligible 3.8/3.6 models")
+                        return p._call_model_pool(
+                            prompt, config, kind, 0, current_models,
+                            deep_dive=True, request_context=request_context,
+                            request_origin=request_origin,
+                        )
+                    p._call_deep_dive_pool = p5_locked_deep_pool
             # The native Gemini SDK can retry invisibly inside send_message.
             # For real pipeline calls, isolate the client and force ONE SDK
             # attempt per guarded logical provider send. No global client
@@ -236,6 +258,8 @@ def install(pipeline_module):
                 isolated_client.close()
             if new_proof and prior_pool is not None:
                 p.DEEP_DIVE_MODEL_POOL = prior_pool
+                if callable(prior_deep_pool_call):
+                    p._call_deep_dive_pool = prior_deep_pool_call
             setattr(p, "_P5_NONPERSISTING_VALIDATION_ACTIVE", prior)
 
     @wraps(original_prompt)
