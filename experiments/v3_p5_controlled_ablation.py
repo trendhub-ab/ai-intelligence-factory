@@ -208,7 +208,15 @@ def main() -> None:
     if args.confirm != CONFIRM or args.private_output is None:
         raise RuntimeError("Manual confirmation and --private-output are required")
     if os.environ.get("GITHUB_ACTIONS") == "true":
-        raise RuntimeError("Private P5 drafts may not run within GitHub Actions")
+        authorized = (
+            os.environ.get("AIIF_P5_CONFIDENTIAL_REVIEW") == "fernet_telegram_private"
+            and os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
+            and os.environ.get("GITHUB_RUN_ATTEMPT") == "1"
+            and os.environ.get("GITHUB_ACTOR") == "trendhub-ab"
+            and os.environ.get("GITHUB_REF") == "refs/heads/main"
+        )
+        if not authorized:
+            raise RuntimeError("GitHub Actions require P5 protected manual dispatch with encrypted private handoff")
     if datetime.now(ZoneInfo("Asia/Tokyo")).hour < 17:
         raise RuntimeError("Live P5 proof requires 17:00 JST or later")
     target = args.private_output.expanduser().resolve()

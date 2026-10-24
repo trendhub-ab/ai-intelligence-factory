@@ -124,3 +124,18 @@ def test_optional_e_is_explicit_and_still_no_api(monkeypatch, capsys):
     assert m["arms"] == ["A", "B", "C", "D", "E"]
     assert m["uses_extra_editor_persona"] is True
     assert m["gemini_requests"] == 0
+
+
+def test_actions_live_mode_rejects_unprotected_manuscript(monkeypatch, tmp_path):
+    monkeypatch.setattr("sys.argv", [
+        "p5", "--live", "--confirm", exp.CONFIRM,
+        "--private-output", str(tmp_path / "private"),
+    ])
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
+    monkeypatch.setenv("GITHUB_ACTOR", "trendhub-ab")
+    monkeypatch.delenv("AIIF_P5_CONFIDENTIAL_REVIEW", raising=False)
+    with pytest.raises(RuntimeError, match="protected manual dispatch"):
+        exp.main()

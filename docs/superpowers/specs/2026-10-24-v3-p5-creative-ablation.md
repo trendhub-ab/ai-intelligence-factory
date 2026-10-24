@@ -31,7 +31,7 @@ Preflight accesses no credentials and never sends API, note, Notion, or other ex
 
 ## OPTIONAL manual private live run
 
-Requires both GH_PAT and GEMINI_API_KEY, native enabled repository-persistent counter, and an unused PRIVATE output directory outside repository. Only after 17:00 JST. Live proof is explicitly forbidden in GitHub Actions to avoid public publication of draft artifacts.
+Requires both GH_PAT and GEMINI_API_KEY, native enabled repository-persistent counter, and an unused PRIVATE output directory outside repository. Only after 17:00 JST. Live proof is forbidden in GitHub Actions except when the reviewed manual-dispatch guard authorizes the exact owner, one-shot run, and a private Telegram-keyed Fernet handoff is confirmed before any Gemini send. Raw manuscripts stay inside RUNNER_TEMP. Only encrypted artifacts may be uploaded, and the encryption key goes exclusively to the existing Telegram bot chat after verifying it is a private chat; groups/channels fail closed. This handoff requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID. Failed chat preflight forbids any Gemini requests.
 
     python -m experiments.v3_p5_controlled_ablation --live --confirm RUN_P5_ABLATION_ONCE --private-output /private/path/p5-experiment-YYYYMMDD
 
