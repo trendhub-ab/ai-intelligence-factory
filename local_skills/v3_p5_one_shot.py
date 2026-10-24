@@ -17,6 +17,7 @@ classic first-pass article if P5 cannot complete.
 from __future__ import annotations
 
 import json
+import os
 import re
 from typing import Any, Callable
 
@@ -225,7 +226,7 @@ def apply_p5_editorial_one_shot(
         raise P5EditorialContractError("P5 missing required canonical LocalSkills prewrite")
     case = _source_case(repo, source_info, p)
     management, parsed = _management_first_pass(first_response, p)
-    writer_boundary = str(getattr(p, "AIIF_P5_WRITER_BOUNDARY", "managed") or "managed")
+    writer_boundary = str(getattr(p, "AIIF_P5_WRITER_BOUNDARY", None) or os.getenv("AIIF_P5_WRITER_BOUNDARY", "managed"))
     if writer_boundary == "original" and request_origin != "article_revalidation":
         raise P5EditorialContractError(
             "Original P5 writer isolation is permitted only in article_validation proof"
@@ -234,11 +235,17 @@ def apply_p5_editorial_one_shot(
         case, parsed, source_info, writer_boundary=writer_boundary
     )
 
+    # Pure original P5 is strictly validation-only. Bypass the integrated
+    # AIIF system persona and explicit token cap, so model call conditions
+    # match the pre-integration P5 creative path (the model itself may differ).
+    # The first management call and all downstream gates remain unchanged.
+    writer_call_options = {"p5_writer_pure": True} if writer_boundary == "original" else {}
     editorial_response, editorial_grounding = call(
         bundle_prompt, repo, source_info,
         request_kind="deep_dive",  # existing per-run/model quota pathway
         request_context=request_context + ":p5_five_stages",
         request_origin=request_origin,
+        **writer_call_options,
     )
     article, stages = _extract_bundle(getattr(editorial_response, "text", "") or "")
     if tuple(stages) != P5_REQUIRED_STAGES:
