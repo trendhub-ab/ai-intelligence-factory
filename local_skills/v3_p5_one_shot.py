@@ -71,6 +71,14 @@ def _extract_bundle(raw: str) -> tuple[str, dict[str, str]]:
     stages = {name: payload[name] for name in P5_REQUIRED_STAGES}
     if not all(isinstance(value, str) and value.strip() for value in stages.values()):
         raise P5EditorialContractError("P5 editorial bundle contains a blank or malformed stage")
+    # The real 2026-10-24 P5 proof returned the narrowly redundant label
+    # "注視（WATCH）" in the final article. Remove *only* that non-reader
+    # classification suffix while retaining the Japanese meaning. All other
+    # labels, repeated leaks, and substantive rewrites still fail closed.
+    final = stages["Fact-Safe Review"]
+    if final.count("注視（WATCH）") == 1:
+        final = final.replace("注視（WATCH）", "注視", 1)
+        stages["Fact-Safe Review"] = final
     try:
         validate_article_layout(stages["Persona Article Generation"])
         validate_reader_facing_article(stages["Fact-Safe Review"])
@@ -136,11 +144,20 @@ def _p5_prompt(case: Phase0Case, parsed: dict, source_info: dict) -> str:
     result = dict(source_info.get("evidence_result") or {})
     metadata = dict(source_info.get("evidence_metadata") or {})
     prewrite = build_prewrite_contract(result, metadata)
+    # The management decision (e.g. WATCH) is retained verbatim in the FIRST
+    # call's canonical MANAGEMENT DATA and must never be supplied as a literal
+    # code to the creative P5 article writer. Writer guidance contains only
+    # natural-language reason/action, not the decision code or first-pass draft.
+    def remove_management_code(value: object) -> str:
+        return re.sub(
+            r"(?<![A-Za-z0-9_])(?:TRY|WATCH|PASS|AVOID)(?![A-Za-z0-9_])",
+            "",
+            str(value or ""),
+        ).replace("（）", "").strip()
+
     management_context = {
-        "Source Summary (unverified writer draft, not primary evidence)": parsed.get("source_summary_text", ""),
-        "Decision (existing canonical management classification)": parsed["decision_text"],
-        "Decision Reason (retain only if grounded)": parsed.get("decision_reason_text", ""),
-        "Action (existing canonical management action)": parsed["action_text"],
+        "Decision Reason (retain only if grounded)": remove_management_code(parsed.get("decision_reason_text", "")),
+        "Action (existing canonical management action)": remove_management_code(parsed["action_text"]),
         "Important: source facts and required qualifiers supersede these management fields": True,
     }
     return (

@@ -4,7 +4,7 @@
 Production最終照合日: **2026-10-24**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`61f6b2cfd36a5973179a69099a2290ec15281598fd7665926564031244f88f11`**
+Production Contract Fingerprint: **`1d542498f4b65e1816b3b11669e775c5e8eb439f4a3482ff8885b9ebae3c858d`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -407,8 +407,9 @@ A+導入のために追加Provider callを要求しない。
 
 - **唯一のP5正本はPR #852（commit `95016a65701979063f56130bf181bca831661f5d`）**。本リビジョンでは廃止された派生案を開発判断に使用しない。`local_skills/v3_p5_contract.py` / `local_skills/v3_p5_prompts.py` はそのP5原稿・五段階束プロンプトを移植し、比較基準として保持する。P5の今後の改善自体は凍結しない。
 - `AIIF_EDITORIAL_STYLE=v3_p5` を明示選択した時だけ、既存LocalSkills A+ Pre-Writeの後に、**Writer Reaction → Editorial Discovery → Cognitive Shift → Persona Article Generation → Fact-Safe Review** をP5本来のJSON成果物5キーで生成する。五段階は一つのGemini Deep Dive callで実施する。
-- **Productionは計2回のDeep Dive callが必要**。第1回で従来のMANAGEMENT DATA / Decision / Actionを生成。第2回で一次Source Native Context / Structured Evidence / LocalSkills制約 / 第1回のDecisionを入力としてP5の五段階束を生成し、Fact-Safe Reviewの全文をcanonical ARTICLEへ置換する。既存のMANAGEMENT DATA / Gate Thresholdsは変更しない。追加callも既存model pool・実行予算・プロバイダ安全機構の対象とし、別API権限やバックドアを持たせない。
+- **Productionは計2回のDeep Dive callが必要**。第1回で従来のMANAGEMENT DATA / Decision / Actionを生成。第2回で一次Source Native Context / Structured Evidence / LocalSkills制約 / 第1回のDecision ReasonとAction（内部判定コードを除外）を入力としてP5の五段階束を生成し、Fact-Safe Reviewの全文をcanonical ARTICLEへ置換する。既存のMANAGEMENT DATA / Gate Thresholdsは変更しない。追加callも既存model pool・実行予算・プロバイダ安全機構の対象とし、別API権限やバックドアを持たせない。
 - 不完全なP5 JSON、5段階欠落、未検証の一次Source、空の最終稿、違反する文章、モデルエラーは**Fail-Closed**。第1回の説明原稿へ黙ってfallbackせず、Gateを迂回しない。
+- 2026-10-24の実API検証で、管理区分 `WATCH` が筆者本文の「注視（WATCH）」として混入した事象を確認。第2回Writerには内部判定コードを渡さない。最終稿で確認済みの **「注視（WATCH）」が1箇所のみ** の場合に限り日本語の「注視」に正規化し、従来のReader-facing validatorを必ず再適用する。他の管理コード・複数箇所・不明な表記の漏洩は引き続きFail-Closed。P5の元の五段階プロンプト、判定閾値、前半「元情報」・末尾「Sources / Evidence」の二重出典は変更しない。
 - 既存の二層構成は変えない。前半の「どんな内容？／なぜ重要？／結論は？／元情報」はProducer組み立てで一度だけ表示。後半はP5ライター本文。記事末尾の「Sources / Evidence」および主一次情報の重複出典表示はオーナーの決定に従い維持する。
 - ONE-SHOTのデフォルトは従来どおり `classic`。`v3_p5` は**現段階では検証モード限定**とし、Full Dailyでの公開・下書き配送はオーナーの品質確認／MERGE GOまで許可しない。実記事で主観90点達成はまだ証明されていない。記事の品質・Fact/Reader/Publication Gateを実測評価する。
 
