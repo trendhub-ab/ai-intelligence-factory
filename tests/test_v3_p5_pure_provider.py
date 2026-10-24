@@ -16,7 +16,8 @@ SOURCE = {
                             "This dataset has a comparison but does not show "
                             "human treatment efficacy or clinical benefit.",
 }
-PROMPT = ("1. Writer Reaction\n2. Editorial Discovery\n3. Cognitive Shift\n"\n          "4. Persona Article Generation\n5. Fact-Safe Review")
+PROMPT = ("1. Writer Reaction\n2. Editorial Discovery\n3. Cognitive Shift\n"
+          "4. Persona Article Generation\n5. Fact-Safe Review")
 
 
 def runtime(models=None):
