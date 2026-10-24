@@ -168,7 +168,11 @@ def test_original_p5_provider_config_reaches_deep_dive_without_forced_low_thinki
     marker = sends[0][1]
     assert type(marker) is P5OriginalWriterConfig
     assert marker == {}
-    assert _deep_dive_generation_config(marker, "deep_dive") is None
+    # The shared frozen provider still injects low thinking; P5's authenticated
+    # final send boundary removes it without changing Fresh.
+    assert _deep_dive_generation_config(marker, "deep_dive") == {
+        "thinking_config": {"thinking_level": "low"},
+    }
     assert _deep_dive_generation_config({}, "deep_dive") == {
         "thinking_config": {"thinking_level": "low"},
     }
@@ -182,8 +186,13 @@ def test_p5_original_config_marker_cannot_hide_generation_overrides():
     from gemini_provider_resilience import _deep_dive_generation_config
     marker = P5OriginalWriterConfig()
     marker["system_instruction"] = "Unapproved hidden persona"
-    with pytest.raises(ValueError, match="cannot contain overrides"):
-        _deep_dive_generation_config(marker, "deep_dive")
+    # Shared provider sees the marker as a regular dict. The P5-only final
+    # send guard (covered in routing tests) must reject this unexpected
+    # instruction rather than sending it.
+    assert _deep_dive_generation_config(marker, "deep_dive") == {
+        "system_instruction": "Unapproved hidden persona",
+        "thinking_config": {"thinking_level": "low"},
+    }
     # Passing the marker for unrelated provider kinds cannot disable normal config.
     assert _deep_dive_generation_config(P5OriginalWriterConfig(), "screening") == {
         "thinking_config": {"thinking_level": "low"},
@@ -235,7 +244,9 @@ def test_actual_resilience_provider_passes_no_config_only_for_original_writer():
         deep_dive=True, request_origin="article_revalidation",
     )
     assert chosen == "gemini-3.8-flash" and response.text == "mock response"
-    assert sent == [("gemini-3.8-flash", None, True)]
+    assert sent == [(
+        "gemini-3.8-flash", {"thinking_config": {"thinking_level": "low"}}, True
+    )]  # shared provider remains frozen; A+ P5 send boundary removes it
     # Ordinary Deep Dive continues to receive the established low-thinking rule.
     p._call_model_pool(
         "regular managed prompt", {}, "deep_dive", 0, ["gemini-3.8-flash"],
