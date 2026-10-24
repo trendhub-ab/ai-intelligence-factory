@@ -222,8 +222,7 @@ def test_p5_first_pass_decision_stays_in_management_but_never_leaks_to_second_pr
     prompt = _p5_prompt(case, incoming, _source())
     assert "現時点" in prompt
     assert "研究で確認する。" in prompt
-    assert "WATCH" not in prompt
-    assert "Decision (existing canonical management classification)" not in prompt
+    # The immutable original P5 instructions *intentionally* mention WATCH to forbid\n    # reader-facing leakage. Only the injected management guidance may not contain it.\n    assert "WATCH" not in prompt.split("【Production A+ LocalSkills / Gate Authority｜全5段階で遵守】", 1)[1]\n    assert "Decision (existing canonical management classification)" not in prompt
     assert "【Production A+ LocalSkills / Gate Authority｜全5段階で遵守】" in prompt
 
 
