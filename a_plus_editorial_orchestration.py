@@ -284,7 +284,7 @@ def install(pipeline_module):
                 prompt = prompt.rstrip() + "\n\n" + advice
 
         try:
-            return original_call(
+            first = original_call(
                 prompt,
                 repo,
                 source_info,
@@ -292,7 +292,27 @@ def install(pipeline_module):
                 request_context=request_context,
                 request_origin=request_origin,
             )
+            if str(getattr(p, "AIIF_EDITORIAL_STYLE", "classic")) != "v3_p5":
+                return first
+            from local_skills.v3_p5_one_shot import apply_p5_editorial_one_shot
+
+            return apply_p5_editorial_one_shot(
+                p=p,
+                first_response=first[0],
+                first_grounding=first[1],
+                canonical_prompt=prompt,
+                repo=repo,
+                source_info=source_info,
+                request_kind=request_kind,
+                request_context=request_context,
+                request_origin=request_origin,
+                call=original_call,
+            )
         except Exception as exc:
+            # P5 is fail-closed: no silent promotion of the discarded first-pass
+            # Classic article, nor reuse of an unreviewed local fallback.
+            if str(getattr(p, "AIIF_EDITORIAL_STYLE", "classic")) == "v3_p5":
+                raise
             if request_kind == "quality_retry" and _provider_unavailable(exc):
                 result = local_result(
                     f"provider_unavailable:{exc.__class__.__name__}"

@@ -359,6 +359,11 @@ def editorial_style_rules(style_name: str | None = None) -> str:
         return _human_narrative_editorial_style_rules()
     if normalized == EDITORIAL_STYLE_DUO_NARRATIVE:
         return _duo_narrative_editorial_style_rules()
+    if normalized == "v3_p5":
+        # Stage 1: the canonical management/Decision pass. Stage 2 runs the
+        # original P5 five-stage bundled writer via the A+ runtime wrapper.
+        # Do not counterfeit P5 by appending a few voice hints to this call.
+        return _human_editorial_style_rules()
     raise ValueError(f"unknown editorial style: {style_name!r}")
 
 

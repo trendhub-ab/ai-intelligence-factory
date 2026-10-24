@@ -1,10 +1,10 @@
 # AI Intelligence Factory — 現行Production仕様
 
-仕様最終変更日: **2026-10-22**
-Production最終照合日: **2026-10-22**
+仕様最終変更日: **2026-10-24**
+Production最終照合日: **2026-10-24**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`f4cbf2f0562a697abbfce8e369a571729a9baf920e0f314e74e088e15c75d165`**
+Production Contract Fingerprint: **`61f6b2cfd36a5973179a69099a2290ec15281598fd7665926564031244f88f11`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -157,8 +157,9 @@ ONE-SHOTが受理するStyle:
 - `classic`
 - `human_narrative`
 - `duo_narrative`
+- `v3_p5`（手動選択時のみ、LocalSkills + 凍結P5 Writerの表現方針）
 
-未知StyleはFail-Closed。`duo_narrative` はフェルン／クレハを使う任意Styleであり、通常のFull Dailyでは自動選択しない。
+未知StyleはFail-Closed。`duo_narrative` はフェルン／クレハを使う任意Styleであり、通常のFull Dailyでは自動選択しない。ONE-SHOTのdefaultは従来どおり `classic` で、`v3_p5` は自動選択されない。 `v3_p5` は記事を正式公開する前の検証モードに限定し、本来の五段階生成を追加Deep Dive callで実行する。
 
 ### 2.5 Production Entry Point
 
@@ -401,6 +402,15 @@ Gemini Writer call前にLocal Skillsが次を固定する。
 - Evidence不足を物語性で補わない
 
 A+導入のために追加Provider callを要求しない。
+
+### 6.2a V3 P5 original five-stage Writer（2026-10-24 統合開発候補）
+
+- **唯一のP5正本はPR #852（commit `95016a65701979063f56130bf181bca831661f5d`）**。本リビジョンでは廃止された派生案を開発判断に使用しない。`local_skills/v3_p5_contract.py` / `local_skills/v3_p5_prompts.py` はそのP5原稿・五段階束プロンプトを移植し、比較基準として保持する。P5の今後の改善自体は凍結しない。
+- `AIIF_EDITORIAL_STYLE=v3_p5` を明示選択した時だけ、既存LocalSkills A+ Pre-Writeの後に、**Writer Reaction → Editorial Discovery → Cognitive Shift → Persona Article Generation → Fact-Safe Review** をP5本来のJSON成果物5キーで生成する。五段階は一つのGemini Deep Dive callで実施する。
+- **Productionは計2回のDeep Dive callが必要**。第1回で従来のMANAGEMENT DATA / Decision / Actionを生成。第2回で一次Source Native Context / Structured Evidence / LocalSkills制約 / 第1回のDecisionを入力としてP5の五段階束を生成し、Fact-Safe Reviewの全文をcanonical ARTICLEへ置換する。既存のMANAGEMENT DATA / Gate Thresholdsは変更しない。追加callも既存model pool・実行予算・プロバイダ安全機構の対象とし、別API権限やバックドアを持たせない。
+- 不完全なP5 JSON、5段階欠落、未検証の一次Source、空の最終稿、違反する文章、モデルエラーは**Fail-Closed**。第1回の説明原稿へ黙ってfallbackせず、Gateを迂回しない。
+- 既存の二層構成は変えない。前半の「どんな内容？／なぜ重要？／結論は？／元情報」はProducer組み立てで一度だけ表示。後半はP5ライター本文。記事末尾の「Sources / Evidence」および主一次情報の重複出典表示はオーナーの決定に従い維持する。
+- ONE-SHOTのデフォルトは従来どおり `classic`。`v3_p5` は**現段階では検証モード限定**とし、Full Dailyでの公開・下書き配送はオーナーの品質確認／MERGE GOまで許可しない。実記事で主観90点達成はまだ証明されていない。記事の品質・Fact/Reader/Publication Gateを実測評価する。
 
 ### 6.3 Provider-free fallback
 
