@@ -1,7 +1,7 @@
 """Owner-authorized 2026-10-24 original P5 five-stage one-shot live article preview.
 
-No Notion, note, repository or provider-side writing. Strictly two Gemini
-requests for one official-source article. Reuses the merged Production P5
+No Notion, note, repository or provider-side writing. Strictly two logical Gemini stages, at most four model-level attempts,
+for one official-source article. Primary 3.6 Flash, fallback 3.8 Flash only. Reuses the merged Production P5
 five-stage A+ adapter, with a bounded standalone provider client rather than
 running Daily's downstream dispatch chain. This is NOT a publication Gate proof.
 """
@@ -14,7 +14,8 @@ import re
 from pathlib import Path
 from types import SimpleNamespace
 
-MODEL = "gemini-3-flash-preview"
+MODEL_ORDER = ("gemini-3.6-flash", "gemini-3.8-flash")
+FALLBACK_HTTP_CODES = frozenset({404, 429, 500, 502, 503, 504})
 OUTPUT = Path("p5_full_one_shot_artifact")
 TITLE = "Using thousands of AI agents to uncover new leads in biological data"
 URL = "https://openai.com/index/scaling-ai-research-for-complex-biological-data/"
@@ -77,13 +78,18 @@ def main():
     repo = {"name": TITLE, "url": URL, "nameWithOwner": TITLE, "source": "OfficialVendor"}
     state = {
         "case": "20261021_openai_biology_agents_p5_full_original",
-        "model": MODEL,
+        "model_preference": list(MODEL_ORDER),
+        "model_active": MODEL_ORDER[0],
         "code_revision": os.environ.get("GITHUB_SHA", "")[:40],
         "production_merge": "b2ba9f93f107fa7fe5dcab0d1a6730ba5b9eb0ba",
         "source_url": URL,
         "source_date": PUBLICATION_DATE,
         "source_digest": hashlib.sha256(SOURCE.encode("utf-8")).hexdigest(),
-        "max_provider_requests": 2,
+        "max_provider_requests": 4,
+        "max_logical_requests": 2,
+        "logical_requests_started": 0,
+        "logical_requests_completed": 0,
+        "provider_attempts": [],
         "provider_requests_started": 0,
         "provider_requests_completed": 0,
         "status": "NOT_STARTED",
@@ -92,32 +98,68 @@ def main():
         "full_production_gates_executed": False,
     }
     _write(state)
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"], http_options={"timeout": 120000})
+    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"], http_options={"timeout": 120000, "retry_options": {"attempts": 1}})
     try:
         def direct_provider(prompt, repo_data, evidence_data, *, request_kind="deep_dive", request_context="", request_origin="new"):
-            count = state["provider_requests_started"] + 1
-            if count > 2:
-                raise RuntimeError("Maximum 2 live provider calls exceeded")
-            if count == 2 and "1. Writer Reaction" not in prompt:
-                raise RuntimeError("Second call is not authentic five-stage P5")
-            state["provider_requests_started"] = count
+            stage = state["logical_requests_started"] + 1
+            if stage > 2:
+                raise RuntimeError("Maximum 2 logical generation stages exceeded")
+            if stage == 2 and "1. Writer Reaction" not in prompt:
+                raise RuntimeError("Second stage is not authentic five-stage P5")
+            state["logical_requests_started"] = stage
             _write(state)
-            print(f"P5_FULL_PROVIDER_START count={count}/2 kind={request_kind}", flush=True)
-            response = client.models.generate_content(
-                model=MODEL, contents=prompt,
-                config={
-                    "system_instruction": aiif_editor_persona(),
-                    "max_output_tokens": 18000 if count == 2 else 9500,
-                    "temperature": 0.65 if count == 2 else 0.4,
-                },
-            )
-            if not str(getattr(response, "text", "") or "").strip():
-                raise RuntimeError("Empty Gemini response; no retry")
-            state["provider_requests_completed"] = count
-            (OUTPUT / f"generation_{count}_raw.txt").write_text(str(response.text), encoding="utf-8")
-            _write(state)
-            print(f"P5_FULL_PROVIDER_SUCCESS count={count}/2 chars={len(response.text)}", flush=True)
-            return response, {"grounding_status": "Source Native / supplied prompt evidence fixture", "evidence_urls": [URL]}
+
+            starting_model_index = MODEL_ORDER.index(state["model_active"])
+            for model in MODEL_ORDER[starting_model_index:]:
+                attempt_count = state["provider_requests_started"] + 1
+                if attempt_count > state["max_provider_requests"]:
+                    raise RuntimeError("Provider request budget exhausted; no further calls")
+                state["provider_requests_started"] = attempt_count
+                entry = {"stage": stage, "attempt": attempt_count, "model": model, "result": "STARTED"}
+                state["provider_attempts"].append(entry)
+                _write(state)
+                print(f"P5_PROVIDER_START stage={stage}/2 attempt={attempt_count}/4 model={model}", flush=True)
+                try:
+                    response = client.models.generate_content(
+                        model=model, contents=prompt,
+                        config={
+                            "system_instruction": aiif_editor_persona(),
+                            "max_output_tokens": 18000 if stage == 2 else 9500,
+                            "temperature": 0.65 if stage == 2 else 0.4,
+                        },
+                    )
+                except Exception as exc:
+                    # Do not store exception body: may include sensitive request data.
+                    raw_code = getattr(exc, "code", None)
+                    if not isinstance(raw_code, int):
+                        raw_code = getattr(exc, "status_code", None)
+                    code = int(raw_code) if str(raw_code).isdigit() else None
+                    entry.update(result="ERROR", error_type=type(exc).__name__, http_status=code)
+                    state["error_type"] = type(exc).__name__
+                    state["error_http_status"] = code
+                    _write(state)
+                    print(f"P5_PROVIDER_ERROR stage={stage} model={model} status={code} type={type(exc).__name__}", flush=True)
+                    # One-way fallback on rate limit, unavailability or model deprecation.
+                    if model == MODEL_ORDER[0] and code in FALLBACK_HTTP_CODES:
+                        state["model_active"] = MODEL_ORDER[1]
+                        _write(state)
+                        print(f"P5_PROVIDER_FALLBACK from={model} to={MODEL_ORDER[1]} reason_http={code}", flush=True)
+                        continue
+                    raise
+                text = str(getattr(response, "text", "") or "").strip()
+                if not text:
+                    raise RuntimeError("Empty Gemini response; no retry or fallback")
+                entry["result"] = "SUCCESS"
+                state["logical_requests_completed"] = stage
+                state["provider_requests_completed"] += 1
+                state["model_active"] = model
+                state.pop("error_type", None)
+                state.pop("error_http_status", None)
+                (OUTPUT / f"generation_{stage}_raw.txt").write_text(text, encoding="utf-8")
+                _write(state)
+                print(f"P5_PROVIDER_SUCCESS stage={stage}/2 model={model} chars={len(text)}", flush=True)
+                return response, {"grounding_status": "Source Native / supplied prompt evidence fixture", "evidence_urls": [URL]}
+            raise RuntimeError("No approved fallback model available")
 
         p.AIIF_EDITORIAL_STYLE = "v3_p5"
         p.call_gemini_grounded_deep_dive = direct_provider
@@ -146,7 +188,9 @@ def main():
             request_context="official:20261021:fullp5",
             request_origin="article_revalidation",
         )
-        assert state["provider_requests_started"] == state["provider_requests_completed"] == 2
+        assert state["logical_requests_started"] == state["logical_requests_completed"] == 2
+        assert state["provider_requests_completed"] == 2
+        assert 2 <= state["provider_requests_started"] <= 4
         parsed = p._parse_gemini_response(str(final_response.text))
         title = str(parsed.get("title_text") or "").strip()
         draft = str(parsed.get("note_draft") or "").strip()
@@ -163,12 +207,12 @@ def main():
             "full_production_gates_executed": False,
         })
         _write(state)
-        print(f"P5_FULL_LIVE_COMPLETE title_chars={len(title)} article_chars={len(draft)} calls=2", flush=True)
+        print(f"P5_FULL_LIVE_COMPLETE title_chars={len(title)} article_chars={len(draft)} logical_calls=2 provider_attempts={state['provider_requests_started']} model={state['model_active']}", flush=True)
     except Exception as exc:
         state["status"] = "TECHNICAL_NO_GO"
         state["error_type"] = type(exc).__name__
         _write(state)
-        print(f"P5_FULL_STOP_FAIL_CLOSED error_type={type(exc).__name__} calls={state['provider_requests_started']}/2", flush=True)
+        print(f"P5_FULL_STOP_FAIL_CLOSED error_type={type(exc).__name__} provider_attempts={state['provider_requests_started']}/4", flush=True)
         raise RuntimeError("P5 Full one-shot did not complete; inspect private artifact and safe status") from None
     finally:
         client.close()
