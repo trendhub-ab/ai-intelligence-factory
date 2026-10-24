@@ -148,6 +148,9 @@ NON_MEMBER_MODULES = frozenset((
     "operations/forget_only_private_swap_once.py",
     "operations/forget_only_draft_identity_diagnostic.py",  # read-only operator audit of held private draft  # operator-only private draft replacement, not a paid-member surface
     "experiments/editorial_engine_v3_phase0/free_writer_one_shot.py",  # isolated review artifact; no customer publication
+    "experiments/v3_p5_golden_cases.py",  # frozen article proof fixture; no customer surface
+    "experiments/v3_p5_golden_prompt_snapshot.py",  # frozen five-stage prompt; no customer surface
+    "experiments/v3_p5_baseline_repro.py",  # validation-only P5 proof; no customer write
     "local_skills/__init__.py",
     "local_skills/a_plus.py",
     "local_skills/compiler.py",
@@ -157,6 +160,8 @@ NON_MEMBER_MODULES = frozenset((
     "local_skills/writer.py",
     "local_skills/v3_p5_contract.py",  # Canonical P5 five-stage editorial validation; no member/customer access
     "local_skills/v3_p5_prompts.py",  # Canonical P5 five-stage bundled prompt; no member/customer access
+    "local_skills/v3_p5_call_contract.py",  # original Writer config contract; validation only
+    "local_skills/v3_p5_pure_provider.py",  # validated isolated Writer call; no customer surface
     "local_skills/v3_p5_one_shot.py",  # Optional Article Writer runtime; no member/customer access
     "tools/capture_note_session.py",
     "tools/editorial_ab.py",
