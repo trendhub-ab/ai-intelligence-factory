@@ -55,12 +55,12 @@ def test_only_allowlisted_nonpreview_models_reach_canonical_budgeted_pool():
     _, config, kind, reserve, candidates, kw = sends[0]
     assert config == {}
     assert kind == "deep_dive" and reserve == 0
-    assert candidates == ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash"]
+    assert candidates == ["gemini-3.8-flash"]
     assert kw == {
         "deep_dive": True, "request_context": "p5:golden",
         "request_origin": "article_revalidation",
     }
-    assert p.SELECTED_DEEP_DIVE_MODEL == "gemini-3.5-flash"
+    assert p.SELECTED_DEEP_DIVE_MODEL == "gemini-3.8-flash"
     assert grounded["evidence_urls"] == [SOURCE["primary_url"]]
 
 
@@ -133,3 +133,23 @@ def test_incomplete_editorial_stage_prompt_never_reaches_provider():
             {}, SOURCE, request_origin="article_revalidation",
         )
     assert sends == []
+
+
+
+def test_nonpersisting_new_origins_allow_pure_writer_but_cannot_be_spoofed():
+    p, sends = runtime(("gemini-3.6-flash", "gemini-3.8-flash"))
+    with pytest.raises(P5BaselineCallContractError):
+        call_p5_pure_writer(p, PROMPT, {}, SOURCE, request_origin="new")
+    assert sends == []
+    p._P5_NONPERSISTING_VALIDATION_ACTIVE = True
+    _, _ = call_p5_pure_writer(p, PROMPT, {}, SOURCE, request_origin="new")
+    assert len(sends) == 1
+    assert sends[0][4] == ["gemini-3.8-flash", "gemini-3.6-flash"]
+    assert sends[0][5]["request_origin"] == "new"
+
+
+def test_p5_provider_38_36_only_with_reverse_order_and_preview_never_selected():
+    p, sends = runtime(("gemini-3.6-flash", "gemini-3.7-flash",
+                        "gemini-3-flash-preview", "gemini-3.8-flash"))
+    call_p5_pure_writer(p, PROMPT, {}, SOURCE, request_origin="article_revalidation")
+    assert sends[0][4] == ["gemini-3.8-flash", "gemini-3.6-flash"]
