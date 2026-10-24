@@ -16,7 +16,7 @@ SOURCE = {
                             "This dataset has a comparison but does not show "
                             "human treatment efficacy or clinical benefit.",
 }
-PROMPT = "1. Writer Reaction\n2. Editorial Discovery\n5. Fact-Safe Review"
+PROMPT = ("1. Writer Reaction\n2. Editorial Discovery\n3. Cognitive Shift\n"\n          "4. Persona Article Generation\n5. Fact-Safe Review")
 
 
 def runtime(models=None):
@@ -121,3 +121,14 @@ def test_native_budget_pool_failure_never_uses_ungated_backup():
             request_origin="article_revalidation",
         )
     assert sends == ["budget reject"]
+
+
+
+def test_incomplete_editorial_stage_prompt_never_reaches_provider():
+    p, sends = runtime()
+    with pytest.raises(P5PureProviderError, match="five-stage"):
+        call_p5_pure_writer(
+            p, "1. Writer Reaction\\n2. Editorial Discovery",
+            {}, SOURCE, request_origin="article_revalidation",
+        )
+    assert sends == []
