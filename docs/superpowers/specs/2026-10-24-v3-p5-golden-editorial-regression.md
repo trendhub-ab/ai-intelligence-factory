@@ -30,3 +30,20 @@ The original five-stage deliverables are **Writer Reaction → Editorial Discove
 ## Known blockage
 
 Live provider returns 503 from multiple Gemini Flash alternatives. Run #40059905022 completed one five-stage `gemini-3.6-flash` sample but not all A/B/C; cannot establish a fair comparative ranking. Continue provider-free work until a bounded live test can finish. **The regular Production Deep Dive provider still injects AIIF Editor Persona.** However the original-only *article_revalidation* Writer now routes through `local_skills/v3_p5_pure_provider.py`, which reuses `_call_model_pool` quota, pacing, health/503 fallback and usage accounting with **empty generation config**, no Preview/Lite, and independent source-native evidence validation. This is isolated opt-in only, not Production adoption. It uses the Production Chat transport instead of the historical Phase0 `models.generate_content` transport, so do not claim byte-for-byte provider identity or an 83-point quality result. The final Editor/Fact/Publication Gates and canonical first management call are unchanged; human quality is **not yet restored or approved**.
+
+
+## Immutable finished-article reference, stored privately
+
+**Never store unpublished article bodies, five-stage raw manuscripts, or their compressed/base64 equivalents in this PUBLIC repository.** The 83-point original finished articles must be kept in the owner's private reference ZIP, exported directly from original Phase0 run #39963513015 (FFT/Elastic/Claude). The public repository contains only their SHA-256 fingerprints, selected input fingerprints, reference lengths and historic human score labels.
+
+`experiments/v3_p5_private_golden_guard.py` verifies a user-supplied **local** archive against these pinned digests, rejects changed source-topic inputs, and produces nonpublishing editorial review receipts. `export_verified_private_goldens(private_zip, local_directory)` copies them **verbatim** into a local review directory with `gemini_calls=0` and `publication_approved=false`. The actual article text must not be printed into CI logs, committed to GitHub or uploaded to Actions artifacts.
+
+Provider-free structural diagnostics (e.g. a shorter manuscript or a missing source-specific section) are **review signals only**. A matching original article SHA means byte-for-byte provenance, not ongoing factual correctness. No numerical human score, editorial acceptance or publication Ready state may be inferred by these checks. Production's normal model call, Fact Gate and Publication Gate are still separate and unchanged.
+
+### Root cause established in offline audit
+
+The old Phase0 and the later non-preview golden replay used the same input fixtures and bundled P5 prompt, but differed in model selection. The newer 3.6 articles lost narrative depth already within `Persona Article Generation`; `Fact-Safe Review` did not cause the reduction. Production's ordinary P5 managed path has *additional* input-envelope and system-persona differences, which are real incompatibilities but are **not** established as the cause of this isolated replay's observed drop. Never assert that matching a prompt alone restores 83-point reader quality.
+
+### Gate to future rollout
+
+Keep PR #862 Draft / NO-MERGE and main unchanged. Before a new P5 writer becomes Ready for Production, the owner needs to review actual new articles against the private original finished manuscripts, approve the neutral curiosity/discovery style, and independently complete Evidence/Fact/Publication checks. Formal human approval wiring into the Production state machine is a separate uncompleted task; this metadata-only audit does not impersonate that wiring.
