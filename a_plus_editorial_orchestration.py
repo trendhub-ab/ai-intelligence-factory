@@ -6,6 +6,7 @@ Decision when the initial Deep Dive failed before structured management data exi
 """
 from __future__ import annotations
 
+import os
 import re
 from functools import wraps
 from types import SimpleNamespace
@@ -186,7 +187,25 @@ def install(pipeline_module):
         state["last_evidence_result"] = {}
         state["force_local_fallback"] = False
         state["retry_article"] = ""
-        return original_generate(*args, **kwargs)
+        style = str(getattr(p, "AIIF_EDITORIAL_STYLE", "classic"))
+        boundary = str(getattr(p, "AIIF_P5_WRITER_BOUNDARY", None)
+                       or os.getenv("AIIF_P5_WRITER_BOUNDARY", "managed"))
+        # Phase0-equivalent Writer for a NEW source is permitted ONLY inside
+        # a nonpersisting, single-process editorial validation. The real
+        # pipeline's fifth positional argument is persist_results=True.
+        persistent = args[4] if len(args) > 4 else kwargs.get("persist_results", True)
+        if style == "v3_p5" and boundary == "original" and persistent is not False:
+            raise RuntimeError(
+                "P5 original Writer on new material requires persist_results=False; "
+                "no article, Notion or note promotion is authorized"
+            )
+        prior = getattr(p, "_P5_NONPERSISTING_VALIDATION_ACTIVE", False)
+        setattr(p, "_P5_NONPERSISTING_VALIDATION_ACTIVE",
+                style == "v3_p5" and boundary == "original" and persistent is False)
+        try:
+            return original_generate(*args, **kwargs)
+        finally:
+            setattr(p, "_P5_NONPERSISTING_VALIDATION_ACTIVE", prior)
 
     @wraps(original_prompt)
     def build_decision_prompt_a_plus(*args, **kwargs):
@@ -224,6 +243,11 @@ def install(pipeline_module):
         state["force_local_fallback"] = False
 
         allowed, reason = original_retry(reason_rows, evidence_result, *args, **kwargs)
+        if str(getattr(p, "AIIF_EDITORIAL_STYLE", "classic")) == "v3_p5":
+            # Do not authorize a second Classic or Local Skills writer under
+            # the P5 label. Failed editorial quality stays non-Ready for review.
+            state["force_local_fallback"] = False
+            return False, "p5_human_editorial_review_required"
         if allowed:
             return allowed, reason
 
@@ -270,6 +294,12 @@ def install(pipeline_module):
             return (
                 SimpleNamespace(text=response_text, candidates=[]),
                 _fallback_grounding(source_info),
+            )
+
+        if str(getattr(p, "AIIF_EDITORIAL_STYLE", "classic")) == "v3_p5" and request_kind == "quality_retry":
+            raise RuntimeError(
+                "P5 quality_retry is disabled: independent editorial review "
+                "required; never substitute provider-free Classic article"
             )
 
         if request_kind == "quality_retry" and bool(state.get("force_local_fallback")):
