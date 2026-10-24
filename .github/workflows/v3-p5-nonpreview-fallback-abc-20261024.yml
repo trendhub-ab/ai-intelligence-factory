@@ -1,0 +1,91 @@
+name: V3 P5 nonpreview model fallback A-B-C one-shot 20261024
+# Isolated non-publishing experiment. No main mutation, note, Notion or fan-out.
+on:
+  push:
+    branches: [experiment/v3-p5-nonpreview-fallback-20261024]
+    paths: ['.github/workflows/v3-p5-nonpreview-fallback-abc-20261024.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+jobs:
+  comparison:
+    if: >-
+      ${{ github.repository == 'trendhub-ab/ai-intelligence-factory' &&
+          github.event_name == 'push' &&
+          github.run_number == 1 &&
+          github.run_attempt == 1 &&
+          github.event.head_commit.message == 'fire(p5): nonpreview fallback A-B-C approved 20261024' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      AIIF_EDITORIAL_STYLE: v3_p5
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Checkout pinned original isolation implementation
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: c97a144ac46359c2c2c8431ae2c6cdcd3e5dbfa2
+          persist-credentials: false
+      - name: Set up Python 3.11
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11.16'
+      - name: Install dependencies without model requests
+        run: python -m pip install --disable-pip-version-check -r requirements.txt pytest==8.4.2
+      - name: Focused original-writer isolation test and safety preflight
+        run: |
+          python -m py_compile local_skills/v3_p5_one_shot.py experiments/v3_p5_nonpreview_fallback_abc_20261024.py
+          python -m pytest -q tests/test_v3_p5_production_adapter.py
+          python - <<'PY'
+          from experiments import v3_p5_nonpreview_fallback_abc_20261024 as a
+          from local_skills.v3_p5_one_shot import BASELINE_P5_COMMIT
+          assert BASELINE_P5_COMMIT == "95016a65701979063f56130bf181bca831661f5d"
+          assert a.MODEL_ORDER == ("gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.8-flash")
+          assert a.MAX_ATTEMPTS == 12
+          assert all("preview" not in m and "lite" not in m for m in a.MODEL_ORDER)
+          assert a.MIN_INTERVAL == 30.0 and a.FAILOVER_BACKOFF == 60.0
+          assert len(a.FACTS) == 8
+          import pathlib
+          code=pathlib.Path("experiments/v3_p5_nonpreview_fallback_abc_20261024.py").read_text()
+          assert "NOTION_API_KEY" not in code and "note_ready_sync" not in code
+          assert "gemini-3-flash-preview" not in code
+          assert "genai.Client" in code and '"retry_options":{"attempts":1}' in code
+          assert "build_editorial_bundle_prompt" in code and "_extract_bundle" in code
+          print("P5_ORIGINAL_ABC_PRE_FLIGHT=PASS",flush=True)
+          PY
+      - name: Run bounded three-arm original versus integrated P5 comparison
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python -m experiments.v3_p5_nonpreview_fallback_abc_20261024
+      - name: Verify comparable three articles with no production mutation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          p=Path("p5_original_boundary_abc_artifact")
+          j=json.loads((p/"manifest.json").read_text())
+          assert j["status"]=="TECHNICAL_ABC_COMPLETED_NEEDS_BLIND_EDITORIAL_AND_FACT_REVIEW"
+          assert j["model_used"] in ("gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.8-flash")
+          assert 3<=j["provider_attempts"]<=12
+          assert not j["publication"] and not j["note_write"] and not j["notion_write"]
+          assert not j["full_production_gates_executed"]
+          m=json.loads((p/"blind_mapping.json").read_text())
+          assert sorted(x["sample"] for x in m)==["A","B","C"]
+          assert sorted(x["variant"] for x in m)==[
+            "managed_plus_system","original_plus_system","original_without_system"
+          ]
+          for label in "ABC":
+            assert (p/f"sample_{label}.md").stat().st_size>450
+            assert (p/f"stages_{label}.json").stat().st_size>700
+          print("P5_ABC_TECHNICAL_COMPARISON=SUCCESS; Gate/editor review still required",flush=True)
+          PY
+      - name: Archive anonymous samples, sealed mapping and safe manifest
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: v3-p5-nonpreview-model-fallback-abc-20261024
+          path: p5_original_boundary_abc_artifact/
+          retention-days: 14
+          if-no-files-found: ignore
