@@ -139,8 +139,20 @@ def _management_first_pass(first: Any, p: Any) -> tuple[str, dict]:
     return management, parsed
 
 
-def _p5_prompt(case: Phase0Case, parsed: dict, source_info: dict) -> str:
-    """Append Production authorities without rewriting the verified five stages."""
+def _p5_prompt(case: Phase0Case, parsed: dict, source_info: dict, *, writer_boundary: str = "managed") -> str:
+    """Build writer input, with exactly-original P5 permitted in isolated validation.
+
+    managed: prior verified Production integration (unchanged default).
+    original: byte-identical to selected P5 five-stage source prompt, WITHOUT
+    management Decision/Action or LocalSkills management skeleton. Source
+    Evidence/Facts/Qualifiers remain inside the original P5 Case; downstream
+    Production gates and canonical MANAGEMENT DATA remain authoritative.
+    """
+    if writer_boundary not in {"managed", "original"}:
+        raise P5EditorialContractError("Unknown P5 writer boundary")
+    if writer_boundary == "original":
+        return build_editorial_bundle_prompt(case)
+
     result = dict(source_info.get("evidence_result") or {})
     metadata = dict(source_info.get("evidence_metadata") or {})
     prewrite = build_prewrite_contract(result, metadata)
@@ -213,7 +225,14 @@ def apply_p5_editorial_one_shot(
         raise P5EditorialContractError("P5 missing required canonical LocalSkills prewrite")
     case = _source_case(repo, source_info, p)
     management, parsed = _management_first_pass(first_response, p)
-    bundle_prompt = _p5_prompt(case, parsed, source_info)
+    writer_boundary = str(getattr(p, "AIIF_P5_WRITER_BOUNDARY", "managed") or "managed")
+    if writer_boundary == "original" and request_origin != "article_revalidation":
+        raise P5EditorialContractError(
+            "Original P5 writer isolation is permitted only in article_validation proof"
+        )
+    bundle_prompt = _p5_prompt(
+        case, parsed, source_info, writer_boundary=writer_boundary
+    )
 
     editorial_response, editorial_grounding = call(
         bundle_prompt, repo, source_info,
