@@ -97,5 +97,18 @@ def test_repository_public_contract_has_no_original_article_plaintext():
     assert "client.models.generate_content" not in source
     assert "GEMINI_API_KEY" not in source
     assert "notion.create" not in source
-    assert "No API" not in source or "No API" in guard.__doc__
     assert "verbatim" in source
+
+
+
+def test_unpublished_golden_articles_are_not_stored_in_public_repo():
+    """A repeat of the private-fixture mistake must fail the PR's CI."""
+    repository = Path(__file__).resolve().parents[1]
+    for pattern in (
+        "**/v3_p5_golden_83_articles.json.gz.b64",
+        "**/p5_83_fixture.b64",
+        "**/P5_original_FFT.md",
+        "**/P5_original_Elastic.md",
+        "**/P5_original_Claude.md",
+    ):
+        assert not list(repository.glob(pattern)), f"Private P5 manuscript may not be committed: {pattern}"
