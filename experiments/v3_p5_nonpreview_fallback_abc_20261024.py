@@ -1,7 +1,7 @@
 """Controlled P5 authorial-boundary A/B/C nonpreview-model test; NO persistence or publication.
 
 One public-source evidence fixture, three editorial prompts, same model/settings,
-30s request pacing, 60s model failover backoff, at most twelve provider attempts.
+30s request pacing, 60s model failover backoff, at most nine provider attempts.
 A: managed writer prompt + canonical system persona (current integrated)
 B: original writer prompt + canonical system persona (prompt ablation)
 C: original writer prompt + no added system persona (system ablation)
@@ -19,12 +19,12 @@ from types import SimpleNamespace
 
 from canonical_article_contract import aiif_editor_persona
 from google import genai
-from local_skills.v3_p5_one_shot import _extract_bundle, _p5_prompt, _source_case
+from local_skills.v3_p5_one_shot import P5EditorialContractError, _extract_bundle, _p5_prompt, _source_case
 from local_skills.v3_p5_prompts import build_editorial_bundle_prompt
 
-MODEL_ORDER = ("gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.8-flash")
+MODEL_ORDER = ("gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.8-flash")
 RETRIABLE_STATUS = frozenset((404, 429, 500, 502, 503, 504))
-MAX_ATTEMPTS = 12
+MAX_ATTEMPTS = 9
 MIN_INTERVAL = 30.0
 FAILOVER_BACKOFF = 60.0
 OUTPUT = Path("p5_original_boundary_abc_artifact")
@@ -71,7 +71,7 @@ def status_of(exc):
 def main():
     assert os.environ.get("GEMINI_API_KEY"), "missing bounded proof API key"
     assert os.environ.get("AIIF_EDITORIAL_STYLE") == "v3_p5"
-    assert len(MODEL_ORDER) == len(set(MODEL_ORDER)) == 4
+    assert len(MODEL_ORDER) == len(set(MODEL_ORDER)) == 3
     assert all(model.startswith("gemini-3.") and "preview" not in model.lower() and "lite" not in model.lower() for model in MODEL_ORDER)
     assert MAX_ATTEMPTS == 3 * len(MODEL_ORDER)
     evidence_result = {
@@ -151,11 +151,31 @@ def main():
                 last_terminal=time.monotonic()
                 last_failed=False
                 response_text=str(getattr(response,"text","") or "").strip()
-                if not response_text:
-                    raise RuntimeError("Empty response: fail closed")
-                final,stages=_extract_bundle(response_text)
-                if not final.startswith("# "):
-                    raise RuntimeError("Missing P5 article title")
+                try:
+                    if not response_text:
+                        raise P5EditorialContractError("Empty response: fail closed")
+                    final,stages=_extract_bundle(response_text)
+                    if not final.startswith("# "):
+                        raise P5EditorialContractError("Missing P5 article title")
+                except P5EditorialContractError as exc:
+                    # Reject malformed or reader-unsafe output. It may never
+                    # count as a completed arm, and we never weaken the P5 gate.
+                    # Only a different, allowlisted nonpreview model may start
+                    # an entirely fresh same-model three-arm comparison.
+                    last_terminal=time.monotonic()
+                    last_failed=True
+                    event={"attempt":count,"model":model,
+                           "status":"P5_CONTRACT_REJECTED",
+                           "error_type":type(exc).__name__,
+                           "error_message":str(exc)[:300],
+                           "response_digest":hashlib.sha256(response_text.encode()).hexdigest()}
+                    state["failure_events"].append(event)
+                    save(state)
+                    print(f"P5_ABC_OUTPUT_REJECTED attempt={count} model={model} type={type(exc).__name__} details={str(exc)[:160]}",flush=True)
+                    if model!=MODEL_ORDER[-1]:
+                        print(f"P5_ABC_RESTART_ALL_ARMS_WITH_NEXT_MODEL_AFTER_{model}",flush=True)
+                        break
+                    raise
                 raw_results[name]={"raw":response_text,"article":final,"stage_keys":list(stages),"sha256":hashlib.sha256(final.encode()).hexdigest()}
                 (OUTPUT / f"attempt_{count}_raw.txt").write_text(response_text,encoding="utf-8")
                 print(f"P5_ABC_PROVIDER_SUCCESS model={model} variant={name} article_chars={len(final)}",flush=True)
