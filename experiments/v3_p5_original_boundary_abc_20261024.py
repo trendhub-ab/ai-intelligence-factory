@@ -101,7 +101,7 @@ def main():
     state = {
         "status":"NOT_STARTED","source_url":URL,"source_digest":hashlib.sha256(SOURCE.encode()).hexdigest(),
         "candidate_code_revision":os.getenv("GITHUB_SHA",""),
-        "production_base":"b2ba9f93f107fa7fe5dcab0d1a6730ba5b9eb0ba5b9eb0ba",
+        "production_base":"b2ba9f93f107fa7fe5dcab0d1a6730ba5b9eb0ba",
         "model_priority":list(MODEL_ORDER),"model_used":None,
         "variants":3,"max_attempts":MAX_ATTEMPTS,"provider_attempts":0,
         "min_interval":MIN_INTERVAL,"fallback_backoff":FAILOVER_BACKOFF,
@@ -154,6 +154,7 @@ def main():
                 if not final.startswith("# "):
                     raise RuntimeError("Missing P5 article title")
                 raw_results[name]={"raw":response_text,"article":final,"stage_keys":list(stages),"sha256":hashlib.sha256(final.encode()).hexdigest()}
+                (OUTPUT / f"attempt_{count}_raw.txt").write_text(response_text,encoding="utf-8")
                 print(f"P5_ABC_PROVIDER_SUCCESS model={model} variant={name} article_chars={len(final)}",flush=True)
             if len(raw_results)==3:
                 state["model_used"]=model
