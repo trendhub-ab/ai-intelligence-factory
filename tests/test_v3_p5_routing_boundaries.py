@@ -183,3 +183,51 @@ def test_model_pool_is_always_38_then_36():
     guard = P5SendGuard()
     guard.pre_send("gemini-3.6-flash", p5_active=True)
     assert guard.counts["gemini-3.6-flash"] == 1
+
+
+
+def test_p5_persistent_daily_cap_is_three_while_classic_budget_remains_eighteen():
+    import types
+
+    p, _, _, _, _, _ = runtime(with_native_send=True)
+    daily = SimpleNamespace(
+        model_budgets={"gemini-3.6-flash": 18},
+        default_budget=18,
+    )
+    observed = []
+    # The native original sender reads the counter inside the wrapped call.
+    p.PERSISTENT_GEMINI_COUNTER = daily
+    # Reinstall is unnecessary; the guard retained a reference to the runtime
+    # and will invoke this new native mock as long as original_model_send is
+    # not changed. The original sender is a closure, so test via a new runtime.
+    def new_runtime():
+        holder = SimpleNamespace()
+        calls = []
+        def native_send(model, prompt, **kw):
+            calls.append((model, holder.model_budgets.get(model)))
+            return "sent"
+        obj = SimpleNamespace(
+            AIIF_EDITORIAL_STYLE="v3_p5",
+            AIIF_P5_WRITER_BOUNDARY="managed",
+            DeepDiveRunBudgetExceededError=RuntimeError,
+            PERSISTENT_GEMINI_COUNTER=holder,
+            _generate_via_chat=native_send,
+            build_decision_prompt=lambda *a, **kw: "",
+            _parse_gemini_response=lambda *a, **kw: {},
+            should_attempt_dynamic_retry=lambda *a, **kw: (False, ""),
+            call_gemini_grounded_deep_dive=lambda *a, **kw: None,
+            generate_intelligence_report=lambda *a, **kw: None,
+            logger=None,
+        )
+        holder.model_budgets = {"gemini-3.6-flash": 18}
+        holder.default_budget = 18
+        a_plus.install(obj)
+        return obj, holder, calls
+    provider, counter, calls = new_runtime()
+    assert provider._generate_via_chat("gemini-3.6-flash", "p5",
+                                      count_as_deep_dive=True) == "sent"
+    assert calls == [("gemini-3.6-flash", 3)]
+    assert counter.model_budgets["gemini-3.6-flash"] == 18
+    provider.AIIF_EDITORIAL_STYLE = "classic"
+    provider._generate_via_chat("gemini-3.6-flash", "classic", count_as_deep_dive=True)
+    assert calls[-1] == ("gemini-3.6-flash", 18)
