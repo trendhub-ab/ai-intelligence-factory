@@ -137,6 +137,55 @@ def review_candidate(case: Any, article: str) -> dict:
     }
 
 
+def review_stage_continuity(stages: dict[str, str]) -> dict:
+    """Private-human-review signals, never a machine editorial PASS.
+
+    Specifically tests whether the authorial QUESTION present in early P5
+    thinking may have been lost on its way to the finished article. This is a
+    *signal* only: a good article may answer its question without '?' and a bad
+    one may add many empty questions. Do not rewrite the article or relax the
+    canonical P5/Evidence/Fact/Publication gates.
+    """
+    stage_names = (
+        "Writer Reaction", "Editorial Discovery", "Cognitive Shift",
+        "Persona Article Generation", "Fact-Safe Review",
+    )
+    if not isinstance(stages, dict) or set(stages) != set(stage_names):
+        raise PrivateGoldenMismatch("Five-stage manuscript required for continuity review")
+    if not all(isinstance(stages[name], str) and stages[name].strip() for name in stage_names):
+        raise PrivateGoldenMismatch("Empty or invalid five-stage manuscript")
+    reaction = stages["Writer Reaction"]
+    article = stages["Persona Article Generation"]
+    final = stages["Fact-Safe Review"]
+    early_questions = reaction.count("？") + reaction.count("?")
+    final_questions = final.count("？") + final.count("?")
+    cautions = []
+    if early_questions and final_questions == 0:
+        cautions.append("check_question_to_article_continuity")
+    if article == final:
+        cautions.append("fact_safe_stage_left_article_unchanged")
+    if not final.startswith("# "):
+        cautions.append("check_finished_article_title")
+    return {
+        "stage_digests": {
+            name: _sha(stages[name].encode("utf-8")) for name in stage_names
+        },
+        "reaction_question_punctuation": early_questions,
+        "final_question_punctuation": final_questions,
+        "persona_to_fact_safe_identical": article == final,
+        "diagnostic_cautions": cautions,
+        "human_review_questions": [
+            "Does the final article preserve the source-specific Writer Question in meaning?",
+            "Does the Evidence visibly change the writer's understanding rather than merely summarize?",
+            "Is the ending specific to this topic, rather than generic management advice?",
+            "Are separate measurement conditions and source qualifiers kept distinct?",
+        ],
+        "human_quality_approval": False,
+        "fact_approval": False,
+        "publication_approval": False,
+    }
+
+
 def export_verified_private_goldens(archive: Path, output: Path) -> dict:
     """Private review-only original article copies; fail before writing if invalid."""
     originals = verify_private_golden_archive(archive)
