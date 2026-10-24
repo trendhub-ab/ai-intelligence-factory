@@ -11,12 +11,10 @@ import hashlib
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 import secrets
 import time
 from typing import Any, Callable
-from zoneinfo import ZoneInfo
 
 from experiments.v3_p5_baseline_repro import frozen_case_prompts
 from experiments.v3_p5_golden_cases import READY_CASES
@@ -217,8 +215,6 @@ def main() -> None:
         )
         if not authorized:
             raise RuntimeError("GitHub Actions require P5 protected manual dispatch with encrypted private handoff")
-    if datetime.now(ZoneInfo("Asia/Tokyo")).hour < 17:
-        raise RuntimeError("Live P5 proof requires 17:00 JST or later")
     target = args.private_output.expanduser().resolve()
     if target.exists() or target == REPO_ROOT or REPO_ROOT in target.parents:
         raise RuntimeError("Choose a NEW private directory outside the repository")
