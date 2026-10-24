@@ -1,0 +1,80 @@
+name: V3 P5 Gemini 3.6 to 3.8 Flash Fallback ONE-SHOT
+# Isolated live proof: 2 logical calls, <=4 model attempts, no notes/Notion.
+on:
+  push:
+    branches: [ops/v3-p5-36-38-fallback-once-20261024]
+    paths: ['.github/workflows/v3-p5-36-38-fallback-once-20261024.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+jobs:
+  bounded-live:
+    if: >-
+      ${{ github.repository == 'trendhub-ab/ai-intelligence-factory' &&
+          github.event_name == 'push' &&
+          github.run_number == 1 &&
+          github.run_attempt == 1 &&
+          github.event.head_commit.message == 'fire(v3-p5): 3.6-to-3.8 Flash fallback ONE-SHOT 2026-10-24' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      AIIF_EDITORIAL_STYLE: v3_p5
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Checkout pinned P5 3.6-to-3.8 fallback source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: b06848372b3f538121e9ed928f52c825876d9e75
+          persist-credentials: false
+      - name: Setup Python 3.11
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11.16'
+      - name: Install Production dependencies without extra model calls
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Verify model order, bounded attempts and five-stage contract offline
+        run: |
+          python -m py_compile experiments/v3_p5_full_live_once_20261024.py
+          python - <<'PY'
+          import pathlib
+          from local_skills.v3_p5_one_shot import P5_REQUIRED_STAGES, BASELINE_P5_COMMIT
+          import experiments.v3_p5_full_live_once_20261024 as p
+          s=pathlib.Path("experiments/v3_p5_full_live_once_20261024.py").read_text()
+          assert p.MODEL_ORDER == ("gemini-3.6-flash", "gemini-3.8-flash")
+          assert p.FALLBACK_HTTP_CODES == frozenset({404,429,500,502,503,504})
+          assert '"max_provider_requests": 4' in s
+          assert '"retry_options": {"attempts": 1}' in s
+          assert len(P5_REQUIRED_STAGES) == 5
+          assert BASELINE_P5_COMMIT == "95016a65701979063f56130bf181bca831661f5d"
+          assert "NOTION_API_KEY" not in s and "note_ready_sync" not in s
+          print("P5_36_38_OFFLINE_PREFLIGHT=PASS",flush=True)
+          PY
+      - name: Generate original five-stage P5 with 3.6 then 3.8 fallback only
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python -m experiments.v3_p5_full_live_once_20261024
+      - name: Verify generated manuscript and bounded calls
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          j=json.loads(Path("p5_full_one_shot_artifact/manifest.json").read_text())
+          assert j["logical_requests_started"] == j["logical_requests_completed"] == 2
+          assert j["provider_requests_completed"] == 2
+          assert 2 <= j["provider_requests_started"] <= 4
+          assert j["model_active"] in ["gemini-3.6-flash","gemini-3.8-flash"]
+          assert j["status"] == "TECHNICAL_P5_COMPLETED_NEEDS_FACT_AND_EDITORIAL_REVIEW"
+          assert not j["publication"] and not j["notion_write"] and not j["full_production_gates_executed"]
+          assert Path("p5_full_one_shot_artifact/p5_article.md").stat().st_size > 700
+          print("P5_36_38_FALLBACK_TECHNICAL_PASS=TRUE; Human/Fact/Publication gates pending")
+          PY
+      - name: Retain run manifest and completed article or failure safely
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: v3-p5-gemini-36-38-fallback-one-shot-20261024
+          path: p5_full_one_shot_artifact/
+          retention-days: 14
+          if-no-files-found: ignore
