@@ -242,3 +242,73 @@ def test_p5_precise_observed_watch_leak_is_corrected_and_original_fact_gate_stay
     ):
         with pytest.raises(P5EditorialContractError, match="stage validation"):
             _extract_bundle(_bundle(final=invalid))
+
+
+def test_p5_original_writer_isolation_is_identical_to_selected_baseline_and_management_independent():
+    case = _source_case(
+        {"name": "Test", "url": "https://example.org/official-report"},
+        _source(), SimpleNamespace(EVIDENCE_SUFFICIENT="SUFFICIENT"),
+    )
+    original = build_editorial_bundle_prompt(case)
+    managed = _p5_prompt(case, {
+        "decision_text": "WATCH",
+        "decision_reason_text": "確認すべき。",
+        "action_text": "詳細検証する。",
+    }, _source())
+    isolated_a = _p5_prompt(case, {
+        "decision_text": "WATCH",
+        "decision_reason_text": "判断保留。",
+        "action_text": "専門家へ確認する。",
+        "source_summary_text": "初回の説明をコピーしない。",
+    }, _source(), writer_boundary="original")
+    isolated_b = _p5_prompt(case, {
+        "decision_text": "TRY",
+        "decision_reason_text": "実験推奨。",
+        "action_text": "直ちに試す。",
+    }, _source(), writer_boundary="original")
+    assert isolated_a == isolated_b == original
+    assert managed != original
+    assert "MANAGEMENT DATA" not in isolated_a
+    assert "Local Skills" not in isolated_a
+    assert "Production A+ LocalSkills" not in isolated_a
+    assert "1. Writer Reaction" in isolated_a and "5. Fact-Safe Review" in isolated_a
+
+
+def test_original_writer_isolation_requires_validation_origin_and_preserves_management():
+    p, sent = _fake_runtime("v3_p5", followup=_bundle())
+    p.AIIF_P5_WRITER_BOUNDARY = "original"
+    prompt = p.build_decision_prompt(evidence_result={"state": "SUFFICIENT"})
+    response, _ = p.call_gemini_grounded_deep_dive(
+        prompt,
+        {"name": "Test", "url": "https://example.org/official-report"},
+        _source(), request_kind="deep_dive", request_origin="article_revalidation",
+    )
+    assert len(sent) == 2
+    assert sent[1] == build_editorial_bundle_prompt(
+        _source_case(
+            {"name": "Test", "url": "https://example.org/official-report"},
+            _source(), SimpleNamespace(EVIDENCE_SUFFICIENT="SUFFICIENT"),
+        )
+    )
+    assert response.text.split(SPLIT, 1)[0].strip() == MANAGEMENT.strip()
+    assert p._parse_gemini_response(response.text)["decision_text"] == "TRY"
+    assert "初回の記事本文。" not in response.text
+
+    p2, sent2 = _fake_runtime("v3_p5", followup=_bundle())
+    p2.AIIF_P5_WRITER_BOUNDARY = "original"
+    with pytest.raises(P5EditorialContractError, match="validation"):
+        p2.call_gemini_grounded_deep_dive(
+            p2.build_decision_prompt(evidence_result={"state": "SUFFICIENT"}),
+            {"name": "Test", "url": "https://example.org/official-report"},
+            _source(), request_kind="deep_dive", request_origin="new",
+        )
+    assert len(sent2) == 1
+
+
+def test_unknown_p5_writer_boundary_rejected_fail_closed():
+    case = _source_case(
+        {"name": "Test", "url": "https://example.org/official-report"},
+        _source(), SimpleNamespace(EVIDENCE_SUFFICIENT="SUFFICIENT"),
+    )
+    with pytest.raises(P5EditorialContractError, match="writer boundary"):
+        _p5_prompt(case, {}, _source(), writer_boundary="no-gate")
