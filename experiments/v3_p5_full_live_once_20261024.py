@@ -11,11 +11,14 @@ import hashlib
 import json
 import os
 import re
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
 MODEL_ORDER = ("gemini-3.6-flash", "gemini-3.8-flash")
 FALLBACK_HTTP_CODES = frozenset({404, 429, 500, 502, 503, 504})
+MIN_STAGE_PACING_SECONDS = 30.0
+FALLBACK_BACKOFF_SECONDS = 60.0
 OUTPUT = Path("p5_full_one_shot_artifact")
 TITLE = "Using thousands of AI agents to uncover new leads in biological data"
 URL = "https://openai.com/index/scaling-ai-research-for-complex-biological-data/"
@@ -38,6 +41,21 @@ LIMITS = (
     "Months-to-a-year is a human-work estimate, not experimentally measured time saving.",
 )
 SOURCE = "\n".join(f"- {value}" for value in FACTS) + "\n\nSource limitations:\n" + "\n".join(LIMITS)
+
+
+def _apply_minimum_pacing(previous_terminal: float | None, required_seconds: float, *, clock_fn=time.monotonic, sleep_fn=time.sleep) -> float:
+    """Wait from the previous finished attempt, not from first launch; monotonic and bounded.
+
+    Returns seconds actually slept. The initial provider request has no prior
+    terminal timestamp and therefore never sleeps unnecessarily.
+    """
+    if previous_terminal is None:
+        return 0.0
+    elapsed = max(0.0, clock_fn() - previous_terminal)
+    remaining = max(0.0, required_seconds - elapsed)
+    if remaining > 0:
+        sleep_fn(remaining)
+    return remaining
 
 
 def _write(obj):
@@ -87,6 +105,9 @@ def main():
         "source_digest": hashlib.sha256(SOURCE.encode("utf-8")).hexdigest(),
         "max_provider_requests": 4,
         "max_logical_requests": 2,
+        "min_stage_pacing_seconds": MIN_STAGE_PACING_SECONDS,
+        "fallback_backoff_seconds": FALLBACK_BACKOFF_SECONDS,
+        "pacing_events": [],
         "logical_requests_started": 0,
         "logical_requests_completed": 0,
         "provider_attempts": [],
@@ -99,6 +120,8 @@ def main():
     }
     _write(state)
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"], http_options={"timeout": 120000, "retry_options": {"attempts": 1}})
+    last_attempt_terminal = [None]
+    next_min_interval = [0.0]
     try:
         def direct_provider(prompt, repo_data, evidence_data, *, request_kind="deep_dive", request_context="", request_origin="new"):
             stage = state["logical_requests_started"] + 1
@@ -114,6 +137,20 @@ def main():
                 attempt_count = state["provider_requests_started"] + 1
                 if attempt_count > state["max_provider_requests"]:
                     raise RuntimeError("Provider request budget exhausted; no further calls")
+                required_wait = next_min_interval[0]
+                actual_sleep = _apply_minimum_pacing(last_attempt_terminal[0], required_wait)
+                if last_attempt_terminal[0] is not None:
+                    state["pacing_events"].append({
+                        "stage": stage,
+                        "attempt": attempt_count,
+                        "required_minimum_seconds": required_wait,
+                        "slept_seconds": round(actual_sleep, 3),
+                    })
+                    print(
+                        f"P5_PROVIDER_PACING stage={stage}/2 attempt={attempt_count}/4 "
+                        f"min_spacing={required_wait:.1f}s slept={actual_sleep:.1f}s",
+                        flush=True,
+                    )
                 state["provider_requests_started"] = attempt_count
                 entry = {"stage": stage, "attempt": attempt_count, "model": model, "result": "STARTED"}
                 state["provider_attempts"].append(entry)
@@ -134,6 +171,8 @@ def main():
                     if not isinstance(raw_code, int):
                         raw_code = getattr(exc, "status_code", None)
                     code = int(raw_code) if str(raw_code).isdigit() else None
+                    last_attempt_terminal[0] = time.monotonic()
+                    next_min_interval[0] = FALLBACK_BACKOFF_SECONDS
                     entry.update(result="ERROR", error_type=type(exc).__name__, http_status=code)
                     state["error_type"] = type(exc).__name__
                     state["error_http_status"] = code
@@ -149,6 +188,8 @@ def main():
                 text = str(getattr(response, "text", "") or "").strip()
                 if not text:
                     raise RuntimeError("Empty Gemini response; no retry or fallback")
+                last_attempt_terminal[0] = time.monotonic()
+                next_min_interval[0] = MIN_STAGE_PACING_SECONDS
                 entry["result"] = "SUCCESS"
                 state["logical_requests_completed"] = stage
                 state["provider_requests_completed"] += 1
@@ -191,6 +232,7 @@ def main():
         assert state["logical_requests_started"] == state["logical_requests_completed"] == 2
         assert state["provider_requests_completed"] == 2
         assert 2 <= state["provider_requests_started"] <= 4
+        assert len(state["pacing_events"]) == state["provider_requests_started"] - 1
         parsed = p._parse_gemini_response(str(final_response.text))
         title = str(parsed.get("title_text") or "").strip()
         draft = str(parsed.get("note_draft") or "").strip()
