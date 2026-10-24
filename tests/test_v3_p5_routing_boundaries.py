@@ -260,3 +260,37 @@ def test_p5_36_send_denied_when_cross_run_counter_disabled():
     assert sends == []
     assert p.PERSISTENT_GEMINI_COUNTER.model_budgets["gemini-3.6-flash"] == 18
 
+
+
+
+def test_original_new_proof_bypasses_only_health_reordering_not_native_budget_pool():
+    p, _, repo, first, pure, _ = runtime()
+    calls = []
+
+    def unsafe_health_rerank(*a, **kw):
+        raise AssertionError("health router must not override owner's 3.8-first proof")
+
+    def native_budget_pool(prompt, config, kind, reserve, models, **kw):
+        calls.append((prompt, kind, reserve, models, dict(kw)))
+        return SimpleNamespace(text="mock"), "gemini-3.8-flash"
+
+    p._call_deep_dive_pool = unsafe_health_rerank
+    p._call_model_pool = native_budget_pool
+    original_pure = p.call_p5_baseline_pure_writer
+
+    def probe_original(*args, **kwargs):
+        p._call_deep_dive_pool(
+            "first management evidence test", kind="deep_dive",
+            request_context="p5:management", request_origin="new",
+        )
+        return original_pure(*args, **kwargs)
+
+    p.call_p5_baseline_pure_writer = probe_original
+    result, _ = p.generate_intelligence_report(repo, persist_results=False)
+    assert "新しい発見" in result.text
+    assert len(calls) == 1
+    assert calls[0][2] == 0
+    assert calls[0][3] == ["gemini-3.8-flash", "gemini-3.6-flash"]
+    assert calls[0][4]["deep_dive"] is True
+    assert p._call_deep_dive_pool is unsafe_health_rerank
+    assert p.DEEP_DIVE_MODEL_POOL == ["gemini-3.6-flash", "gemini-3.8-flash"]
