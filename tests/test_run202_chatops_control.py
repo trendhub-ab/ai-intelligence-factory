@@ -299,3 +299,47 @@ class Run202ChatOpsWorkflowContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class P5ChatOpsBridgeTests(unittest.TestCase):
+    """An exact authenticated Issue #71 command dispatches one reviewed P5 proof."""
+
+    def test_exact_p5_owner_command(self):
+        command = "/aiif run p5_ablation_once"
+        approved = chatops.authorize_event(event(body=command))
+        self.assertTrue(approved["authorized"])
+        self.assertEqual(approved["mode"], "p5_ablation_once")
+        for suffix in (" ", "\n", " extra"):
+            self.assertFalse(chatops.authorize_event(event(body=command + suffix))["authorized"])
+        self.assertFalse(chatops.authorize_event(event(login="outsider", body=command))["authorized"])
+        self.assertFalse(chatops.authorize_event(event(issue=72, body=command))["authorized"])
+        self.assertFalse(chatops.authorize_event(
+            event(body=command, pull_request={"url": "x"})
+        )["authorized"])
+
+    def test_p5_bridge_uses_manual_dispatch_not_daily(self):
+        flow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("github.event.comment.body == '/aiif run p5_ablation_once'", flow)
+        self.assertIn("p5_ablation_once)", flow)
+        self.assertIn("target='p5-creative-ablation-manual.yml'", flow)
+        self.assertIn('payload=\'{"ref":"main","inputs":{"confirm":"RUN_P5_ABLATION_ONCE"}}\'', flow)
+
+    def test_p5_proof_is_manual_one_attempt_locked_and_encrypted(self):
+        proof = (ROOT / ".github/workflows/p5-creative-ablation-manual.yml").read_text()
+        self.assertIn("  workflow_dispatch:", proof)
+        for forbidden in ("  push:", "  pull_request:", "  issue_comment:", "  workflow_run:", "  schedule:"):
+            self.assertNotIn(forbidden, proof)
+        self.assertIn("github.run_attempt == 1", proof)
+        self.assertIn("github.actor == 'trendhub-ab'", proof)
+        self.assertIn("group: ai-intelligence-gemini-budget", proof)
+        self.assertIn("AIIF_P5_CONFIDENTIAL_REVIEW: fernet_telegram_private", proof)
+        self.assertIn("AIIF_P5_HANDOFF_STAGE: preflight", proof)
+        self.assertIn("AIIF_P5_HANDOFF_STAGE: seal", proof)
+        self.assertIn("p5-review-", proof)
+        self.assertIn(".fernet", proof)
+        self.assertNotIn("path: p5-private-", proof)
+        self.assertIn("ref: ce4485980e6f71a61d4ba5b78682ee89cb8c71d9", proof)
+        self.assertLess(
+            proof.index("Check recipient is truly private"),
+            proof.index("Generate A B C D E once"),
+        )
