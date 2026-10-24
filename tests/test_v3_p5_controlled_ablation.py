@@ -139,3 +139,30 @@ def test_actions_live_mode_rejects_unprotected_manuscript(monkeypatch, tmp_path)
     monkeypatch.delenv("AIIF_P5_CONFIDENTIAL_REVIEW", raising=False)
     with pytest.raises(RuntimeError, match="protected manual dispatch"):
         exp.main()
+
+
+def test_live_manual_p5_has_no_clock_time_restriction(monkeypatch, tmp_path, capsys):
+    """Explicit authorization and privacy controls remain; no time-of-day gate."""
+    import inspect
+    source = inspect.getsource(exp.main)
+    assert "datetime.now" not in source
+    assert "ZoneInfo" not in source
+    assert "hour <" not in source
+    assert "hour >" not in source
+
+    called = []
+    monkeypatch.setattr("sys.argv", [
+        "p5", "--live", "--confirm", exp.CONFIRM, "--include-e",
+        "--private-output", str(tmp_path / "unused-private-directory"),
+    ])
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    monkeypatch.setattr(exp, "native_sender",
+        lambda: (lambda arm: None, lambda: called.append("closed")))
+    monkeypatch.setattr(exp, "run_private",
+        lambda arms, target, send: (
+            called.append(("run", len(arms), target)) or {"gemini_requests": len(arms)}
+        ))
+    exp.main()
+    assert called[0][0:2] == ("run", 5)
+    assert called[-1] == "closed"
+    assert "requests=5" in capsys.readouterr().out
