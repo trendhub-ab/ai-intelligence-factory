@@ -227,9 +227,14 @@ def apply_p5_editorial_one_shot(
     case = _source_case(repo, source_info, p)
     management, parsed = _management_first_pass(first_response, p)
     writer_boundary = str(getattr(p, "AIIF_P5_WRITER_BOUNDARY", None) or os.getenv("AIIF_P5_WRITER_BOUNDARY", "managed"))
-    if writer_boundary == "original" and request_origin != "article_revalidation":
+    if writer_boundary == "original" and not (
+        request_origin == "article_revalidation"
+        or (request_origin == "new"
+            and getattr(p, "_P5_NONPERSISTING_VALIDATION_ACTIVE", False) is True)
+    ):
         raise P5EditorialContractError(
-            "Original P5 writer isolation is permitted only in article_validation proof"
+            "Original P5 Writer is restricted to existing article revalidation "
+            "or nonpersisting new-article validation"
         )
     bundle_prompt = _p5_prompt(
         case, parsed, source_info, writer_boundary=writer_boundary
