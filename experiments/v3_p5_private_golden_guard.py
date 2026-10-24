@@ -34,6 +34,11 @@ INPUT_DIGESTS = {
     CASE_IDS[1]: "16f4fa6d9c2648804a0d9df22466b0c9701aa06971a559ec16f02db745f9e8fb",
     CASE_IDS[2]: "2bd648caa7a9c9e7094cc00790a0138d1b95620fc7ddd0c508e4b053237f54df",
 }
+STAGE_JSON_DIGESTS = {
+    CASE_IDS[0]: "7bdcb3b6d98af280a2253b6a008817a661834de928384f8b385622643a26d192",
+    CASE_IDS[1]: "90f0ed7617a019351be973b009bde7b9f11b41fe31659e56dce76060eac935c1",
+    CASE_IDS[2]: "f037d1af475f64e69c6e745d121971ec7bad91079f4b0815da81ebc9428ed97c",
+}
 ORIGINAL_CHARS = dict(zip(CASE_IDS, (1206, 1159, 721)))
 ORIGINAL_SECTIONS = dict(zip(CASE_IDS, (3, 3, 0)))
 HISTORICAL_HUMAN_SCORES = dict(zip(CASE_IDS, (75, 85, 88)))
@@ -84,6 +89,15 @@ def verify_private_golden_archive(path: Path) -> dict[str, str]:
                     raise PrivateGoldenMismatch("Archived original manuscript altered")
                 if not article.startswith("# ") or len(article) != ORIGINAL_CHARS[case_id]:
                     raise PrivateGoldenMismatch("Original article layout/length drift")
+                stages_blob = zipped.read(f"5段階_{label}.json")
+                if _sha(stages_blob) != STAGE_JSON_DIGESTS[case_id]:
+                    raise PrivateGoldenMismatch("Original five-stage record changed")
+                stages = json.loads(stages_blob)
+                if set(stages) != {
+                    "Writer Reaction", "Editorial Discovery", "Cognitive Shift",
+                    "Persona Article Generation", "Fact-Safe Review",
+                } or stages["Fact-Safe Review"] != article:
+                    raise PrivateGoldenMismatch("Five-stage final manuscript differs")
                 articles[label] = article
     except (OSError, KeyError, zipfile.BadZipFile, UnicodeError) as exc:
         raise PrivateGoldenMismatch("Cannot verify private golden archive") from exc
