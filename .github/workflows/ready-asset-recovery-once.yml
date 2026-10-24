@@ -41,7 +41,7 @@ jobs:
       GEMINI_38_FLASH_DAILY_BUDGET: '18'
       GEMINI_QUOTA_TIMEZONE: America/Los_Angeles
       GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
-      GEMINI_COUNTER_BRANCH: main
+      GEMINI_COUNTER_BRANCH: runtime-state
       EYECATCH_GITHUB_BRANCH: runtime-state
       GH_PAT: ${{ secrets.GH_PAT }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
