@@ -235,11 +235,24 @@ def apply_p5_editorial_one_shot(
         case, parsed, source_info, writer_boundary=writer_boundary
     )
 
-    # The Production provider interface currently enforces its own editor
-    # system instruction. Do NOT silently claim this path reproduces #852.
-    # The pure baseline provider call is separately tested in the isolated
-    # Phase0 route until the original provider interface supports overrides.
-    editorial_response, editorial_grounding = call(
+    if writer_boundary == "original":
+        # The canonical Production Deep Dive call always injects a separate
+        # AIIF Editor Persona: matching the P5 *prompt* alone is not a baseline
+        # reproduction. Never silently return a bland, mislabeled experiment.
+        # Only an explicitly wired/verified pure baseline provider can run
+        # this validation-only path. The provider must retain normal quota,
+        # Evidence and Publication authorities; no fallback to Production call.
+        pure_call = getattr(p, "call_p5_baseline_pure_writer", None)
+        if not callable(pure_call):
+            raise P5EditorialContractError(
+                "Original P5 writer requires a separately verified pure provider; "
+                "Production Deep Dive adds a system instruction"
+            )
+        article_call = pure_call
+    else:
+        article_call = call
+
+    editorial_response, editorial_grounding = article_call(
         bundle_prompt, repo, source_info,
         request_kind="deep_dive",  # existing per-run/model quota pathway
         request_context=request_context + ":p5_five_stages",
