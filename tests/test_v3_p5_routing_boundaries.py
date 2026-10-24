@@ -315,3 +315,56 @@ def test_p5_api_proof_cannot_auto_fire_for_every_pull_request_sync():
             f"P5 Gemini proof must never auto-fire on PR updates: {path.name}"
         )
 
+
+def test_real_p5_send_boundary_removes_only_shared_low_thinking_override():
+    sent = []
+    p = SimpleNamespace(
+        AIIF_EDITORIAL_STYLE="v3_p5",
+        DeepDiveRunBudgetExceededError=RuntimeError,
+        _generate_via_chat=lambda model, prompt, **kw: (
+            sent.append((model, kw.get("config"), kw.get("request_context")))
+            or "mock_sent"
+        ),
+        build_decision_prompt=lambda *a, **kw: "",
+        _parse_gemini_response=lambda *a, **kw: {},
+        should_attempt_dynamic_retry=lambda *a, **kw: (False, ""),
+        call_gemini_grounded_deep_dive=lambda *a, **kw: None,
+        generate_intelligence_report=lambda *a, **kw: None,
+        logger=None,
+    )
+    a_plus.install(p)
+    p._P5_ORIGINAL_WRITER_SEND_ACTIVE = True
+    base = dict(
+        count_as_deep_dive=True,
+        request_kind="deep_dive",
+        request_context="elastic:p5_five_stages",
+    )
+    assert p._generate_via_chat(
+        "gemini-3.8-flash", "original P5", config={
+            "thinking_config": {"thinking_level": "low"},
+        }, **base,
+    ) == "mock_sent"
+    assert sent == [("gemini-3.8-flash", None, "elastic:p5_five_stages")]
+    with pytest.raises(RuntimeError, match="Unexpected Gemini creative override"):
+        p._generate_via_chat(
+            "gemini-3.8-flash", "malicious", config={
+                "system_instruction": "different editor persona",
+                "thinking_config": {"thinking_level": "low"},
+            }, **base,
+        )
+    with pytest.raises(RuntimeError, match="Unverified original P5 creative"):
+        p._generate_via_chat(
+            "gemini-3.8-flash", "wrong scope", config={
+                "thinking_config": {"thinking_level": "low"},
+            }, request_kind="deep_dive", request_context="other_call",
+            count_as_deep_dive=True,
+        )
+    assert len(sent) == 1
+    p._P5_ORIGINAL_WRITER_SEND_ACTIVE = False
+    assert p._generate_via_chat(
+        "gemini-3.8-flash", "managed P5", config={
+            "thinking_config": {"thinking_level": "low"},
+        }, **base,
+    ) == "mock_sent"
+    assert sent[-1][1] == {"thinking_config": {"thinking_level": "low"}}
+
