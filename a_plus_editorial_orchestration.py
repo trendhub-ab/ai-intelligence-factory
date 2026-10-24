@@ -406,8 +406,9 @@ def install(pipeline_module):
             budgets = getattr(daily, "model_budgets", None)
             cap_active = bool(p5_deep_dive and model_name == "gemini-3.6-flash"
                               and isinstance(budgets, dict))
-            if p5_deep_dive and model_name == "gemini-3.6-flash" and callable(original_model_send) and not cap_active and hasattr(p, "GEMINI_API_KEY"):
-                raise RuntimeError("P5 requires the repository's persistent Gemini counter")
+            if p5_deep_dive and model_name == "gemini-3.6-flash" and callable(original_model_send) and hasattr(p, "GEMINI_API_KEY"):
+                if not cap_active or getattr(daily, "enabled", False) is not True:
+                    raise RuntimeError("P5 requires an ENABLED persistent Gemini daily counter")
             had_key = cap_active and model_name in budgets
             old_cap = budgets.get(model_name) if cap_active else None
             if cap_active:
