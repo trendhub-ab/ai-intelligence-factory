@@ -207,6 +207,7 @@ def test_p5_persistent_daily_cap_is_three_while_classic_budget_remains_eighteen(
             calls.append((model, holder.model_budgets.get(model)))
             return "sent"
         obj = SimpleNamespace(
+            GEMINI_API_KEY="offline-mock-only",
             AIIF_EDITORIAL_STYLE="v3_p5",
             AIIF_P5_WRITER_BOUNDARY="managed",
             DeepDiveRunBudgetExceededError=RuntimeError,
@@ -221,6 +222,7 @@ def test_p5_persistent_daily_cap_is_three_while_classic_budget_remains_eighteen(
         )
         holder.model_budgets = {"gemini-3.6-flash": 18}
         holder.default_budget = 18
+        holder.enabled = True
         a_plus.install(obj)
         return obj, holder, calls
     provider, counter, calls = new_runtime()
@@ -231,3 +233,30 @@ def test_p5_persistent_daily_cap_is_three_while_classic_budget_remains_eighteen(
     provider.AIIF_EDITORIAL_STYLE = "classic"
     provider._generate_via_chat("gemini-3.6-flash", "classic", count_as_deep_dive=True)
     assert calls[-1] == ("gemini-3.6-flash", 18)
+
+
+def test_p5_36_send_denied_when_cross_run_counter_disabled():
+    class FakeCounter:
+        enabled = False
+        default_budget = 18
+        model_budgets = {"gemini-3.6-flash": 18}
+    sends = []
+    p = SimpleNamespace(
+        GEMINI_API_KEY="offline-mock-only",
+        AIIF_EDITORIAL_STYLE="v3_p5",
+        DeepDiveRunBudgetExceededError=RuntimeError,
+        PERSISTENT_GEMINI_COUNTER=FakeCounter(),
+        _generate_via_chat=lambda model, prompt, **kw: sends.append(model),
+        build_decision_prompt=lambda *a, **kw: "",
+        _parse_gemini_response=lambda *a, **kw: {},
+        should_attempt_dynamic_retry=lambda *a, **kw: (False, ""),
+        call_gemini_grounded_deep_dive=lambda *a, **kw: None,
+        generate_intelligence_report=lambda *a, **kw: None,
+        logger=None,
+    )
+    a_plus.install(p)
+    with pytest.raises(RuntimeError, match="ENABLED persistent"):
+        p._generate_via_chat("gemini-3.6-flash", "test", count_as_deep_dive=True)
+    assert sends == []
+    assert p.PERSISTENT_GEMINI_COUNTER.model_budgets["gemini-3.6-flash"] == 18
+
