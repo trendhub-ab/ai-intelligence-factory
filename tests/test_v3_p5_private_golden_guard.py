@@ -141,3 +141,60 @@ def test_unpublished_golden_articles_are_not_stored_in_public_repo():
         "**/P5_original_Claude.md",
     ):
         assert not list(repository.glob(pattern)), f"Private P5 manuscript may not be committed: {pattern}"
+
+
+
+def test_stage_continuity_flags_lost_question_without_rewriting_article():
+    stages = {
+        "Writer Reaction": "Question: なぜ同じデータで結果が変わるのだろう？",
+        "Editorial Discovery": "Evidence: 条件付きの観察結果から説明が変わった",
+        "Cognitive Shift": "単なる高速化ではなく、分業設計の差だった",
+        "Persona Article Generation": "# 比較の条件\n\n実験では異なる条件が使われた。",
+        "Fact-Safe Review": "# 比較の条件\n\n実験では異なる条件が使われた。",
+    }
+    original = dict(stages)
+    report = guard.review_stage_continuity(stages)
+    assert report["reaction_question_punctuation"] == 1
+    assert report["final_question_punctuation"] == 0
+    assert report["diagnostic_cautions"] == [
+        "check_question_to_article_continuity",
+        "fact_safe_stage_left_article_unchanged",
+    ]
+    assert report["persona_to_fact_safe_identical"] is True
+    assert stages == original  # Observational only, no source/article rewrite
+    assert not report["publication_approval"]
+    assert not report["human_quality_approval"]
+    assert not report["fact_approval"]
+    assert all(len(digest) == 64 for digest in report["stage_digests"].values())
+    assert "なぜ同じデータ" not in str(report)  # no private article text in public CI
+
+
+def test_stage_continuity_does_not_invent_a_human_score_from_question_marks():
+    stages = {
+        "Writer Reaction": "Question: 何が変わる？",
+        "Editorial Discovery": "Evidence: 対象範囲が狭い",
+        "Cognitive Shift": "結論は条件付き",
+        "Persona Article Generation": "# 条件を読み直す\n\n何が変わる？ まだ調査が必要。",
+        "Fact-Safe Review": "# 条件を読み直す\n\n何が変わる？ まだ調査が必要。",
+    }
+    report = guard.review_stage_continuity(stages)
+    assert report["reaction_question_punctuation"] == 1
+    assert report["final_question_punctuation"] == 1
+    assert "check_question_to_article_continuity" not in report["diagnostic_cautions"]
+    assert "quality_score" not in report
+    assert report["human_quality_approval"] is False
+
+
+def test_stage_continuity_rejects_incomplete_or_invalid_bundles():
+    with pytest.raises(guard.PrivateGoldenMismatch, match="Five-stage"):
+        guard.review_stage_continuity({"Writer Reaction": "Question: なぜ？"})
+    with pytest.raises(guard.PrivateGoldenMismatch, match="Five-stage"):
+        guard.review_stage_continuity(None)
+    with pytest.raises(guard.PrivateGoldenMismatch, match="Empty"):
+        guard.review_stage_continuity({
+            "Writer Reaction": "Question: なぜ？",
+            "Editorial Discovery": "Insight",
+            "Cognitive Shift": "Shift",
+            "Persona Article Generation": "# Article\n\nBody",
+            "Fact-Safe Review": "",
+        })
