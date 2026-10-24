@@ -243,6 +243,14 @@ def apply_p5_editorial_one_shot(
         # this validation-only path. The provider must retain normal quota,
         # Evidence and Publication authorities; no fallback to Production call.
         pure_call = getattr(p, "call_p5_baseline_pure_writer", None)
+        if not callable(pure_call) and callable(getattr(p, "_call_model_pool", None)):
+            # Native runtime: preserve Gemini budget/accounting/503 model
+            # fallback while stripping only the added *creative* persona.
+            # Fake runtimes without either provider must fail closed.
+            from .v3_p5_pure_provider import call_p5_pure_writer
+            pure_call = lambda *args, **kwargs: call_p5_pure_writer(
+                p, *args, **kwargs
+            )
         if not callable(pure_call):
             raise P5EditorialContractError(
                 "Original P5 writer requires a separately verified pure provider; "
