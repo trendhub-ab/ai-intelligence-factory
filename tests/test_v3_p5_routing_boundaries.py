@@ -294,3 +294,24 @@ def test_original_new_proof_bypasses_only_health_reordering_not_native_budget_po
     assert calls[0][4]["deep_dive"] is True
     assert p._call_deep_dive_pool is unsafe_health_rerank
     assert p.DEEP_DIVE_MODEL_POOL == ["gemini-3.6-flash", "gemini-3.8-flash"]
+
+def test_p5_api_proof_cannot_auto_fire_for_every_pull_request_sync():
+    """Never allow a one-use paid provider proof to re-run on ordinary PR pushes.
+
+    GitHub pull_request.paths matches the full PR diff, not just the current
+    commit, so an innocuous test edit can spend Gemini quota repeatedly.
+    Paid P5 proofs must be explicit bounded manual dispatches, not PR events.
+    """
+    from pathlib import Path
+    import re
+    workflows = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+    for path in workflows.glob("*.yml"):
+        if "p5" not in path.name.lower():
+            continue
+        source = path.read_text(encoding="utf-8")
+        if "GEMINI_API_KEY" not in source:
+            continue
+        assert not re.search(r"(?m)^\s{0,2}pull_request\s*:", source), (
+            f"P5 Gemini proof must never auto-fire on PR updates: {path.name}"
+        )
+
