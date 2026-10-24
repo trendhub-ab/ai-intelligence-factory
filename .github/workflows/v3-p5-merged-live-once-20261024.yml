@@ -1,0 +1,76 @@
+name: V3 P5 original five-stage merged-engine live preview ONE-SHOT
+# Disposable branch-only proof. Only Gemini read/generate. No Notion, note, repo write.
+on:
+  push:
+    branches: [ops/v3-p5-article-validation-once-20261024]
+    paths: ['.github/workflows/v3-p5-merged-live-once-20261024.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+jobs:
+  bounded-live:
+    if: >-
+      ${{ github.repository == 'trendhub-ab/ai-intelligence-factory' &&
+          github.event_name == 'push' &&
+          github.run_number == 1 &&
+          github.run_attempt == 1 &&
+          github.event.head_commit.message == 'fire(v3-p5): owner-authorized merged original 5-stage live ONE-SHOT 2026-10-24' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      AIIF_EDITORIAL_STYLE: v3_p5
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Checkout pinned merged P5 engine and standalone preview
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: 544c0dee81fab07e64dda798f8a7d902cc2fe3ba
+          persist-credentials: false
+      - name: Setup Python 3.11
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11.16'
+      - name: Install pinned Production dependency spec
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: No-secret preflight confirms full five-stage and source-isolated route
+        run: |
+          set -eu
+          python -m py_compile experiments/v3_p5_full_live_once_20261024.py
+          python - <<'PY'
+          from local_skills.v3_p5_one_shot import BASELINE_P5_COMMIT, P5_REQUIRED_STAGES
+          from local_skills.v3_p5_prompts import build_editorial_bundle_prompt
+          import pathlib
+          s=pathlib.Path("experiments/v3_p5_full_live_once_20261024.py").read_text()
+          assert BASELINE_P5_COMMIT=="95016a65701979063f56130bf181bca831661f5d"
+          assert len(P5_REQUIRED_STAGES)==5
+          assert "client.models.generate_content" in s and "max_provider_requests" in s
+          assert "NOTION_API_KEY" not in s and "note_ready_sync" not in s
+          print("P5_5_STAGE_ONE_SHOT_PREFLIGHT=PASS",flush=True)
+          PY
+      - name: Run one official source through 2 counted Gemini calls
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python -m experiments.v3_p5_full_live_once_20261024
+      - name: Assert bounded successful generation
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          j=json.loads(Path("p5_full_one_shot_artifact/manifest.json").read_text())
+          assert j["provider_requests_started"]==j["provider_requests_completed"]==2
+          assert j["status"]=="TECHNICAL_P5_COMPLETED_NEEDS_FACT_AND_EDITORIAL_REVIEW"
+          assert not j["publication"] and not j["notion_write"]
+          assert not j["full_production_gates_executed"]
+          assert Path("p5_full_one_shot_artifact/p5_article.md").stat().st_size > 700
+          print("P5_FULL_ONE_SHOT_TECHNICAL_PASS=TRUE; Fact/Reader/Publication review pending")
+          PY
+      - name: Preserve source-scoped preview as private Actions artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: v3-p5-original-five-stage-one-shot-20261024
+          path: p5_full_one_shot_artifact/
+          retention-days: 14
+          if-no-files-found: ignore
