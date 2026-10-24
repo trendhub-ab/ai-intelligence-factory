@@ -77,11 +77,21 @@ def call_p5_pure_writer(
     pool = getattr(p, "_call_model_pool", None)
     if not callable(pool):
         raise P5PureProviderError("Missing canonical budgeted Gemini model pool")
-    response, model = pool(
-        prompt, config, "deep_dive", 0, guarded_pool,
-        deep_dive=True, request_context=request_context,
-        request_origin=request_origin,
-    )
+    # The locked Fresh/Production resilience adapter injects low thinking
+    # into every Deep Dive. A+ isolates this already-authorized original
+    # Writer only at the final _generate_via_chat send boundary; NEVER
+    # relax or modify the shared provider or its frozen Fresh fingerprint.
+    if getattr(p, "_P5_ORIGINAL_WRITER_SEND_ACTIVE", False):
+        raise P5PureProviderError("Nested original Writer provider call is forbidden")
+    setattr(p, "_P5_ORIGINAL_WRITER_SEND_ACTIVE", True)
+    try:
+        response, model = pool(
+            prompt, config, "deep_dive", 0, guarded_pool,
+            deep_dive=True, request_context=request_context,
+            request_origin=request_origin,
+        )
+    finally:
+        setattr(p, "_P5_ORIGINAL_WRITER_SEND_ACTIVE", False)
     if model not in ALLOWED_NONPREVIEW_MODELS:
         raise P5PureProviderError("Unexpected model returned by budgeted pool")
     p.SELECTED_DEEP_DIVE_MODEL = model
