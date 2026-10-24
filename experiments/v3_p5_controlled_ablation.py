@@ -115,9 +115,13 @@ def run_private(arms: tuple[Arm, ...], output: Path,
             article, stages = _extract_bundle(str(getattr(response, "text", "") or ""))
             label = key[arm.code]
             private_write(output / ("Candidate_" + label + ".md"), article + "\n")
+            stage_json = json.dumps(stages, ensure_ascii=False, indent=2)
+            private_write(output / ("Stages_Candidate_" + label + ".json"), stage_json + "\n")
             result["candidates"][label] = {
                 "sha256": sha(article), "characters": len(article),
-                "stage_count": len(stages),
+                "stage_count": len(stages), "stages_sha256": sha(stage_json),
+                "writing_stage_chars": len(stages["Persona Article Generation"]),
+                "review_stage_chars": len(stages["Fact-Safe Review"]),
             }
         result["status"] = "ALL_VALID_AWAITING_BLIND_HUMAN_REVIEW"
     except Exception as error:

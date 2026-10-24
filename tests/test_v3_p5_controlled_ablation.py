@@ -65,6 +65,14 @@ def test_mock_sender_private_blind_only(tmp_path):
     assert result["status"] == "ALL_VALID_AWAITING_BLIND_HUMAN_REVIEW"
     assert result["gemini_requests"] == 4
     assert len(list(output.glob("Candidate_*.md"))) == 4
+    assert len(list(output.glob("Stages_Candidate_*.json"))) == 4
+    for stage_file in output.glob("Stages_Candidate_*.json"):
+        stages = json.loads(stage_file.read_text())
+        assert len(stages) == 5
+        assert "Persona Article Generation" in stages
+        assert "Fact-Safe Review" in stages
+    assert all(item["writing_stage_chars"] > 0 for item in result["candidates"].values())
+    assert all(item["review_stage_chars"] > 0 for item in result["candidates"].values())
     assert (output / "KEY_OPEN_AFTER_SCORING.json").exists()
     assert (output / "manifest.json").exists()
     assert os.stat(output).st_mode & 0o077 == 0
@@ -88,6 +96,7 @@ def test_failure_stops_without_fallback_or_publishing(tmp_path):
     assert m["gemini_requests"] == 2
     assert m["publication_approved"] is False
     assert len(list(output.glob("Candidate_*.md"))) == 1
+    assert len(list(output.glob("Stages_Candidate_*.json"))) == 1
 
 
 def test_existing_directory_and_public_repo_blocked(tmp_path):

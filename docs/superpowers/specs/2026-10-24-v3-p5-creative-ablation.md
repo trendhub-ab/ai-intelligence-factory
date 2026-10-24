@@ -37,7 +37,7 @@ Requires both GH_PAT and GEMINI_API_KEY, native enabled repository-persistent co
 
 Default four calls A/B/C/D maximum, optional fifth E with --include-e; no model fallback or API auto retry. Native per-request budget + persistent counter reserves before every real provider send. Ambiguous errors retain reservation. If any sample fails validation/response, stop, keep partial results private, report INCOMPLETE_TECHNICAL_NO_GO and do not rank the arms.
 
-Outputs are mode 0700 directory, 0600 files: blindly labeled Candidate_*.md, manifest.json, KEY_OPEN_AFTER_SCORING.json. Never commit raw manuscripts, five-stage bundles, compressed equivalents, or identifying blind KEY into repository or public GitHub Actions artifacts. The live proof does not upload or publish anywhere.
+Outputs are mode 0700 directory, 0600 files: blindly labeled Candidate_*.md, Stages_Candidate_*.json, manifest.json, KEY_OPEN_AFTER_SCORING.json. The stages are kept strictly local and include Persona Article Generation versus Fact-Safe Review, enabling stage-by-stage analysis of any shortening. Never commit raw manuscripts, five-stage bundles, compressed equivalents, or identifying blind KEY into repository or public GitHub Actions artifacts. The live proof does not upload or publish anywhere.
 
 ## Blind scoring and limits
 
