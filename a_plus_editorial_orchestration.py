@@ -6,12 +6,15 @@ Decision when the initial Deep Dive failed before structured management data exi
 """
 from __future__ import annotations
 
+import os
 import re
 from functools import wraps
 from types import SimpleNamespace
 from typing import Any
 
 from editorial_naturalness import build_naturalness_retry_contract as _base_naturalness_retry_contract
+
+from local_skills.v3_p5_rate_contract import P5SendGuard, ordered_p5_pool
 
 from local_skills.a_plus import (
     build_prewrite_contract,
@@ -170,6 +173,8 @@ def install(pipeline_module):
     original_retry = p.should_attempt_dynamic_retry
     original_call = p.call_gemini_grounded_deep_dive
     original_generate = p.generate_intelligence_report
+    original_model_send = getattr(p, "_generate_via_chat", None)
+    send_guard = P5SendGuard()
 
     state: dict[str, Any] = {
         "last_parsed": None,
@@ -186,7 +191,77 @@ def install(pipeline_module):
         state["last_evidence_result"] = {}
         state["force_local_fallback"] = False
         state["retry_article"] = ""
-        return original_generate(*args, **kwargs)
+        style = str(getattr(p, "AIIF_EDITORIAL_STYLE", "classic"))
+        boundary = str(getattr(p, "AIIF_P5_WRITER_BOUNDARY", None)
+                       or os.getenv("AIIF_P5_WRITER_BOUNDARY", "managed"))
+        # Phase0-equivalent Writer for a NEW source is permitted ONLY inside
+        # a nonpersisting, single-process editorial validation. The real
+        # pipeline's fifth positional argument is persist_results=True.
+        persistent = args[4] if len(args) > 4 else kwargs.get("persist_results", True)
+        if style == "v3_p5" and persistent is not False:
+            raise RuntimeError(
+                "P5 has no human editorial approval authority: "
+                "persist_results=False is mandatory for all P5 proof runs"
+            )
+        prior = getattr(p, "_P5_NONPERSISTING_VALIDATION_ACTIVE", False)
+        p5_validation = style == "v3_p5" and persistent is False
+        new_proof = p5_validation and boundary == "original"
+        prior_pool = getattr(p, "DEEP_DIVE_MODEL_POOL", None)
+        prior_deep_pool_call = getattr(p, "_call_deep_dive_pool", None)
+        prior_client = getattr(p, "client", None)
+        isolated_client = None
+        setattr(p, "_P5_NONPERSISTING_VALIDATION_ACTIVE", new_proof)
+        try:
+            if p5_validation and prior_pool is not None:
+                model_pool = ordered_p5_pool(prior_pool)
+                if not model_pool:
+                    raise RuntimeError("P5 isolated validation has no permitted 3.8/3.6 model")
+                p.DEEP_DIVE_MODEL_POOL = model_pool
+                # Run260's health router can reorder even a two-model pool
+                # back to 3.6-first. For this isolated proof, go directly
+                # through the *current* canonical model pool provider (which
+                # owns persistent quota, audit, pacing and 503 fallbacks).
+                # Never replace that provider itself.
+                if callable(prior_deep_pool_call) and callable(
+                    getattr(p, "_call_model_pool", None)
+                ):
+                    def p5_locked_deep_pool(prompt, config=None, kind="deep_dive",
+                                            request_context="", request_origin="new"):
+                        current_models = ordered_p5_pool(
+                            getattr(p, "DEEP_DIVE_MODEL_POOL", ())
+                        )
+                        if not current_models:
+                            raise RuntimeError("P5 no eligible 3.8/3.6 models")
+                        return p._call_model_pool(
+                            prompt, config, kind, 0, current_models,
+                            deep_dive=True, request_context=request_context,
+                            request_origin=request_origin,
+                        )
+                    p._call_deep_dive_pool = p5_locked_deep_pool
+            # The native Gemini SDK can retry invisibly inside send_message.
+            # For real pipeline calls, isolate the client and force ONE SDK
+            # attempt per guarded logical provider send. No global client
+            # mutation survives the nonpersisting validation call.
+            if style == "v3_p5" and callable(original_model_send):
+                genai = getattr(p, "genai", None)
+                api_key = getattr(p, "GEMINI_API_KEY", None)
+                if genai is None or not api_key:
+                    raise RuntimeError("P5 live proof requires auditable Gemini client credentials")
+                isolated_client = genai.Client(
+                    api_key=api_key,
+                    http_options={"timeout": 120000, "retry_options": {"attempts": 1}},
+                )
+                p.client = isolated_client
+            return original_generate(*args, **kwargs)
+        finally:
+            if isolated_client is not None:
+                p.client = prior_client
+                isolated_client.close()
+            if p5_validation and prior_pool is not None:
+                p.DEEP_DIVE_MODEL_POOL = prior_pool
+                if callable(prior_deep_pool_call):
+                    p._call_deep_dive_pool = prior_deep_pool_call
+            setattr(p, "_P5_NONPERSISTING_VALIDATION_ACTIVE", prior)
 
     @wraps(original_prompt)
     def build_decision_prompt_a_plus(*args, **kwargs):
@@ -224,6 +299,11 @@ def install(pipeline_module):
         state["force_local_fallback"] = False
 
         allowed, reason = original_retry(reason_rows, evidence_result, *args, **kwargs)
+        if str(getattr(p, "AIIF_EDITORIAL_STYLE", "classic")) == "v3_p5":
+            # Do not authorize a second Classic or Local Skills writer under
+            # the P5 label. Failed editorial quality stays non-Ready for review.
+            state["force_local_fallback"] = False
+            return False, "p5_human_editorial_review_required"
         if allowed:
             return allowed, reason
 
@@ -270,6 +350,12 @@ def install(pipeline_module):
             return (
                 SimpleNamespace(text=response_text, candidates=[]),
                 _fallback_grounding(source_info),
+            )
+
+        if str(getattr(p, "AIIF_EDITORIAL_STYLE", "classic")) == "v3_p5" and request_kind == "quality_retry":
+            raise RuntimeError(
+                "P5 quality_retry is disabled: independent editorial review "
+                "required; never substitute provider-free Classic article"
             )
 
         if request_kind == "quality_retry" and bool(state.get("force_local_fallback")):
@@ -321,6 +407,63 @@ def install(pipeline_module):
                     state["force_local_fallback"] = False
                     return result
             raise
+
+    if callable(original_model_send):
+        @wraps(original_model_send)
+        def p5_guarded_model_send(model_name, *args, **kwargs):
+            # The real native pool (including its internal retry loop) resolves
+            # this function from pipeline globals for EVERY physical SDK send.
+            p5_deep_dive = (
+                str(getattr(p, "AIIF_EDITORIAL_STYLE", "classic")) == "v3_p5"
+                and kwargs.get("count_as_deep_dive") is True
+            )
+            if getattr(p, "_P5_ORIGINAL_WRITER_SEND_ACTIVE", False) is True:
+                # The frozen Production provider adds low thinking even when
+                # the authenticated P5 Writer passes an empty config. Remove
+                # ONLY that exact injected config at this final send boundary.
+                # Never change gemini_provider_resilience.py: it is protected
+                # by the Fresh Protocol content hash.
+                context = str(kwargs.get("request_context") or "")
+                if (not p5_deep_dive
+                        or kwargs.get("request_kind") != "deep_dive"
+                        or not context.endswith(":p5_five_stages")):
+                    raise RuntimeError("Unverified original P5 creative send context")
+                provider_config = kwargs.get("config")
+                if provider_config not in (None, {}, {"thinking_config": {"thinking_level": "low"}}):
+                    raise RuntimeError("Unexpected Gemini creative override for original P5")
+                kwargs = dict(kwargs, config=None)
+            if p5_deep_dive:
+                try:
+                    send_guard.pre_send(model_name, p5_active=True)
+                except Exception as exc:
+                    budget_error = getattr(p, "DeepDiveRunBudgetExceededError", RuntimeError)
+                    raise budget_error(str(exc)) from exc
+            # Counter.reserve() is the cross-run source of truth for requests
+            # sent from this repository. The regular 3.6 budget defaults to
+            # 18; constrain it to THREE only for a P5 deep-dive send.
+            # Do not mutate Classic's configured cap after this attempt.
+            daily = getattr(p, "PERSISTENT_GEMINI_COUNTER", None)
+            budgets = getattr(daily, "model_budgets", None)
+            cap_active = bool(p5_deep_dive and model_name == "gemini-3.6-flash"
+                              and isinstance(budgets, dict))
+            if p5_deep_dive and model_name == "gemini-3.6-flash" and callable(original_model_send) and hasattr(p, "GEMINI_API_KEY"):
+                if not cap_active or getattr(daily, "enabled", False) is not True:
+                    raise RuntimeError("P5 requires an ENABLED persistent Gemini daily counter")
+            had_key = cap_active and model_name in budgets
+            old_cap = budgets.get(model_name) if cap_active else None
+            if cap_active:
+                default_cap = getattr(daily, "default_budget", 3)
+                budgets[model_name] = min(int(old_cap if had_key else default_cap), 3)
+            try:
+                return original_model_send(model_name, *args, **kwargs)
+            finally:
+                if cap_active:
+                    if had_key:
+                        budgets[model_name] = old_cap
+                    else:
+                        budgets.pop(model_name, None)
+        p._generate_via_chat = p5_guarded_model_send
+        p._P5_SEND_GUARD = send_guard
 
     p.generate_intelligence_report = generate_intelligence_report_a_plus
     p.build_decision_prompt = build_decision_prompt_a_plus

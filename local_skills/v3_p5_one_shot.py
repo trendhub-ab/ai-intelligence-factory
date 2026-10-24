@@ -17,6 +17,7 @@ classic first-pass article if P5 cannot complete.
 from __future__ import annotations
 
 import json
+import os
 import re
 from typing import Any, Callable
 
@@ -139,8 +140,20 @@ def _management_first_pass(first: Any, p: Any) -> tuple[str, dict]:
     return management, parsed
 
 
-def _p5_prompt(case: Phase0Case, parsed: dict, source_info: dict) -> str:
-    """Append Production authorities without rewriting the verified five stages."""
+def _p5_prompt(case: Phase0Case, parsed: dict, source_info: dict, *, writer_boundary: str = "managed") -> str:
+    """Build writer input, with exactly-original P5 permitted in isolated validation.
+
+    managed: prior verified Production integration (unchanged default).
+    original: byte-identical to selected P5 five-stage source prompt, WITHOUT
+    management Decision/Action or LocalSkills management skeleton. Source
+    Evidence/Facts/Qualifiers remain inside the original P5 Case; downstream
+    Production gates and canonical MANAGEMENT DATA remain authoritative.
+    """
+    if writer_boundary not in {"managed", "original"}:
+        raise P5EditorialContractError("Unknown P5 writer boundary")
+    if writer_boundary == "original":
+        return build_editorial_bundle_prompt(case)
+
     result = dict(source_info.get("evidence_result") or {})
     metadata = dict(source_info.get("evidence_metadata") or {})
     prewrite = build_prewrite_contract(result, metadata)
@@ -213,9 +226,46 @@ def apply_p5_editorial_one_shot(
         raise P5EditorialContractError("P5 missing required canonical LocalSkills prewrite")
     case = _source_case(repo, source_info, p)
     management, parsed = _management_first_pass(first_response, p)
-    bundle_prompt = _p5_prompt(case, parsed, source_info)
+    writer_boundary = str(getattr(p, "AIIF_P5_WRITER_BOUNDARY", None) or os.getenv("AIIF_P5_WRITER_BOUNDARY", "managed"))
+    if writer_boundary == "original" and not (
+        request_origin == "article_revalidation"
+        or (request_origin == "new"
+            and getattr(p, "_P5_NONPERSISTING_VALIDATION_ACTIVE", False) is True)
+    ):
+        raise P5EditorialContractError(
+            "Original P5 Writer is restricted to existing article revalidation "
+            "or nonpersisting new-article validation"
+        )
+    bundle_prompt = _p5_prompt(
+        case, parsed, source_info, writer_boundary=writer_boundary
+    )
 
-    editorial_response, editorial_grounding = call(
+    if writer_boundary == "original":
+        # The canonical Production Deep Dive call always injects a separate
+        # AIIF Editor Persona: matching the P5 *prompt* alone is not a baseline
+        # reproduction. Never silently return a bland, mislabeled experiment.
+        # Only an explicitly wired/verified pure baseline provider can run
+        # this validation-only path. The provider must retain normal quota,
+        # Evidence and Publication authorities; no fallback to Production call.
+        pure_call = getattr(p, "call_p5_baseline_pure_writer", None)
+        if not callable(pure_call) and callable(getattr(p, "_call_model_pool", None)):
+            # Native runtime: preserve Gemini budget/accounting/503 model
+            # fallback while stripping only the added *creative* persona.
+            # Fake runtimes without either provider must fail closed.
+            from .v3_p5_pure_provider import call_p5_pure_writer
+            pure_call = lambda *args, **kwargs: call_p5_pure_writer(
+                p, *args, **kwargs
+            )
+        if not callable(pure_call):
+            raise P5EditorialContractError(
+                "Original P5 writer requires a separately verified pure provider; "
+                "Production Deep Dive adds a system instruction"
+            )
+        article_call = pure_call
+    else:
+        article_call = call
+
+    editorial_response, editorial_grounding = article_call(
         bundle_prompt, repo, source_info,
         request_kind="deep_dive",  # existing per-run/model quota pathway
         request_context=request_context + ":p5_five_stages",
