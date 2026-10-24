@@ -11,11 +11,9 @@ import os
 from typing import Any
 
 from .v3_p5_call_contract import pure_p5_writer_config
+from .v3_p5_rate_contract import P5_MODELS, ordered_p5_pool
 
-ALLOWED_NONPREVIEW_MODELS = frozenset({
-    "gemini-3.5-flash", "gemini-3.6-flash",
-    "gemini-3.7-flash", "gemini-3.8-flash",
-})
+ALLOWED_NONPREVIEW_MODELS = frozenset(P5_MODELS)
 
 
 class P5PureProviderError(RuntimeError):
@@ -49,6 +47,9 @@ def call_p5_pure_writer(
         writer_boundary=boundary,
         request_origin=request_origin,
         request_kind=request_kind,
+        nonpersisting_new_validation=(
+            getattr(p, "_P5_NONPERSISTING_VALIDATION_ACTIVE", False) is True
+        ),
     )
     if config != {}:
         raise P5PureProviderError("Pure baseline config must be empty")
@@ -70,12 +71,9 @@ def call_p5_pure_writer(
         "5. Fact-Safe Review",
     )):
         raise P5PureProviderError("Pure provider only accepts the canonical five-stage P5 prompt")
-    guarded_pool = [
-        name for name in getattr(p, "DEEP_DIVE_MODEL_POOL", ())
-        if name in ALLOWED_NONPREVIEW_MODELS
-    ]
+    guarded_pool = ordered_p5_pool(getattr(p, "DEEP_DIVE_MODEL_POOL", ()))
     if not guarded_pool:
-        raise P5PureProviderError("No allowlisted nonpreview Writer model")
+        raise P5PureProviderError("No allowlisted 3.8/3.6 nonpreview Writer model")
     pool = getattr(p, "_call_model_pool", None)
     if not callable(pool):
         raise P5PureProviderError("Missing canonical budgeted Gemini model pool")
