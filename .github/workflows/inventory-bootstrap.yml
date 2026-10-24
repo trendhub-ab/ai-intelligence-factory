@@ -80,7 +80,7 @@ jobs:
           NOTION_API_VERSION: "2026-03-11"
           GEMINI_PERSISTENT_DAILY_COUNTER: "true"
           GEMINI_PERSISTENT_COUNTER_PATH: ".runtime/gemini_daily_usage.json"
-          GEMINI_COUNTER_BRANCH: "main"
+          GEMINI_COUNTER_BRANCH: "runtime-state"
           GEMINI_QUOTA_TIMEZONE: "America/Los_Angeles"
           GEMINI_35_FLASH_LITE_DAILY_BUDGET: "450"
           GEMINI_31_FLASH_LITE_DAILY_BUDGET: "450"
