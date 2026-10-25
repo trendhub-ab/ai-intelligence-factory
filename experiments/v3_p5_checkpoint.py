@@ -1,4 +1,4 @@
-"""Authenticated, bounded, private P5 checkpoint restoration.
+"""Authenticated, private P5 checkpoint restoration.
 
 Restore only a manually chosen encrypted Actions artifact using its Fernet key
 from a repository secret. No raw article may enter Actions artifacts or logs.
@@ -54,6 +54,12 @@ def open_checkpoint(
     for field in ("checkpoint_schema", "arms", "model", "primary_models_by_arm",
                   "prompt_sha256", "transport", "config_flags",
                   "max_provider_requests", "case", "uses_extra_editor_persona"):
+        if field == "max_provider_requests":
+            # Legacy encrypted P5 v1 checkpoints declared 8. Allow that historical
+            # value when resuming, without rewriting or trusting other contracts.
+            if manifest.get(field) not in (8, None):
+                raise CheckpointError("P5 checkpoint experiment contract mismatch")
+            continue
         if manifest.get(field) != expected_manifest.get(field):
             raise CheckpointError("P5 checkpoint experiment contract mismatch")
     arms = expected_manifest["arms"]
@@ -77,7 +83,7 @@ def open_checkpoint(
         raise CheckpointError("P5 checkpoint inconsistent fallback provenance")
     count = len(completed)
     requests = manifest.get("gemini_requests")
-    if type(requests) is not int or not count <= requests < 8:
+    if type(requests) is not int or requests < count:
         raise CheckpointError("P5 checkpoint exhausted/invalid request budget")
     candidates = manifest.get("candidates")
     labels = {planned[code] for code in completed}
