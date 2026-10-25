@@ -414,10 +414,10 @@ A+導入のために追加Provider callを要求しない。
 ### 6.2b P5 A–E原因切り分け ChatOps（2026-10-24、未昇格の実験）
 
 - P5 A/B/C/D/Eの比較試験は、既存Control Issue #71への完全一致コマンド `/aiif run p5_ablation_once` から起動できる。ただしコマンドは`chatops-one-shot.yml`が`main`上で承認済みの場合に限る。運用中のDaily/Classic/V1/V2を変更しない。
-- 専用 `p5-creative-ablation-manual.yml` は `workflow_dispatch` のみ、本人`trendhub-ab`、`github.run_attempt == 1`、共有Gemini concurrency lock、元記事/モデルを固定し、最大5回の実API試験に限る。実験本体はレビュー済みの固定commit `922ef5b49b76683529957d37ead155d459e886dc`（PR #863 provider-free CI GREEN）をcheckoutし、別branchの最新HEADを自動追随しない。旧pin `ce4485980e6f71a61d4ba5b78682ee89cb8c71d9`（17時制限が残存）は使用しない。ChatOps実行記録に表示するpinもcheckout実値へ一致させる。新たな自動発火条件は導入しない。
+- 専用 `p5-creative-ablation-manual.yml` は `workflow_dispatch` のみ、本人`trendhub-ab`、`github.run_attempt == 1`、共有Gemini concurrency lock、元記事を固定し、5原稿に対して最大8回（フォールバック分を含む）の実API予約に限る。A/C/Eの第1選択は`gemini-3.8-flash`、B/Dの第1選択は`gemini-3.6-flash`。3.8の構造化された404/429/503だけ、90秒以上の間隔で3.6への切替を1回許可する。それ以外はFail-Closed。実験本体はレビュー済みの固定commit `0b6f59a4a0caf2e83e31c9fca386f431ff07bee7`（PR #868実験コード候補）をcheckoutし、別branchの最新HEADを自動追随しない。旧pin `922ef5b49b76683529957d37ead155d459e886dc` はフォールバック非対応のため本実験には使用しない。ChatOps実行記録に表示するpinもcheckout実値へ一致させる。新たな自動発火条件は導入しない。
 - 公開GitHub Actionsに原稿を平文保存することは禁止。既存Telegramの受信先をbot APIで`private`チャットと検証した後だけAPI実行する。原稿/5工程/ブラインド対応表はRunnerの私用一時領域でFernet暗号化し、公開Actionsには暗号文だけを3日間保存。復号鍵は別経路の検証済みprivate Telegramに通知する。グループ/チャンネル、欠落した認証情報、API quota不足、暗号化・鍵配送失敗はFail-Closed。復号鍵・未公開原稿をIssue、PR、Actions logsに載せない。
-- CI GREENは記事品質の人間評価ではない。A–Eの独立比較で因果差が確定したともみなさない。原稿は本番Note/Notionへ一切自動配送せず、既存Evidence/Fact/Publication Gatesは保持する。
-- 実験PR #863の原稿生成系はDraft・未マージ。起動PR #864は2026-10-24にmainへマージ済みだが、オーナー本人の明示コマンドがない限りP5 API実行を開始しない。固定pinの追従修正PR #867は別途Draftでレビューし、正式MERGE GOなしにmainへマージしない。ChatOps拡張は実験の明示的入口に限り、本番原稿生成契約の書換えではない。
+- CI GREENは記事品質の人間評価ではない。混在モデルの各原稿で実際に使用したモデルと切替実績はブラインド評価後の非公開照合ファイルだけに記録する。今回のA–E間の品質差はモデルと条件の交絡があるため、因果的なプロンプト効果と断定しない。原稿は本番Note/Notionへ一切自動配送せず、既存Evidence/Fact/Publication Gatesは保持する。
+- 実験PR #863の原稿生成系はDraft・未マージ。起動PR #864は2026-10-24にmainへマージ済みだが、オーナー本人の明示コマンドがない限りP5 API実行を開始しない。固定pinの追従修正PR #867は2026-10-25にmainへマージ済み。混在モデルの新実験コードPR #868と、今回の固定pin・利用予算更新PRは本番品質ゲートの昇格ではなく独立した事前レビュー対象とし、正式MERGE GOなしにmainへマージしない。ChatOps拡張は実験の明示的入口に限り、本番原稿生成契約の書換えではない。
 
 ### 6.2a V3 P5 original five-stage Writer（2026-10-24 統合開発候補）
 
