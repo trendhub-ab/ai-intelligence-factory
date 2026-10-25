@@ -2580,6 +2580,44 @@ def _notion_review_manuscript_block_ids(page_id: str, headers: dict) -> list[str
     ]
 
 
+
+def _delete_notion_review_manuscripts_before_ready(page_id: str, repo_name: str, headers: dict) -> bool:
+    """Delete all Review manuscripts before committing the page Ready.
+
+    Cleanup is part of the Ready transaction. Any read/delete failure fails closed,
+    leaving the page non-Ready so a later retry can finish cleanup safely.
+    """
+    try:
+        review_block_ids = _notion_review_manuscript_block_ids(page_id, headers)
+    except Exception as exc:
+        logger.error(
+            f"[NOTION REVIEW CLEANUP READ FAILED] {repo_name} -> "
+            f"Ready確定前の旧Review manuscript確認失敗: {exc}"
+        )
+        return False
+
+    for block_id in review_block_ids:
+        try:
+            cleanup_res = requests.delete(
+                f"https://api.notion.com/v1/blocks/{block_id}",
+                headers=headers,
+                timeout=20,
+            )
+            cleanup_res.raise_for_status()
+        except Exception as exc:
+            logger.error(
+                f"[NOTION REVIEW CLEANUP FAILED] {repo_name} -> "
+                f"Ready確定前の旧Review manuscript削除失敗 block={block_id}: {exc}"
+            )
+            return False
+
+    if review_block_ids:
+        logger.info(
+            f"[NOTION REVIEW CLEANUP OK] {repo_name} -> "
+            f"Ready確定前に旧Review manuscript {len(review_block_ids)}件を削除"
+        )
+    return True
+
 def _rollback_notion_manuscript_children(block_ids: list[str], repo_name: str, headers: dict) -> None:
     """children PATCH成功後にproperties PATCHが失敗した場合のbest-effort後始末。
 
@@ -2634,12 +2672,11 @@ def upgrade_notion_page_with_report(page_id: str, repo_name, repo_url, score, sc
     children保存に失敗した場合はpropertiesへ一切触れず、ページは更新前の
     安全な状態（既存のContent/Article Status）のまま残る。
 
-    Phase 1成功後にPhase 2（properties）が失敗した場合（= 本文だけ追加されて
-    しまいステータスがReady/Deep Diveに更新されない不整合状態）は、
-    (1) 今回追加したchildren blockをbest-effortでrollback（archive）し、
-    (2) ページをPending Retryへ更新し、次回get_pending_retry_items()から
-        自動的に復元・再試行されるようにする。
-    rollbackが失敗した場合に備え、Phase 1の冒頭で「既にmanuscript child
+    Phase 1成功後、旧Review manuscriptをすべて削除できた場合に限って
+    Phase 2（properties）でReadyをcommitする。cleanup失敗はfail-closedで
+    Pending Retryへ送り、Ready状態で複数稿が残ることを禁止する。
+    Phase 2が失敗した場合も正式manuscriptは保持し、次回retryでは既存稿guardに
+    よってre-appendせずproperties commitを再試行する。Phase 1の冒頭で「既にmanuscript child
     （markdown codeブロック）が存在するか」を確認し、存在すればre-appendを
     スキップする冪等性チェックを入れており、Retry時の本文二重化を防ぐ。"""
     if not NOTION_API_KEY:
@@ -2675,6 +2712,14 @@ def upgrade_notion_page_with_report(page_id: str, repo_name, repo_url, score, sc
             logger.error(f"[NOTION UPGRADE CHILDREN EXCEPTION] {repo_name}: {e}")
             return False
 
+    # Review稿の削除はReady transactionの必須条件。
+    # cleanup失敗時はReadyへ進めず、次回retryで同じ正式稿を再利用する。
+    if not _delete_notion_review_manuscripts_before_ready(page_id, repo_name, headers):
+        _mark_pending_retry_or_escalate(
+            page_id, repo_name, "Notion Review manuscript cleanup failed before Ready commit"
+        )
+        return False
+
     # Phase 2: children保存成功（またはスキップ）後にのみ、
     # properties（Deep Dive / Readyへのcommit）を行う。
     properties = build_notion_properties(
@@ -2691,28 +2736,14 @@ def upgrade_notion_page_with_report(page_id: str, repo_name, repo_url, score, sc
         )
         if res_props.status_code != 200:
             logger.error(f"[NOTION UPGRADE PROPERTIES ERROR] {repo_name} -> {res_props.text}")
-            if appended_block_ids:
-                _rollback_notion_manuscript_children(appended_block_ids, repo_name, headers)
+            # 正式manuscriptは保持する。次回retryの既存稿guardでre-appendを防ぐ。
             _mark_pending_retry_or_escalate(page_id, repo_name, "Notion properties commit failed after children saved")
             return False
         logger.info(f"[NOTION READY COMMITTED] {repo_name} -> Deep Diveへアップグレード完了")
-        # Ready commit後の旧Review原稿整理はbest-effort。ここでread不能でも、
-        # 既に成功したReady commitをPending Retryへ巻き戻さない。
-        try:
-            review_block_ids = _notion_review_manuscript_block_ids(page_id, headers)
-        except Exception as cleanup_exc:
-            logger.warning(
-                f"[NOTION REVIEW CLEANUP SKIPPED] {repo_name} -> "
-                f"旧Review manuscript確認不能: {cleanup_exc}"
-            )
-            review_block_ids = []
-        if review_block_ids:
-            _rollback_notion_manuscript_children(review_block_ids, repo_name, headers)
         return True
     except Exception as e:
         logger.error(f"[NOTION UPGRADE PROPERTIES EXCEPTION] {repo_name}: {e}")
-        if appended_block_ids:
-            _rollback_notion_manuscript_children(appended_block_ids, repo_name, headers)
+        # 正式manuscriptは保持し、次回retryでproperties commitだけを再試行する。
         _mark_pending_retry_or_escalate(page_id, repo_name, "Notion properties commit exception after children saved")
         return False
 
