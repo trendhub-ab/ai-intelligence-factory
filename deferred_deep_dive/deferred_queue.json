@@ -1,43 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-10-25T08:32:36.833425+00:00",
+  "updated_at": "2026-10-25T08:34:21.086231+00:00",
   "items": [
-    {
-      "key": "https://openai.com/products/release-notes?aif_revision=84463e68034cea98",
-      "deferred_at": "2026-10-25T08:32:36.833081+00:00",
-      "expires_at": "2026-12-24T08:32:36.833081+00:00",
-      "repo": {
-        "source": "OfficialVendor",
-        "nameWithOwner": "OpenAI — 12-hour prompt caching in the API",
-        "originalTitle": "OpenAI — 12-hour prompt caching in the API",
-        "displayName": "OpenAI — 12-hour prompt caching in the API",
-        "sourceLanguage": "en",
-        "url": "https://openai.com/products/release-notes/?aif_revision=84463e68034cea98",
-        "description": "12-hour prompt caching in the API",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "Oct 20, 2026",
-        "sourceContext": "12-hour prompt caching in the API",
-        "primaryUrl": "https://openai.com/products/release-notes/",
-        "sourceDetails": {
-          "vendor": "OpenAI",
-          "vendor_region": "US",
-          "source_role": "commercial_primary_source",
-          "official_release_url": "https://openai.com/products/release-notes/",
-          "candidate_revision": "84463e68034cea98",
-          "vendor_record_kind": "structured_html",
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "404479ff-dca9-8165-92c1-e7d2a0bc9e02",
-      "score": 82,
-      "reason": "12時間プロンプトキャッシュは実務のAPIコストに直結する。",
-      "commercial_score": 88,
-      "shelf_life_score": 85,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "INFRA",
-      "deep_dive_priority_score": 84.1
-    },
     {
       "key": "https://news.ycombinator.com/item?id=50225552",
       "deferred_at": "2026-10-25T08:32:36.833192+00:00",
