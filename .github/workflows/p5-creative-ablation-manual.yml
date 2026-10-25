@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Exactly RUN_P5_ABLATION_ONCE (five arms / max 8 attempts)'
+        description: 'Exactly RUN_P5_ABLATION_ONCE (five arms; canonical daily quota)'
         required: true
         type: string
       resume_run_id:
@@ -29,14 +29,14 @@ jobs:
       - name: Checkout immutable audited P5 experimental commit
         uses: actions/checkout@v6
         with:
-          ref: 68a6c0dc5024ac2fb72d63a482fc8124cdb06d3e
+          ref: c3004477e7c36057fbd9d56e90be50073f73dee6
           persist-credentials: false
 
       - name: Verify locked experiment source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '68a6c0dc5024ac2fb72d63a482fc8124cdb06d3e'
+          test "$(git rev-parse HEAD)" = 'c3004477e7c36057fbd9d56e90be50073f73dee6'
           test "$GITHUB_EVENT_NAME" = 'workflow_dispatch'
           test "$GITHUB_RUN_ATTEMPT" = '1'
           test "$GITHUB_ACTOR" = 'trendhub-ab'
@@ -52,7 +52,7 @@ jobs:
 
       - name: Focused provider-free experiments and handoff tests
         run: |
-          python -m pytest -q tests -k 'v3_p5_controlled_ablation or v3_p5_confidential_handoff or v3_p5_api_workflow_safety'
+          python -m pytest -q tests -k 'v3_p5_controlled_ablation or v3_p5_confidential_handoff or v3_p5_checkpoint_resume or v3_p5_api_workflow_safety'
 
       - name: Check recipient is truly private before ANY Gemini send
         env:
@@ -97,8 +97,7 @@ jobs:
           GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
           GEMINI_COUNTER_BRANCH: runtime-state
           GEMINI_QUOTA_TIMEZONE: America/Los_Angeles
-          GEMINI_DAILY_REQUEST_BUDGET: '8'
-          GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '8'
+          # No P5-local 8-call cap. Keep canonical persistent daily quota and per-arm retry bounds.
           AIIF_P5_CONFIDENTIAL_REVIEW: fernet_telegram_private
           AIIF_P5_PRIVATE_DIRECTORY: ${{ runner.temp }}/p5-private-${{ github.run_id }}
           TZ: Asia/Tokyo
