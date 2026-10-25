@@ -214,7 +214,8 @@ def test_legacy_eight_request_checkpoint_resumes_only_e(tmp_path, monkeypatch):
                              resume_key=secret_key)
     assert resumed_arms == ["E"]
     assert report["gemini_requests"] == 9
-    assert report["max_provider_requests"] == 8  # historical metadata retained
+    assert report["max_provider_requests"] is None
+    assert report["legacy_checkpoint_max_provider_requests"] == 8
     assert report["status"] == "ALL_VALID_AWAITING_BLIND_HUMAN_REVIEW"
     for name, content in prior_articles.items():
         assert (tmp_path / "resumed-eight" / name).read_bytes() == content
