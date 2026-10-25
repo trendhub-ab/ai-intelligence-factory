@@ -65,12 +65,14 @@ def _private_files(root: Path, *, allow_partial: bool = False) -> list[Path]:
         raise ConfidentialHandoffError("P5 partial checkpoint schema missing")
     count = len(manifest.get("arms") or [])
     requests = manifest.get("gemini_requests")
-    if (count not in (4, 5) or type(requests) is not int or
-            (complete and not count <= requests <= 8) or
-            (partial and not 1 <= requests <= 8)):
+    # Validate physical manuscript consistency independently of cumulative calls.
+    # Provider 503 retries legitimately make request totals exceed eight.
+    if count not in (4, 5) or type(requests) is not int or requests < 1:
         raise ConfidentialHandoffError("P5 manuscript count/request count inconsistent")
     articles = sorted(root.glob("Candidate_*.md"))
     stages = sorted(root.glob("Stages_Candidate_*.json"))
+    if requests < len(articles):
+        raise ConfidentialHandoffError("P5 manuscript count/request count inconsistent")
     if ((complete and (len(articles) != count or len(stages) != count))
             or (partial and (not 1 <= len(articles) == len(stages) < count))):
         raise ConfidentialHandoffError("Incomplete P5 article/stage archive")
