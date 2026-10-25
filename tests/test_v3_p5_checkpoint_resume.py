@@ -118,7 +118,7 @@ def test_partial_artifact_not_review_approved(tmp_path, monkeypatch):
             run_id="999", allow_partial=False)
 
 
-def test_cumulative_limit_blocks_retries_before_future_arms(tmp_path, monkeypatch):
+def test_cumulative_requests_remain_auditable_without_experiment_cap(tmp_path, monkeypatch):
     arms, old, encrypted, key, _ = checkpoint_fixture(tmp_path, monkeypatch)
     calls = []
     def sender(arm):
@@ -130,7 +130,7 @@ def test_cumulative_limit_blocks_retries_before_future_arms(tmp_path, monkeypatc
     report = exp.run_private(arms, tmp_path/"limit", sender, sleep=lambda _: None,
                              resume_bundle=encrypted, resume_key=key)
     assert report["gemini_requests"] == 6
-    assert sender.max_request_attempts == 6
+    assert sender.max_request_attempts is None
 
 
 def test_bad_fifth_json_is_not_checkpointed_as_completed_arm(tmp_path, monkeypatch):
@@ -168,3 +168,57 @@ def test_bad_fifth_json_is_not_checkpointed_as_completed_arm(tmp_path, monkeypat
         run_id="3344", allow_partial=True)
     assert encrypted.exists()
     assert sent == ["getChat", "sendMessage"]
+
+
+def test_legacy_eight_request_checkpoint_resumes_only_e(tmp_path, monkeypatch):
+    """An authenticated legacy eight-attempt checkpoint must not regenerate A-D."""
+    arms = exp.build_arms(mixed_models=True)
+    old = tmp_path / "legacy-private"
+
+    def previous(arm):
+        previous.request_attempts += 2 if arm.code in ("B", "C", "E") else 1
+        if arm.code == "E":
+            raise RuntimeError("simulated 503 after E fallback")
+        return sample(), arm.model
+
+    previous.request_attempts = 0
+    with pytest.raises(RuntimeError, match="simulated 503"):
+        exp.run_private(arms, old, previous, sleep=lambda _: None)
+    prior_manifest = json.loads((old / "manifest.json").read_text())
+    assert prior_manifest["gemini_requests"] == 8
+    assert len(prior_manifest["candidates"]) == 4
+    prior_blind_key = json.loads((old / "KEY_OPEN_AFTER_SCORING.json").read_text())
+    prior_articles = {p.name: p.read_bytes() for p in old.glob("Candidate_*.md")}
+    # Recreate the old v1 manifest, without changing manuscript hashes or mapping.
+    prior_manifest["max_provider_requests"] = 8
+    (old / "manifest.json").write_text(json.dumps(prior_manifest), encoding="utf-8")
+
+    sent = []
+    def private_telegram(token, method, fields):
+        sent.append((method, fields))
+        return {"id": 987, "type": "private"} if method == "getChat" else {"message_id": 1}
+    monkeypatch.setattr(handoff, "_telegram_request", private_telegram)
+    encrypted = tmp_path / "legacy-eight.fernet"
+    handoff.encrypt_and_deliver(old, encrypted, token="bot", chat_id="987",
+                                run_id="40178724927", allow_partial=True)
+    secret_key = sent[-1][1]["text"].split("Fernet key: ", 1)[1][:44]
+
+    resumed_arms = []
+    def only_missing(arm):
+        resumed_arms.append(arm.code)
+        only_missing.request_attempts += 1
+        return sample(), arm.model
+    only_missing.request_attempts = 0
+    report = exp.run_private(arms, tmp_path / "resumed-eight", only_missing,
+                             sleep=lambda _: None, resume_bundle=encrypted,
+                             resume_key=secret_key)
+    assert resumed_arms == ["E"]
+    assert report["gemini_requests"] == 9
+    assert report["max_provider_requests"] == 8  # historical metadata retained
+    assert report["status"] == "ALL_VALID_AWAITING_BLIND_HUMAN_REVIEW"
+    for name, content in prior_articles.items():
+        assert (tmp_path / "resumed-eight" / name).read_bytes() == content
+    resumed_key = json.loads((tmp_path / "resumed-eight" /
+                              "KEY_OPEN_AFTER_SCORING.json").read_text())
+    assert {arm: resumed_key[arm] for arm in "ABCDE"} == {
+        arm: prior_blind_key[arm] for arm in "ABCDE"}
