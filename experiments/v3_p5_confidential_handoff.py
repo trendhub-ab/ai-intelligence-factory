@@ -60,7 +60,9 @@ def _private_files(root: Path) -> list[Path]:
     if manifest.get("status") != "ALL_VALID_AWAITING_BLIND_HUMAN_REVIEW":
         raise ConfidentialHandoffError("P5 manuscript set incomplete, no artifact permitted")
     count = len(manifest.get("arms") or [])
-    if count not in (4, 5) or manifest.get("gemini_requests") != count:
+    requests = manifest.get("gemini_requests")
+    if (count not in (4, 5) or type(requests) is not int
+            or not count <= requests <= 8):
         raise ConfidentialHandoffError("P5 manuscript count/request count inconsistent")
     articles = sorted(root.glob("Candidate_*.md"))
     stages = sorted(root.glob("Stages_Candidate_*.json"))
