@@ -166,3 +166,127 @@ def test_live_manual_p5_has_no_clock_time_restriction(monkeypatch, tmp_path, cap
     assert called[0][0:2] == ("run", 5)
     assert called[-1] == "closed"
     assert "requests=5" in capsys.readouterr().out
+
+
+class ProviderStatus(RuntimeError):
+    def __init__(self, code):
+        super().__init__("structured provider response")
+        self.status_code = code
+
+
+def test_mixed_model_plan_retains_original_prompts_and_stage_order():
+    normal = exp.build_arms()
+    mixed = exp.build_arms(mixed_models=True)
+    assert [(x.code, x.prompt, x.transport, x.config) for x in mixed] == [
+        (x.code, x.prompt, x.transport, x.config) for x in normal
+    ]
+    assert [x.model for x in mixed] == [
+        exp.MODEL, exp.FALLBACK_MODEL, exp.MODEL,
+        exp.FALLBACK_MODEL, exp.MODEL,
+    ]
+    manifest = exp.manifest_for(mixed)
+    assert manifest["model"] == "MIXED"
+    assert manifest["max_provider_requests"] == 8
+    assert manifest["gemini_requests"] == 0
+
+
+@pytest.mark.parametrize("code", [404, 429, 503])
+def test_recognized_provider_error_retries_once_with_fallback(code):
+    attempts, sleeps = [], []
+    arm = exp.build_arms()[0]
+
+    def attempt(_, model):
+        attempts.append(model)
+        if model == exp.MODEL:
+            raise ProviderStatus(code)
+        return sample()
+
+    response, actual = exp.dispatch_with_fallback(
+        arm, attempt, sleep=lambda seconds: sleeps.append(seconds)
+    )
+    assert response.text
+    assert actual == exp.FALLBACK_MODEL
+    assert attempts == [exp.MODEL, exp.FALLBACK_MODEL]
+    assert sleeps == [exp.PACE_SECONDS]
+
+
+@pytest.mark.parametrize("code", [400, 401, 403, 409, 500])
+def test_non_eligible_error_must_not_retry(code):
+    models = []
+
+    def attempt(_, model):
+        models.append(model)
+        raise ProviderStatus(code)
+
+    with pytest.raises(ProviderStatus):
+        exp.dispatch_with_fallback(
+            exp.build_arms()[0], attempt, sleep=lambda _: None
+        )
+    assert models == [exp.MODEL]
+
+
+def test_unstructured_503_text_must_not_trigger_fallback():
+    attempts = []
+
+    def attempt(_, model):
+        attempts.append(model)
+        raise RuntimeError("503 not a structured provider status")
+
+    with pytest.raises(RuntimeError):
+        exp.dispatch_with_fallback(
+            exp.build_arms()[0], attempt, sleep=lambda _: None
+        )
+    assert attempts == [exp.MODEL]
+
+
+def test_36_primary_never_falls_back_to_38():
+    arm = exp.build_arms(mixed_models=True)[1]
+    assert arm.model == exp.FALLBACK_MODEL
+    attempts = []
+
+    def attempt(_, model):
+        attempts.append(model)
+        raise ProviderStatus(503)
+
+    with pytest.raises(ProviderStatus):
+        exp.dispatch_with_fallback(arm, attempt, sleep=lambda _: None)
+    assert attempts == [exp.FALLBACK_MODEL]
+
+
+def test_fallback_count_and_actual_models_are_private(tmp_path):
+    arms = exp.build_arms(mixed_models=True)
+    called = []
+
+    def sender(arm):
+        primary = arm.model
+        sender.request_attempts += 1
+        called.append(primary)
+        if arm.code == "C":
+            sender.request_attempts += 1
+            called.append(exp.FALLBACK_MODEL)
+            return sample(), exp.FALLBACK_MODEL
+        return sample(), primary
+
+    sender.request_attempts = 0
+    out = tmp_path / "model-aware-review"
+    report = exp.run_private(arms, out, sender, sleep=lambda _: None)
+    assert report["gemini_requests"] == 6
+    assert len(report["candidates"]) == 5
+    assert "__actual_models_by_arm__" not in report
+    key = json.loads((out / "KEY_OPEN_AFTER_SCORING.json").read_text())
+    assert key["__actual_models_by_arm__"]["C"] == exp.FALLBACK_MODEL
+    assert key["__fallback_used_by_arm__"]["C"] is True
+    assert key["__fallback_used_by_arm__"]["D"] is False
+    assert called == [exp.MODEL, exp.FALLBACK_MODEL,
+                      exp.MODEL, exp.FALLBACK_MODEL,
+                      exp.FALLBACK_MODEL, exp.MODEL]
+
+
+def test_mix_flag_default_does_not_send_provider(monkeypatch, capsys):
+    monkeypatch.setattr("sys.argv", ["p5", "--include-e", "--mix-models"])
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    exp.main()
+    manifest = json.loads(capsys.readouterr().out)
+    assert manifest["arms"] == list("ABCDE")
+    assert manifest["model"] == "MIXED"
+    assert manifest["gemini_requests"] == 0
