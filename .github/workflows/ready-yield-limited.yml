@@ -1,0 +1,58 @@
+name: Fixed Evidence Ready Yield Limited Probe
+
+# First PR run is zero-provider preflight only. A deliberate rerun of this one
+# job (attempt 2) is the sole live entrypoint. Later reruns cannot send API.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/ready-yield-limited.yml'
+      - 'experiments/ready_yield_*'
+      - 'tests/test_ready_yield_*'
+
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  bounded-probe:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'experiment/ready-yield-fixed-evidence-20260924' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AIIF_ONE_SHOT_MODE: full
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Install experiment dependencies
+        run: pip install -r requirements.txt
+      - name: Zero-provider tests and Evidence preflight
+        run: |
+          python -m unittest tests.test_ready_yield_rpm_safety tests.test_ready_yield_send_policy tests.test_ready_yield_shared_rpm tests.test_ready_yield_limited_wiring -q
+          python experiments/ready_yield_fixed_evidence.py --phase preflight --out-dir experiment_output
+      - name: Run one bounded probe only on an explicit first rerun
+        if: ${{ github.run_attempt == 2 }}
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+          AIIF_EXPERIMENT_SHARED_GROUP: 'true'
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
+          GEMINI_COUNTER_BRANCH: runtime-state
+          GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
+          GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '4'
+        run: python experiments/ready_yield_fixed_evidence.py --phase limited --confirm RUN_ONCE --out-dir experiment_output
+      - name: Save experiment artifacts for review
+        if: ${{ always() && github.run_attempt == 2 }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ready-yield-${{ github.run_id }}
+          path: experiment_output/
+          retention-days: 1
+          if-no-files-found: warn

@@ -20,10 +20,12 @@ _MULTIPLIER_RE = re.compile(r"(?<![0-9.])(\d+(?:\.\d+)?)\s*(?:倍|x\s+(?:faster|
 _SPEED_RE = re.compile(r"高速|速度|性能|performance|faster|speedup", re.I)
 _SCOPE_RE = re.compile(r"一次情報|ベンチマーク|測定|試算|期待|条件|ワークロード|source|benchmark|measured|estimated|expect|condition|workload", re.I)
 _VARIABILITY_RE = re.compile(
-    r"(?:実際|実運用|現実).{0,40}(?:変わ|異な|依存)|"
-    r"(?:処理内容|実行環境|環境|条件|ワークロード).{0,40}(?:変わ|異な|依存)|"
-    r"(?:vary|depend).{0,40}(?:workload|condition|environment)|"
-    r"(?:workload|condition|environment).{0,40}(?:vary|depend)",
+    # Keep the rescue's notion of variability aligned with the Fact Gate in
+    # run223. Generic "environment ... different" also describes unrelated
+    # tools and must not suppress a necessary multiplier qualifier.
+    r"(?:実際[^。！？\n]{0,35}(?:変わ|異な)|"
+    r"(?:処理内容|実行環境|条件|ワークロード)[^。！？\n]{0,35}(?:変わ|異な|依存)|"
+    r"(?:var(?:y|ies)|depend)[^.?!\n]{0,40}(?:workload|condition|environment))",
     re.I,
 )
 _QUALIFIER = "この倍率は一次情報で示された特定条件下の目安であり、実際の改善幅は処理内容・条件・実行環境によって変わります。"
