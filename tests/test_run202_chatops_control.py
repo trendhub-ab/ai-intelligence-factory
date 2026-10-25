@@ -341,5 +341,5 @@ class P5ChatOpsBridgeTests(unittest.TestCase):
         self.assertIn("ref: 0b6f59a4a0caf2e83e31c9fca386f431ff07bee7", proof)
         self.assertLess(
             proof.index("Check recipient is truly private"),
-            proof.index("Generate A B C D E once"),
+            proof.index("Generate A B C D E with bounded model fallback"),
         )
