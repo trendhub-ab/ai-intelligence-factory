@@ -7,6 +7,11 @@ on:
         description: 'Exactly RUN_P5_ABLATION_ONCE (five arms / max 8 attempts)'
         required: true
         type: string
+      resume_run_id:
+        description: 'Optional previous FAILED P5 Run ID; key must be Actions secret P5_RESUME_FERNET_KEY'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -57,9 +62,35 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m experiments.v3_p5_confidential_handoff
 
+      - name: Download previously sealed checkpoint (resume only)
+        if: ${{ inputs.resume_run_id != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          PREVIOUS_RUN_ID: ${{ inputs.resume_run_id }}
+          P5_RESUME_SECRET: ${{ secrets.P5_RESUME_FERNET_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PREVIOUS_RUN_ID" =~ ^[1-9][0-9]{8,15}$ ]] || { echo '::error::Invalid prior P5 run ID'; exit 1; }
+          test -n "$P5_RESUME_SECRET" || { echo '::error::Set P5_RESUME_FERNET_KEY Actions secret from private Telegram'; exit 1; }
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${PREVIOUS_RUN_ID}" \
+            --jq 'select(.name == "P5 Controlled A-E Manual Proof" and .event == "workflow_dispatch" and .conclusion == "failure" and .run_attempt == 1 and .actor.login == "trendhub-ab") | .id' \
+            | grep -qx "$PREVIOUS_RUN_ID" || { echo '::error::Untrusted prior P5 run'; exit 1; }
+          restore_dir="${RUNNER_TEMP}/p5-resume-${GITHUB_RUN_ID}"
+          mkdir -m 700 "$restore_dir"
+          gh run download "$PREVIOUS_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "p5-creative-ablation-encrypted-${PREVIOUS_RUN_ID}" \
+            --dir "$restore_dir"
+          bundle="$restore_dir/p5-review-${PREVIOUS_RUN_ID}.fernet"
+          test -f "$bundle" && test ! -L "$bundle" || { echo '::error::Missing encrypted P5 checkpoint'; exit 1; }
+          echo "AIIF_P5_RESUME_BUNDLE=$bundle" >> "$GITHUB_ENV"
+
       - name: Generate A B C D E with bounded model fallback (private only)
+        id: generate
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          AIIF_P5_RESUME_KEY: ${{ secrets.P5_RESUME_FERNET_KEY }}
           GH_PAT: ${{ secrets.GH_PAT }}
           GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
           GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
@@ -74,13 +105,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m experiments.v3_p5_controlled_ablation \
-            --live --confirm RUN_P5_ABLATION_ONCE --include-e --mix-models \
-            --private-output "$AIIF_P5_PRIVATE_DIRECTORY"
+          args=(--live --confirm RUN_P5_ABLATION_ONCE --include-e --mix-models
+                --private-output "$AIIF_P5_PRIVATE_DIRECTORY")
+          if [[ -n "${AIIF_P5_RESUME_BUNDLE:-}" ]]; then
+            args+=(--resume-bundle "$AIIF_P5_RESUME_BUNDLE")
+          fi
+          python -m experiments.v3_p5_controlled_ablation "${args[@]}"
 
       - name: Encrypt manuscripts and deliver separate one-time key privately
+        id: seal
+        if: ${{ always() && (steps.generate.outcome == 'success' || steps.generate.outcome == 'failure') }}
         env:
           AIIF_P5_HANDOFF_STAGE: seal
+          AIIF_P5_ALLOW_PARTIAL: ${{ steps.generate.outcome == 'failure' && 'true' || 'false' }}
           AIIF_P5_PRIVATE_DIRECTORY: ${{ runner.temp }}/p5-private-${{ github.run_id }}
           AIIF_P5_ENCRYPTED_ARTIFACT: ${{ runner.temp }}/p5-review-${{ github.run_id }}.fernet
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -88,14 +125,16 @@ jobs:
         run: python -m experiments.v3_p5_confidential_handoff
 
       - name: Upload encrypted review bundle ONLY (never raw manuscripts)
+        if: ${{ always() && steps.seal.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: p5-creative-ablation-encrypted-${{ github.run_id }}
           path: ${{ runner.temp }}/p5-review-${{ github.run_id }}.fernet
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 7
 
       - name: Report no publication authority
+        if: ${{ always() && steps.seal.outcome == 'success' }}
         run: |
           echo 'P5 comparison artifact is encrypted; separate key went only to verified private Telegram chat.' >> "$GITHUB_STEP_SUMMARY"
           echo 'No article was published or written to Notion/note. Human review and Evidence/Fact/Publication gates remain NO-GO.' >> "$GITHUB_STEP_SUMMARY"
