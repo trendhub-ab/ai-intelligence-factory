@@ -113,7 +113,7 @@ def encrypt_and_deliver(
         message = (
             ("AIIF P5 部分保存・再開用の復号鍵\\n" if allow_partial else
              "AIIF P5 比較実験の復号鍵（暗号化成果物と別経路）\\n")
-            "GitHub Actions Run: " + str(run_id) + "\\n"
+            + "GitHub Actions Run: " + str(run_id) + "\\n"
             "Fernet key: " + key.decode("ascii") + "\\n"
             "この鍵は第三者に共有しないでください。"
         )
