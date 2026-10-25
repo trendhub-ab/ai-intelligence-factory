@@ -1,6 +1,6 @@
 """Private-only manual P5 creative-call ablation. Default is ZERO Gemini calls.
 
-One frozen Elastic input, Gemini 3.8 Flash; independent A/B/C/D interventions,
+One frozen Elastic input, Gemini 3.8/3.6 Flash; independent A/B/C/D interventions,
 optional E integrated persona/token-cap. No note/Notion/publish. No raw drafts
 in public GitHub/Actions. All live sends use canonical persistent Gemini budget.
 """
@@ -21,6 +21,10 @@ from experiments.v3_p5_golden_cases import READY_CASES
 from local_skills.v3_p5_one_shot import _extract_bundle, _p5_prompt
 
 MODEL = "gemini-3.8-flash"
+FALLBACK_MODEL = "gemini-3.6-flash"
+MIXED_MODEL_PLAN = {"B": FALLBACK_MODEL, "D": FALLBACK_MODEL}
+MAX_PROVIDER_REQUESTS = 8  # Five samples plus at most three per-arm fallbacks.
+FALLBACK_PROVIDER_CODES = frozenset({404, 429, 503})
 CONFIRM = "RUN_P5_ABLATION_ONCE"
 PACE_SECONDS = 90
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -32,13 +36,37 @@ class Arm:
     transport: str
     prompt: str
     config: dict[str, Any] | None
+    model: str = MODEL
+
+
+def provider_error_code(exc: BaseException) -> int | None:
+    """Only structured provider 404/429/503 qualifies; no guess from text."""
+    for field in ("status_code", "code"):
+        value = getattr(exc, field, None)
+        if type(value) is int:
+            return value
+    return None
+
+
+def dispatch_with_fallback(
+    arm: Arm, attempt: Callable[[Arm, str], Any],
+    sleep: Callable[[int], None] = time.sleep,
+) -> tuple[Any, str]:
+    """One 3.8 to 3.6 downgrade on recognized provider status, never other errors."""
+    try:
+        return attempt(arm, arm.model), arm.model
+    except Exception as exc:
+        if arm.model != MODEL or provider_error_code(exc) not in FALLBACK_PROVIDER_CODES:
+            raise
+        sleep(PACE_SECONDS)
+        return attempt(arm, FALLBACK_MODEL), FALLBACK_MODEL
 
 
 def sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def build_arms() -> tuple[Arm, ...]:
+def build_arms(mixed_models: bool = False) -> tuple[Arm, ...]:
     cases = [x for x in READY_CASES if x.case.title == "Your Transformer Is Secretly Elastic"]
     if len(cases) != 1:
         raise RuntimeError("Frozen Elastic case not unique")
@@ -54,9 +82,11 @@ def build_arms() -> tuple[Arm, ...]:
     low = {"thinking_config": {"thinking_level": "low"}}
     return (
         Arm("A", "generate_content", original, None),
-        Arm("B", "chat", original, None),
+        Arm("B", "chat", original, None,
+            MIXED_MODEL_PLAN["B"] if mixed_models else MODEL),
         Arm("C", "chat", original, low),
-        Arm("D", "chat", managed, low),
+        Arm("D", "chat", managed, low,
+            MIXED_MODEL_PLAN["D"] if mixed_models else MODEL),
         Arm("E", "chat", managed, low),
     )
 
@@ -64,7 +94,10 @@ def build_arms() -> tuple[Arm, ...]:
 def manifest_for(arms: tuple[Arm, ...]) -> dict:
     return {
         "status": "PROVIDER_FREE_PREFLIGHT",
-        "model": MODEL, "case": "Elastic",
+        "model": MODEL if len({arm.model for arm in arms}) == 1 else "MIXED",
+        "primary_models_by_arm": {arm.code: arm.model for arm in arms},
+        "max_provider_requests": MAX_PROVIDER_REQUESTS,
+        "case": "Elastic",
         "arms": [x.code for x in arms],
         "prompt_sha256": {x.code: sha(x.prompt) for x in arms},
         "transport": {x.code: x.transport for x in arms},
@@ -101,6 +134,7 @@ def run_private(arms: tuple[Arm, ...], output: Path,
     blind = list("ABCDE"[:len(arms)])
     secrets.SystemRandom().shuffle(blind)
     key = dict(zip((x.code for x in arms), blind))
+    actual_models: dict[str, str] = {}
     result = manifest_for(arms)
     result["status"] = "IN_PROGRESS_UNREVIEWED"
     result["candidates"] = {}
@@ -108,8 +142,19 @@ def run_private(arms: tuple[Arm, ...], output: Path,
         for index, arm in enumerate(arms):
             if index:
                 sleep(PACE_SECONDS)
-            result["gemini_requests"] += 1
-            response = send(arm)
+            before = getattr(send, "request_attempts", None)
+            try:
+                sent = send(arm)
+            finally:
+                after = getattr(send, "request_attempts", None)
+                count = max(1, after - before) if type(before) is int and type(after) is int else 1
+                result["gemini_requests"] += count
+            if result["gemini_requests"] > MAX_PROVIDER_REQUESTS:
+                raise RuntimeError("P5 bounded provider-request cap exceeded")
+            response, actual_model = sent if isinstance(sent, tuple) else (sent, arm.model)
+            if actual_model not in (MODEL, FALLBACK_MODEL):
+                raise RuntimeError("Unapproved P5 response model")
+            actual_models[arm.code] = actual_model
             article, stages = _extract_bundle(str(getattr(response, "text", "") or ""))
             label = key[arm.code]
             private_write(output / ("Candidate_" + label + ".md"), article + "\n")
@@ -127,6 +172,11 @@ def run_private(arms: tuple[Arm, ...], output: Path,
         result["error_type"] = type(error).__name__
         raise
     finally:
+        key["__actual_models_by_arm__"] = actual_models
+        key["__fallback_used_by_arm__"] = {
+            code: actual_models[code] != next(arm.model for arm in arms if arm.code == code)
+            for code in actual_models
+        }
         private_write(output / "KEY_OPEN_AFTER_SCORING.json",
                       json.dumps(key, ensure_ascii=False, indent=2))
         private_write(output / "manifest.json",
@@ -150,7 +200,10 @@ def native_sender() -> tuple[Callable[[Arm], Any], Callable[[], None]]:
     p.client = client
     from canonical_article_contract import aiif_editor_persona
 
-    def send(arm: Arm) -> Any:
+    def provider_attempt(arm: Arm, model_name: str) -> Any:
+        if send.request_attempts >= MAX_PROVIDER_REQUESTS:
+            raise RuntimeError("P5 provider request limit exhausted")
+        send.request_attempts += 1
         config = arm.config
         if arm.code == "E":
             config = {
@@ -158,32 +211,36 @@ def native_sender() -> tuple[Callable[[Arm], Any], Callable[[], None]]:
                 "system_instruction": aiif_editor_persona(),
                 "max_output_tokens": p.GEMINI_DEEP_DIVE_MAX_OUTPUT_TOKENS,
             }
-        request_context = "p5_causal_ablation:" + arm.code
+        request_context = "p5_causal_ablation:" + arm.code + ":" + model_name
         if arm.transport == "chat":
             return p._generate_via_chat(
-                MODEL, arm.prompt, config=config,
+                model_name, arm.prompt, config=config,
                 request_kind="deep_dive",
                 request_origin="article_revalidation",
                 request_context=request_context,
                 count_as_deep_dive=True,
             )
-        # Original Phase0 transport. Reserve the SAME native budget before call.
         audit = p._consume_gemini_request(
-            "deep_dive", model_name=MODEL,
+            "deep_dive", model_name=model_name,
             request_context=request_context,
             count_as_deep_dive=True, request_origin="article_revalidation",
         )
         try:
             response = client.models.generate_content(
-                model=MODEL, contents=arm.prompt,
+                model=model_name, contents=arm.prompt,
             )
         except Exception as exc:
             p.GEMINI_USAGE_AUDIT.record_outcome(audit, "error", exc)
-            # Conservative fail-closed: do not release an ambiguous request.
+            # Provider-reported attempts remain reserved, including retryable 503.
             raise
         p.GEMINI_USAGE_AUDIT.record_outcome(audit, "success")
         p.GEMINI_USAGE_AUDIT.record_response_usage(audit, response)
         return response
+
+    def send(arm: Arm) -> tuple[Any, str]:
+        return dispatch_with_fallback(arm, provider_attempt)
+
+    send.request_attempts = 0
 
     def close() -> None:
         p.client = old_client
@@ -197,9 +254,11 @@ def main() -> None:
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--confirm", default="")
     parser.add_argument("--include-e", action="store_true")
+    parser.add_argument("--mix-models", action="store_true",
+                        help="A/C/E use 3.8, B/D use 3.6; 3.8 404/429/503 may fall back")
     parser.add_argument("--private-output", type=Path)
     args = parser.parse_args()
-    arms = build_arms()[:5 if args.include_e else 4]
+    arms = build_arms(mixed_models=args.mix_models)[:5 if args.include_e else 4]
     if not args.live:
         print(json.dumps(manifest_for(arms), ensure_ascii=False, indent=2))
         return
