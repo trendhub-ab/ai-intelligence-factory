@@ -2,28 +2,20 @@
   "counter_scopes": {
     "3fc8d8746c93f55a": {
       "models": {
-        "gemini-3.6-flash": {
-          "budget": 18,
-          "by_kind": {
-            "deep_dive": 4
-          },
-          "exhausted": false,
-          "used": 4
-        },
         "gemini-3.8-flash": {
           "budget": 18,
           "by_kind": {
-            "deep_dive": 4
+            "deep_dive": 1
           },
           "exhausted": false,
-          "used": 4
+          "used": 1
         }
       }
     }
   },
   "provider_project_fingerprint": "8feffa4385ed3d61",
-  "quota_date": "2026-10-24",
+  "quota_date": "2026-10-25",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-10-25T04:58:58.910447+00:00"
+  "updated_at": "2026-10-25T07:10:43.754920+00:00"
 }
