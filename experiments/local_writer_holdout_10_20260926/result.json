@@ -1,0 +1,574 @@
+{
+  "schema": "aiif_local_writer_stage3_holdout_result_v1",
+  "blind_run_id": 36178520779,
+  "blind_job_id": 108214922003,
+  "measured_head": "cbda656f1102dc41f0e7516f1e76c52690635efe",
+  "frozen_writer_blob": "dbb7d03fa4afc7ea8e7d1e24b70e0ddcb884f0e2",
+  "primary_success_criterion": "10/10 all-Gate pass",
+  "result": {
+    "by_source": {
+      "ArXiv": {
+        "count": 2,
+        "pass_count": 0
+      },
+      "GitHub": {
+        "count": 2,
+        "pass_count": 0
+      },
+      "HackerNews": {
+        "count": 4,
+        "pass_count": 0
+      },
+      "OfficialVendor": {
+        "count": 2,
+        "pass_count": 0
+      }
+    },
+    "count": 10,
+    "pass_count": 0,
+    "pass_rate": 0,
+    "results": [
+      {
+        "all_pass": false,
+        "case_id": "3bc479ffdca98116a7e1d1d7e2274f7d",
+        "cross": {
+          "heading_count_match": false,
+          "high": false,
+          "opening_similarity": 0,
+          "peer": "",
+          "score": 0,
+          "sequence_similarity": 0,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          false,
+          [
+            "title must end with 。 or ？"
+          ]
+        ],
+        "human": [
+          "ACCEPTABLE",
+          []
+        ],
+        "layout": 3,
+        "name": "Memmy Agent",
+        "prior_article_status": "Ready",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "GOOD",
+          "decision_accessibility": "GOOD",
+          "information_budget": "REVIEW",
+          "jargon_dense_paragraph_count": 4,
+          "jargon_translation": "GOOD",
+          "non_engineer_core_clarity": "GOOD",
+          "opening_non_engineer_access": "GOOD",
+          "plain_language_bridge": "GOOD",
+          "reader_enjoyment": "REVIEW",
+          "technical_terms_per_1000_chars": 39.6,
+          "unexplained_jargon": []
+        },
+        "selection_hash": 1296294627,
+        "source": "GitHub",
+        "visible_chars": 952
+      },
+      {
+        "all_pass": false,
+        "case_id": "3bc479ffdca9818cbef9df6c61cc6f14",
+        "cross": {
+          "heading_count_match": true,
+          "high": false,
+          "opening_similarity": 0.20606060606060606,
+          "peer": "Memmy Agent",
+          "score": 1,
+          "sequence_similarity": 0.5111111111111111,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          false,
+          [
+            "title must end with 。 or ？",
+            "unsupported exclusivity/hype: 必須インフラ"
+          ]
+        ],
+        "human": [
+          "WEAK",
+          [
+            "reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)",
+            "reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/jargon_translation/non_engineer_core_clarity)"
+          ]
+        ],
+        "layout": 1,
+        "name": "mlflow/mlflow",
+        "prior_article_status": "Not Planned",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "REVIEW",
+          "decision_accessibility": "REVIEW",
+          "information_budget": "GOOD",
+          "jargon_dense_paragraph_count": 2,
+          "jargon_translation": "REVIEW",
+          "non_engineer_core_clarity": "REVIEW",
+          "opening_non_engineer_access": "GOOD",
+          "plain_language_bridge": "GOOD",
+          "reader_enjoyment": "REVIEW",
+          "technical_terms_per_1000_chars": 40,
+          "unexplained_jargon": [
+            "ML"
+          ]
+        },
+        "selection_hash": 1456955507,
+        "source": "GitHub",
+        "visible_chars": 852
+      },
+      {
+        "all_pass": false,
+        "case_id": "3bd479ffdca98119ae02c1378187a6bd",
+        "cross": {
+          "heading_count_match": true,
+          "high": false,
+          "opening_similarity": 0.5079365079365079,
+          "peer": "Memmy Agent",
+          "score": 2,
+          "sequence_similarity": 0.7111111111111111,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          false,
+          [
+            "title must end with 。 or ？"
+          ]
+        ],
+        "human": [
+          "ACCEPTABLE",
+          []
+        ],
+        "layout": 3,
+        "name": "Working with AI Feels More Like Leadership Than Coding",
+        "prior_article_status": "Ready",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "GOOD",
+          "decision_accessibility": "GOOD",
+          "information_budget": "GOOD",
+          "jargon_dense_paragraph_count": 1,
+          "jargon_translation": "GOOD",
+          "non_engineer_core_clarity": "GOOD",
+          "opening_non_engineer_access": "GOOD",
+          "plain_language_bridge": "GOOD",
+          "reader_enjoyment": "REVIEW",
+          "technical_terms_per_1000_chars": 27.2,
+          "unexplained_jargon": []
+        },
+        "selection_hash": 76022549,
+        "source": "HackerNews",
+        "visible_chars": 841
+      },
+      {
+        "all_pass": false,
+        "case_id": "3bc479ffdca981629038feb39e7dbfc0",
+        "cross": {
+          "heading_count_match": true,
+          "high": true,
+          "opening_similarity": 0.5118110236220472,
+          "peer": "mlflow/mlflow",
+          "score": 4,
+          "sequence_similarity": 0.8666666666666667,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          false,
+          [
+            "title must end with 。 or ？",
+            "unsupported hype: 劇的",
+            "unsupported outcome extrapolation: ROI/financial outcome not measured by evidence"
+          ]
+        ],
+        "human": [
+          "WEAK",
+          [
+            "cross_article_fingerprint_high"
+          ]
+        ],
+        "layout": 1,
+        "name": "Maximizing the value of your Claude Code sessions",
+        "prior_article_status": "Not Planned",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "GOOD",
+          "decision_accessibility": "GOOD",
+          "information_budget": "REVIEW",
+          "jargon_dense_paragraph_count": 3,
+          "jargon_translation": "GOOD",
+          "non_engineer_core_clarity": "GOOD",
+          "opening_non_engineer_access": "GOOD",
+          "plain_language_bridge": "GOOD",
+          "reader_enjoyment": "REVIEW",
+          "technical_terms_per_1000_chars": 35.3,
+          "unexplained_jargon": []
+        },
+        "selection_hash": 293587507,
+        "source": "HackerNews",
+        "visible_chars": 1072
+      },
+      {
+        "all_pass": false,
+        "case_id": "3bc479ffdca981d2a30cd9fd8df08c1d",
+        "cross": {
+          "heading_count_match": true,
+          "high": false,
+          "opening_similarity": 0,
+          "peer": "Memmy Agent",
+          "score": 1,
+          "sequence_similarity": 0.5555555555555556,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          false,
+          [
+            "title must end with 。 or ？"
+          ]
+        ],
+        "human": [
+          "ACCEPTABLE",
+          []
+        ],
+        "layout": 0,
+        "name": "Intervention-Aware Clinical World Model for Post-Op Outcome Forecasting in Cardiology",
+        "prior_article_status": "Ready",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "GOOD",
+          "decision_accessibility": "GOOD",
+          "information_budget": "GOOD",
+          "jargon_dense_paragraph_count": 2,
+          "jargon_translation": "GOOD",
+          "non_engineer_core_clarity": "GOOD",
+          "opening_non_engineer_access": "GOOD",
+          "plain_language_bridge": "GOOD",
+          "reader_enjoyment": "REVIEW",
+          "technical_terms_per_1000_chars": 26.7,
+          "unexplained_jargon": []
+        },
+        "selection_hash": 308222637,
+        "source": "ArXiv",
+        "visible_chars": 963
+      },
+      {
+        "all_pass": false,
+        "case_id": "3bc479ffdca9813cb23bf32e31ffb74d",
+        "cross": {
+          "heading_count_match": true,
+          "high": false,
+          "opening_similarity": 0.44525547445255476,
+          "peer": "Memmy Agent",
+          "score": 1,
+          "sequence_similarity": 0.7333333333333333,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          false,
+          [
+            "title must end with 。 or ？",
+            "unsupported outcome extrapolation: ROI/financial outcome not measured by evidence"
+          ]
+        ],
+        "human": [
+          "WEAK",
+          [
+            "reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)",
+            "reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/jargon_translation/non_engineer_core_clarity)"
+          ]
+        ],
+        "layout": 3,
+        "name": "TabSOM: A tabular-to-image encoding method based on self-organizing maps",
+        "prior_article_status": "Ready",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "REVIEW",
+          "decision_accessibility": "REVIEW",
+          "information_budget": "GOOD",
+          "jargon_dense_paragraph_count": 2,
+          "jargon_translation": "REVIEW",
+          "non_engineer_core_clarity": "REVIEW",
+          "opening_non_engineer_access": "GOOD",
+          "plain_language_bridge": "GOOD",
+          "reader_enjoyment": "REVIEW",
+          "technical_terms_per_1000_chars": 39.3,
+          "unexplained_jargon": [
+            "SHAP",
+            "SOM",
+            "CNN"
+          ]
+        },
+        "selection_hash": 2187939227,
+        "source": "ArXiv",
+        "visible_chars": 882
+      },
+      {
+        "all_pass": false,
+        "case_id": "3bc479ffdca9815aa6d3d08da120a7bb",
+        "cross": {
+          "heading_count_match": false,
+          "high": false,
+          "opening_similarity": 0,
+          "peer": "",
+          "score": 0,
+          "sequence_similarity": 0,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          false,
+          [
+            "title must end with 。 or ？",
+            "unsupported hype: 劇的"
+          ]
+        ],
+        "human": [
+          "WEAK",
+          [
+            "reader_value_review:non_engineer_access_failure (Accessibility/Information Budget/Jargon Translation/Non-Engineer Core Clarity)",
+            "reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/jargon_translation/non_engineer_core_clarity/information_budget)",
+            "reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)"
+          ]
+        ],
+        "layout": 4,
+        "name": "Wispr Flow Notetaker",
+        "prior_article_status": "Ready",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "REVIEW",
+          "decision_accessibility": "REVIEW",
+          "information_budget": "REVIEW",
+          "jargon_dense_paragraph_count": 4,
+          "jargon_translation": "REVIEW",
+          "non_engineer_core_clarity": "REVIEW",
+          "opening_non_engineer_access": "GOOD",
+          "plain_language_bridge": "GOOD",
+          "reader_enjoyment": "REVIEW",
+          "technical_terms_per_1000_chars": 37.2,
+          "unexplained_jargon": [
+            "MCP"
+          ]
+        },
+        "selection_hash": 519263977,
+        "source": "OfficialVendor",
+        "visible_chars": 1126
+      },
+      {
+        "all_pass": false,
+        "case_id": "3bc479ffdca98191859cc6ace77dcfdd",
+        "cross": {
+          "heading_count_match": true,
+          "high": false,
+          "opening_similarity": 0.17857142857142858,
+          "peer": "Wispr Flow Notetaker",
+          "score": 1,
+          "sequence_similarity": 0.5333333333333333,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          false,
+          [
+            "title must end with 。 or ？",
+            "unsupported outcome extrapolation: ROI/financial outcome not measured by evidence"
+          ]
+        ],
+        "human": [
+          "ACCEPTABLE",
+          []
+        ],
+        "layout": 2,
+        "name": "Dograh",
+        "prior_article_status": "Ready",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "GOOD",
+          "decision_accessibility": "GOOD",
+          "information_budget": "REVIEW",
+          "jargon_dense_paragraph_count": 4,
+          "jargon_translation": "GOOD",
+          "non_engineer_core_clarity": "GOOD",
+          "opening_non_engineer_access": "GOOD",
+          "plain_language_bridge": "GOOD",
+          "reader_enjoyment": "REVIEW",
+          "technical_terms_per_1000_chars": 37.7,
+          "unexplained_jargon": []
+        },
+        "selection_hash": 3446647899,
+        "source": "OfficialVendor",
+        "visible_chars": 942
+      },
+      {
+        "all_pass": false,
+        "case_id": "3be479ffdca981dcb952ec4c1e68e07b",
+        "cross": {
+          "heading_count_match": true,
+          "high": false,
+          "opening_similarity": 0.45871559633027525,
+          "peer": "Wispr Flow Notetaker",
+          "score": 1,
+          "sequence_similarity": 0.7333333333333333,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          true,
+          []
+        ],
+        "human": [
+          "WEAK",
+          [
+            "reader_value_review:non_engineer_access_failure (Accessibility/Information Budget/Jargon Translation/Non-Engineer Core Clarity)",
+            "reader_value_review:multi_axis_reader_weakness (accessibility/reader_enjoyment/jargon_translation/non_engineer_core_clarity/information_budget)",
+            "reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)",
+            "reader_value_review:final_surface_summary_jargon_cluster (何が出た？/なぜ重要？)"
+          ]
+        ],
+        "layout": 4,
+        "name": "RISC-V: They Should Have Known Better",
+        "prior_article_status": "Ready",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "REVIEW",
+          "decision_accessibility": "REVIEW",
+          "information_budget": "REVIEW",
+          "jargon_dense_paragraph_count": 3,
+          "jargon_translation": "REVIEW",
+          "non_engineer_core_clarity": "REVIEW",
+          "opening_non_engineer_access": "GOOD",
+          "plain_language_bridge": "GOOD",
+          "reader_enjoyment": "REVIEW",
+          "technical_terms_per_1000_chars": 38.4,
+          "unexplained_jargon": [
+            "RISC-V",
+            "ISA",
+            "M0",
+            "MCU",
+            "CLIC"
+          ]
+        },
+        "selection_hash": 306899657,
+        "source": "HackerNews",
+        "visible_chars": 1118
+      },
+      {
+        "all_pass": false,
+        "case_id": "3bc479ffdca9814888a9f35764cdaecb",
+        "cross": {
+          "heading_count_match": true,
+          "high": false,
+          "opening_similarity": 0.4925373134328358,
+          "peer": "Intervention-Aware Clinical World Model for Post-Op Outcome Forecasting in Cardiology",
+          "score": 2,
+          "sequence_similarity": 0.8,
+          "shared_rhetorical_phrases": []
+        },
+        "editorial": [
+          true,
+          []
+        ],
+        "fact": [
+          false,
+          [
+            "title must end with 。 or ？"
+          ]
+        ],
+        "human": [
+          "WEAK",
+          [
+            "reader_value_review:non_engineer_access_failure (Accessibility/Opening/Information Budget/Jargon Translation/Non-Engineer Core Clarity)",
+            "reader_value_review:multi_axis_reader_weakness (accessibility/curiosity_pull/reader_enjoyment/jargon_translation/non_engineer_core_clarity/information_budget)",
+            "reader_value_review:non_engineer_access_failure (Accessibility/Jargon Translation/Non-Engineer Core Clarity)"
+          ]
+        ],
+        "layout": 0,
+        "name": "RustDesk now supports true unattended remote access on Wayland",
+        "prior_article_status": "Ready",
+        "publication": [
+          "PASS",
+          []
+        ],
+        "reader": {
+          "accessibility": "REVIEW",
+          "decision_accessibility": "REVIEW",
+          "information_budget": "REVIEW",
+          "jargon_dense_paragraph_count": 7,
+          "jargon_translation": "REVIEW",
+          "non_engineer_core_clarity": "REVIEW",
+          "opening_non_engineer_access": "REVIEW",
+          "plain_language_bridge": "GOOD",
+          "reader_enjoyment": "REVIEW",
+          "technical_terms_per_1000_chars": 43.1,
+          "unexplained_jargon": [
+            "IT"
+          ]
+        },
+        "selection_hash": 632300946,
+        "source": "HackerNews",
+        "visible_chars": 968
+      }
+    ]
+  }
+}
