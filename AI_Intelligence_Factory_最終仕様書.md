@@ -4,7 +4,7 @@
 Production最終照合日: **2026-10-25**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`9210f9d2f97055c59823168ceaefcff8f0d5d1babace41d3b3c47a707fd91056`**
+Production Contract Fingerprint: **`8a029af51d729310d1a1af92fa0eab8353b7819ff72cfc50c353ee5c42b9312e`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
