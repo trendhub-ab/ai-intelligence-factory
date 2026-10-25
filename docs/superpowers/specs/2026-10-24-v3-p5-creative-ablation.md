@@ -44,3 +44,36 @@ Outputs are mode 0700 directory, 0600 files: blindly labeled Candidate_*.md, Sta
 Evaluate each completed manuscript, without model/arm key: Opening 15, Writer-specific curiosity 15, Evidence-driven discovery 20, Cognitive shift 15, Natural Japanese 15, Memorability 10, claim restraint 10. Independently verify factual statements before any real Publication Gate. Scores are subjective and not Proof of model or integration causality. Independent repetitions (ideally >=3 per contrast, respecting quota) needed for robust attribution. No selection solely on content length or synthetic style-check metrics.
 
 Do NOT modify main, V1/V2/Classic, Daily, note, Notion, publication gates, Gemini production resilience code. PR #862 is draft; this experiment is a separate stacked draft. NO MERGE absent explicit owner MERGE GO.
+
+
+## Owner extension — 2026-10-25, mixed-model fallback (EXPERIMENT ONLY)
+
+Owner explicitly authorized a controlled comparison where **gemini-3.8-flash**
+falls back once to **gemini-3.6-flash** after a structured provider HTTP
+404/429/503. No retry on local counter failures, invalid request, authentication,
+unstructured errors, content-quality failure, parse failure, or exhausted budget.
+Every provider attempt reserves the shared runtime-state counter *before* send;
+the failed 3.8 request remains counted. 90-second spacing applies to fallback
+attempts as well as arms. Maximum **8 provider attempts** per manual run
+(5 article arms + at most 3 3.8-to-3.6 fallbacks). No cross-provider/API key changes.
+
+With explicit `--mix-models`, planned primary models for A/B/C/D/E are
+3.8 / 3.6 / 3.8 / 3.6 / 3.8 Flash. Actual model per arm and fallback flags
+are stored **only** inside the private KEY_OPEN_AFTER_SCORING.json. The blind
+Candidate_*.md and public Actions log must contain no arm-model map. This
+five-arm mixture is **exploratory**, because model variation confounds arm
+differences; do not interpret A–E ranking as a causal effect of transport or
+editorial instruction. A future matched-arm, same-model repeated experiment
+would be required for controlled model-to-model comparisons.
+
+A successful run encrypts five manuscripts and stages; total provider
+requests may be **5–8**. A failed or incomplete request sequence remains
+`INCOMPLETE_TECHNICAL_NO_GO` and cannot ship any article review bundle.
+Fernet key only goes to a Telegram recipient verified as private. No note,
+Notion, publication-gate, existing Daily, Classic, or V1/V2 changes.
+
+Previous single-model experiment source commit `922ef5b49b76683529957d37ead155d459e886dc`
+remains historically valid, but cannot satisfy this new authorization by
+itself. Do not execute the old pinned workflow expecting fallback.
+Immutable source pin, audited ChatOps text, workflow request cap and tests
+must all be updated together and reviewed before any owner-only run.
