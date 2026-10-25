@@ -4,7 +4,7 @@
 Production最終照合日: **2026-10-25**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`5615ac14f38e02b14bb89c8fac000ddbe7aabb2f309bc4b7e7e0a926b87909a5`**
+Production Contract Fingerprint: **`db43efe60aecc7dfe805045d4a917b19da756a06d03bfe4e2a0046540f23a2af`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -414,10 +414,10 @@ A+導入のために追加Provider callを要求しない。
 ### 6.2b P5 A–E原因切り分け ChatOps（2026-10-24、未昇格の実験）
 
 - P5 A/B/C/D/Eの比較試験は、既存Control Issue #71への完全一致コマンド `/aiif run p5_ablation_once` から起動できる。ただしコマンドは`chatops-one-shot.yml`が`main`上で承認済みの場合に限る。運用中のDaily/Classic/V1/V2を変更しない。
-- 専用 `p5-creative-ablation-manual.yml` は `workflow_dispatch` のみ、本人`trendhub-ab`、`github.run_attempt == 1`、共有Gemini concurrency lock、元記事/モデルを固定し、最大5回の実API試験に限る。実験本体はレビュー済みの固定commitをcheckoutし、別branchの最新HEADを自動追随しない。新たな自動発火条件は導入しない。
+- 専用 `p5-creative-ablation-manual.yml` は `workflow_dispatch` のみ、本人`trendhub-ab`、`github.run_attempt == 1`、共有Gemini concurrency lock、元記事/モデルを固定し、最大5回の実API試験に限る。実験本体はレビュー済みの固定commit `922ef5b49b76683529957d37ead155d459e886dc`（PR #863 provider-free CI GREEN）をcheckoutし、別branchの最新HEADを自動追随しない。旧pin `ce4485980e6f71a61d4ba5b78682ee89cb8c71d9`（17時制限が残存）は使用しない。ChatOps実行記録に表示するpinもcheckout実値へ一致させる。新たな自動発火条件は導入しない。
 - 公開GitHub Actionsに原稿を平文保存することは禁止。既存Telegramの受信先をbot APIで`private`チャットと検証した後だけAPI実行する。原稿/5工程/ブラインド対応表はRunnerの私用一時領域でFernet暗号化し、公開Actionsには暗号文だけを3日間保存。復号鍵は別経路の検証済みprivate Telegramに通知する。グループ/チャンネル、欠落した認証情報、API quota不足、暗号化・鍵配送失敗はFail-Closed。復号鍵・未公開原稿をIssue、PR、Actions logsに載せない。
 - CI GREENは記事品質の人間評価ではない。A–Eの独立比較で因果差が確定したともみなさない。原稿は本番Note/Notionへ一切自動配送せず、既存Evidence/Fact/Publication Gatesは保持する。
-- 実験PR #863の原稿生成系と起動PR #864は、正式MERGE GOなしにProduction昇格や`main`へマージしない。ChatOps拡張は実験の明示的入口に限り、本番原稿生成契約の書換えではない。
+- 実験PR #863の原稿生成系はDraft・未マージ。起動PR #864は2026-10-24にmainへマージ済みだが、オーナー本人の明示コマンドがない限りP5 API実行を開始しない。固定pinの追従修正PR #867は別途Draftでレビューし、正式MERGE GOなしにmainへマージしない。ChatOps拡張は実験の明示的入口に限り、本番原稿生成契約の書換えではない。
 
 ### 6.2a V3 P5 original five-stage Writer（2026-10-24 統合開発候補）
 
