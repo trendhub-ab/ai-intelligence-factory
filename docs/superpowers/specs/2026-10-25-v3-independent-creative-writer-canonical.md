@@ -22,7 +22,7 @@ All four remain hypotheses. No new experimental writer can be declared superior 
 - **No edits** to V1/Classic, V2 Shadow, Daily workflows, provider quota/retry machinery, runtime state, Production pipeline, note/Notion sync, existing LocalSkills decisions, publication contracts or Evidence/Fact/Reader/Publication Gates in this phase.
 - No Automatic dispatch, Gemini paid calls, new GitHub Actions workflow, note/Notion publish or artifact deliveries.
 - The default production editorial style remains `classic`. Existing `v3_p5` remains validation-only; the new Writer is **not registered** in any production selector.
-- Use a dedicated branch cut from the exact immutable main SHA above. Changes restricted to `docs/superpowers/specs/`, `docs/superpowers/plans/`, `experiments/v3_writer_independent.py`, and `tests/test_v3_writer_independent.py` in Phase 0.
+- Use a dedicated branch cut from the exact immutable main SHA above. Changes restricted to `docs/superpowers/specs/`, `docs/superpowers/plans/`, `tests/v3_writer_independent_prototype.py`, and `tests/test_v3_writer_independent.py` in Phase 0.
 - `MERGE GO` separately required; commit to branch or open DRAFT PR is NOT publication authorization.
 - On any incident: stop experimental work; keep `main` + V1/V2 intact. To remove experimental work, close PR/stop using branch. For any future opt-in integration, rollback by reverting its isolated commit or disabling the explicit opt-in; `classic` is the default. Never force-reset main.
 - Compare branch changes to baseline. In Phase 0 the list of changed files must be an exact subset of the allowlist above; **zero differences** are permitted for V1/V2/Production files.

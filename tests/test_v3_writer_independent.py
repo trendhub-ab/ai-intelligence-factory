@@ -1,7 +1,7 @@
 """Provider-free isolation and provenance tests: not editorial score/Fact-Gate proof."""
 import pytest
 
-from experiments.v3_writer_independent import (
+from tests.v3_writer_independent_prototype import (
     EvidencePacket,
     SourceFact,
     build_writer_prompt,
