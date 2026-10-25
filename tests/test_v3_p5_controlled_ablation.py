@@ -186,7 +186,7 @@ def test_mixed_model_plan_retains_original_prompts_and_stage_order():
     ]
     manifest = exp.manifest_for(mixed)
     assert manifest["model"] == "MIXED"
-    assert manifest["max_provider_requests"] == 8
+    assert manifest["max_provider_requests"] is None
     assert manifest["gemini_requests"] == 0
 
 
