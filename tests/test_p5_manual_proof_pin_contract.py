@@ -9,7 +9,7 @@ import re
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/p5-creative-ablation-manual.yml"
 CHATOPS = ROOT / ".github/workflows/chatops-one-shot.yml"
-REVIEWED_P5_SHA = "0b6f59a4a0caf2e83e31c9fca386f431ff07bee7"
+REVIEWED_P5_SHA = "68a6c0dc5024ac2fb72d63a482fc8124cdb06d3e"
 RETIRED_P5_SHA = "922ef5b49b76683529957d37ead155d459e886dc"
 
 
@@ -47,7 +47,16 @@ def test_p5_proof_stays_manual_private_and_capped_after_pin_update():
     assert (text.index("Encrypt manuscripts and deliver separate one-time key privately")
             < text.index("Upload encrypted review bundle ONLY"))
     assert "actions/upload-artifact@v4" in text
-    assert "retention-days: 3" in text
+    assert "retention-days: 7" in text
+    assert "resume_run_id:" in text
+    assert "secrets.P5_RESUME_FERNET_KEY" in text
+    assert "AIIF_P5_ALLOW_PARTIAL:" in text
+    assert "steps.generate.outcome == 'failure'" in text
+    assert "always() && steps.seal.outcome == 'success'" in text
+    assert "gh run download" in text
+    assert "Untrusted prior P5 run" in text
+    assert "AIIF_P5_RESUME_BUNDLE" in text
+    assert "--resume-bundle" in text
 
 
 def test_p5_chatops_remains_owner_only_exact_one_shot():
