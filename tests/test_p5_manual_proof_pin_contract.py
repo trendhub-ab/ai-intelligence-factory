@@ -43,7 +43,7 @@ def test_p5_proof_stays_manual_private_and_capped_after_pin_update():
     assert "--include-e --mix-models" in text
     assert "max 8 attempts" in text
     assert (text.index("Check recipient is truly private before ANY Gemini send")
-            < text.index("Generate A B C D E once"))
+            < text.index("Generate A B C D E with bounded model fallback"))
     assert (text.index("Encrypt manuscripts and deliver separate one-time key privately")
             < text.index("Upload encrypted review bundle ONLY"))
     assert "actions/upload-artifact@v4" in text
