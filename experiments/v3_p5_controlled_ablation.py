@@ -157,6 +157,9 @@ def run_private(arms: tuple[Arm, ...], output: Path,
             resume_bundle, resume_key, result,
         )
         actual_models = dict(key["__actual_models_by_arm__"])
+        if result.get("max_provider_requests") == 8:
+            result["legacy_checkpoint_max_provider_requests"] = 8
+        result["max_provider_requests"] = None
         result.pop("error_type", None)
     else:
         blind = list("ABCDE"[:len(arms)])
