@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Exactly RUN_P5_ABLATION_ONCE (max 5 Gemini calls)'
+        description: 'Exactly RUN_P5_ABLATION_ONCE (five arms / max 8 attempts)'
         required: true
         type: string
 
@@ -24,14 +24,14 @@ jobs:
       - name: Checkout immutable audited P5 experimental commit
         uses: actions/checkout@v6
         with:
-          ref: 922ef5b49b76683529957d37ead155d459e886dc
+          ref: 0b6f59a4a0caf2e83e31c9fca386f431ff07bee7
           persist-credentials: false
 
       - name: Verify locked experiment source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '922ef5b49b76683529957d37ead155d459e886dc'
+          test "$(git rev-parse HEAD)" = '0b6f59a4a0caf2e83e31c9fca386f431ff07bee7'
           test "$GITHUB_EVENT_NAME" = 'workflow_dispatch'
           test "$GITHUB_RUN_ATTEMPT" = '1'
           test "$GITHUB_ACTOR" = 'trendhub-ab'
@@ -57,7 +57,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m experiments.v3_p5_confidential_handoff
 
-      - name: Generate A B C D E once (unpublished, private temp only)
+      - name: Generate A B C D E with bounded model fallback (private only)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GH_PAT: ${{ secrets.GH_PAT }}
@@ -66,8 +66,8 @@ jobs:
           GEMINI_PERSISTENT_DAILY_COUNTER: 'true'
           GEMINI_COUNTER_BRANCH: runtime-state
           GEMINI_QUOTA_TIMEZONE: America/Los_Angeles
-          GEMINI_DAILY_REQUEST_BUDGET: '5'
-          GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '5'
+          GEMINI_DAILY_REQUEST_BUDGET: '8'
+          GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '8'
           AIIF_P5_CONFIDENTIAL_REVIEW: fernet_telegram_private
           AIIF_P5_PRIVATE_DIRECTORY: ${{ runner.temp }}/p5-private-${{ github.run_id }}
           TZ: Asia/Tokyo
@@ -75,7 +75,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m experiments.v3_p5_controlled_ablation \
-            --live --confirm RUN_P5_ABLATION_ONCE --include-e \
+            --live --confirm RUN_P5_ABLATION_ONCE --include-e --mix-models \
             --private-output "$AIIF_P5_PRIVATE_DIRECTORY"
 
       - name: Encrypt manuscripts and deliver separate one-time key privately
