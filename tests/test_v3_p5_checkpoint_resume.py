@@ -48,7 +48,7 @@ def checkpoint_fixture(tmp_path, monkeypatch):
         run_id="12345", allow_partial=True,
     )
     msg = calls[-1][1]["text"]
-    key = msg.split("Fernet key: ")[1].splitlines()[0]
+    key = msg.split("Fernet key: ", 1)[1][:44]
     return arms, output, encrypted, key, orig
 
 
