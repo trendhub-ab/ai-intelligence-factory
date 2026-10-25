@@ -23,7 +23,7 @@ from local_skills.v3_p5_one_shot import _extract_bundle, _p5_prompt
 MODEL = "gemini-3.8-flash"
 FALLBACK_MODEL = "gemini-3.6-flash"
 MIXED_MODEL_PLAN = {"B": FALLBACK_MODEL, "D": FALLBACK_MODEL}
-MAX_PROVIDER_REQUESTS = 8  # Five samples plus at most three per-arm fallbacks.
+MAX_PROVIDER_REQUESTS = None  # No P5 cumulative cap; canonical persistent quota and 3 attempts per arm remain.
 FALLBACK_PROVIDER_CODES = frozenset({404, 429, 503})
 CONFIRM = "RUN_P5_ABLATION_ONCE"
 PACE_SECONDS = 90
@@ -171,13 +171,11 @@ def run_private(arms: tuple[Arm, ...], output: Path,
             handle.write(data)
     result["status"] = "IN_PROGRESS_UNREVIEWED"
     if hasattr(send, "max_request_attempts"):
-        send.max_request_attempts = MAX_PROVIDER_REQUESTS - result["gemini_requests"]
+        send.max_request_attempts = None  # Previous attempt counts are kept for audit, not a restart cap.
     try:
         for index, arm in enumerate(arms):
             if index < start_at:
                 continue
-            if result["gemini_requests"] >= MAX_PROVIDER_REQUESTS:
-                raise RuntimeError("P5 total attempt cap exhausted; no additional API")
             if index > 0 and index != start_at:
                 sleep(PACE_SECONDS)
             if hasattr(send, "remaining_arms"):
@@ -189,8 +187,6 @@ def run_private(arms: tuple[Arm, ...], output: Path,
                 after = getattr(send, "request_attempts", None)
                 count = max(1, after - before) if type(before) is int and type(after) is int else 1
                 result["gemini_requests"] += count
-            if result["gemini_requests"] > MAX_PROVIDER_REQUESTS:
-                raise RuntimeError("P5 bounded provider-request cap exceeded")
             response, actual_model = sent if isinstance(sent, tuple) else (sent, arm.model)
             if actual_model not in (MODEL, FALLBACK_MODEL):
                 raise RuntimeError("Unapproved P5 response model")
@@ -241,8 +237,6 @@ def native_sender() -> tuple[Callable[[Arm], Any], Callable[[], None]]:
     from canonical_article_contract import aiif_editor_persona
 
     def provider_attempt(arm: Arm, model_name: str) -> Any:
-        if send.request_attempts >= send.max_request_attempts:
-            raise RuntimeError("P5 provider request limit exhausted")
         send.request_attempts += 1
         config = arm.config
         if arm.code == "E":
@@ -279,8 +273,9 @@ def native_sender() -> tuple[Callable[[Arm], Any], Callable[[], None]]:
 
     def send(arm: Arm) -> tuple[Any, str]:
         def can_retry() -> bool:
-            return (send.request_attempts + send.remaining_arms
-                    < send.max_request_attempts)
+            # Retry count is already limited to three inside dispatch_with_fallback.
+            # Canonical persistent Gemini quotas remain authoritative per attempt.
+            return True
         return dispatch_with_fallback(
             arm, provider_attempt, can_retry=can_retry,
         )
