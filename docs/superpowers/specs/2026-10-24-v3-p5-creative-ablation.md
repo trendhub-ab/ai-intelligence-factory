@@ -44,3 +44,86 @@ Outputs are mode 0700 directory, 0600 files: blindly labeled Candidate_*.md, Sta
 Evaluate each completed manuscript, without model/arm key: Opening 15, Writer-specific curiosity 15, Evidence-driven discovery 20, Cognitive shift 15, Natural Japanese 15, Memorability 10, claim restraint 10. Independently verify factual statements before any real Publication Gate. Scores are subjective and not Proof of model or integration causality. Independent repetitions (ideally >=3 per contrast, respecting quota) needed for robust attribution. No selection solely on content length or synthetic style-check metrics.
 
 Do NOT modify main, V1/V2/Classic, Daily, note, Notion, publication gates, Gemini production resilience code. PR #862 is draft; this experiment is a separate stacked draft. NO MERGE absent explicit owner MERGE GO.
+
+
+## Owner extension — 2026-10-25, mixed-model fallback (EXPERIMENT ONLY)
+
+Owner explicitly authorized a controlled comparison where **gemini-3.8-flash**
+falls back once to **gemini-3.6-flash** after a structured provider HTTP
+404/429/503. No retry on local counter failures, invalid request, authentication,
+unstructured errors, content-quality failure, parse failure, or exhausted budget.
+Every provider attempt reserves the shared runtime-state counter *before* send;
+the failed 3.8 request remains counted. 90-second spacing applies to fallback
+attempts as well as arms. Maximum **8 provider attempts** per manual run
+(5 article arms + at most 3 3.8-to-3.6 fallbacks). No cross-provider/API key changes.
+
+With explicit `--mix-models`, planned primary models for A/B/C/D/E are
+3.8 / 3.6 / 3.8 / 3.6 / 3.8 Flash. Actual model per arm and fallback flags
+are stored **only** inside the private KEY_OPEN_AFTER_SCORING.json. The blind
+Candidate_*.md and public Actions log must contain no arm-model map. This
+five-arm mixture is **exploratory**, because model variation confounds arm
+differences; do not interpret A–E ranking as a causal effect of transport or
+editorial instruction. A future matched-arm, same-model repeated experiment
+would be required for controlled model-to-model comparisons.
+
+A successful run encrypts five manuscripts and stages; total provider
+requests may be **5–8**. A failed or incomplete request sequence remains
+`INCOMPLETE_TECHNICAL_NO_GO` and cannot ship any article review bundle.
+Fernet key only goes to a Telegram recipient verified as private. No note,
+Notion, publication-gate, existing Daily, Classic, or V1/V2 changes.
+
+Previous single-model experiment source commit `922ef5b49b76683529957d37ead155d459e886dc`
+remains historically valid, but cannot satisfy this new authorization by
+itself. Do not execute the old pinned workflow expecting fallback.
+Immutable source pin, audited ChatOps text, workflow request cap and tests
+must all be updated together and reviewed before any owner-only run.
+
+## 2026-10-25 — encrypted partial checkpoint and budget-aware resume (DRAFT)
+
+Failure evidence: P5 Runs 40150657370, 40163148618 and 40171771740 failed.
+Run 40163148618 received HTTP 200 for A–D and 200 for the E fallback,
+but E's response failed strict five-stage JSON parsing; Run 40171771740
+received 503 on B's 3.6-primary. Neither produced a review artifact.
+
+**Must preserve:** Never loosen bundle JSON, source/evidence, Fact,
+Publication, naturalness or blind scoring gates. Each arm is accepted
+**only after** the five-stage JSON validates and private files are durable.
+An invalid E response is not a finished manuscript.
+
+On failure with at least one complete arm, allow the manual P5 Actions job
+to seal the private RUNNER_TEMP prefix as a **Fernet-encrypted partial**
+artifact and Telegram its random key **only** to the verified private chat.
+This remains INCOMPLETE_TECHNICAL_NO_GO, never a review-ready article.
+No raw drafts, prompt, blind key, intermediate stage or resume secret may go
+to public logs, artifact names, outputs or workflow_dispatch inputs.
+
+Optional owner-only manual resume requires previous FAILED run ID and
+GitHub Actions repository secret P5_RESUME_FERNET_KEY filled with the
+previously Telegram-delivered Fernet key. Retrieve only the named P5 artifact
+from the same repository; verify origin and decrypt in runner.temp.
+Authenticate the sealed bytes and fail-closed on missing, wrong or altered
+key, unexpected files, corrupted SHA, non-prefix completed arms, wrong
+prompt/config/source/model fingerprint, and excessive cumulative requests.
+Preserve original blinded labels, stages, finished manuscripts and model
+provenance, then call Gemini **only** for missing arms in A–E order.
+
+Provider calls are independently budget-reserved by the canonical runtime
+counter. At most eight **cumulative** actual provider attempts across resume
+runs for this comparison. One 3.8→3.6 switch is allowed on structured
+404/429/503; a structured 503/429 on 3.6 can retry on **3.6 only** with
+bounded 90/180-second waits, never unlimited loops. Before retry, reserve
+at least one possible call for each not-yet-attempted arm. Do not retry
+on invalid JSON, quality problems, auth/permission errors or unstructured
+text. Retrying an arm or starting a new Run does not grant more than eight
+cumulative attempts once a checkpoint chain has begun.
+
+The checkpoint artifact TTL is seven days; rotate/update
+P5_RESUME_FERNET_KEY for each new partial checkpoint. GitHub does not
+expose existing secrets for reading. An owner must intentionally configure
+the secret through GitHub Actions settings prior to resume; no attempt to
+pass the key in issue comments, plaintext dispatch parameters or logs.
+The old failed runs, which never uploaded encrypted partial checkpoints,
+are **not recoverable** under this protocol.
+
+Production V1/V2/Daily/note/Notion stays unchanged. Do not merge or
+dispatch any API without explicit owner approval following CI verification.

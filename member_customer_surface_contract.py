@@ -148,6 +148,7 @@ NON_MEMBER_MODULES = frozenset((
     "operations/forget_only_private_swap_once.py",
     "operations/forget_only_draft_identity_diagnostic.py",  # read-only operator audit of held private draft  # operator-only private draft replacement, not a paid-member surface
     "experiments/editorial_engine_v3_phase0/free_writer_one_shot.py",  # isolated review artifact; no customer publication
+    "experiments/v3_p5_checkpoint.py",  # private encrypted P5 experiment resume only; no member/customer surface
     "experiments/v3_p5_golden_cases.py",  # frozen article proof fixture; no customer surface
     "experiments/v3_p5_private_golden_guard.py",  # hash-only provenance; private manuscripts never bundled
     "experiments/v3_p5_golden_prompt_snapshot.py",  # frozen five-stage prompt; no customer surface

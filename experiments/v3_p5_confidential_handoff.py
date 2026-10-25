@@ -50,22 +50,40 @@ def assert_private_chat(token: str, chat_id: str) -> None:
         raise ConfidentialHandoffError("Telegram private recipient ID mismatch")
 
 
-def _private_files(root: Path) -> list[Path]:
+def _private_files(root: Path, *, allow_partial: bool = False) -> list[Path]:
     if not root.is_dir() or root.is_symlink():
         raise ConfidentialHandoffError("No private writer directory")
     required = [root / name for name in FILES]
     if any(not f.is_file() or f.is_symlink() for f in required):
         raise ConfidentialHandoffError("Missing or redirected P5 manifest/blind key")
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
-    if manifest.get("status") != "ALL_VALID_AWAITING_BLIND_HUMAN_REVIEW":
+    complete = manifest.get("status") == "ALL_VALID_AWAITING_BLIND_HUMAN_REVIEW"
+    partial = manifest.get("status") == "INCOMPLETE_TECHNICAL_NO_GO"
+    if not complete and not (allow_partial and partial):
         raise ConfidentialHandoffError("P5 manuscript set incomplete, no artifact permitted")
+    if partial and manifest.get("checkpoint_schema") != "p5-resume-v1":
+        raise ConfidentialHandoffError("P5 partial checkpoint schema missing")
     count = len(manifest.get("arms") or [])
-    if count not in (4, 5) or manifest.get("gemini_requests") != count:
+    requests = manifest.get("gemini_requests")
+    # Validate physical manuscript consistency independently of cumulative calls.
+    # Provider 503 retries legitimately make request totals exceed eight.
+    if count not in (4, 5) or type(requests) is not int or requests < 1:
         raise ConfidentialHandoffError("P5 manuscript count/request count inconsistent")
     articles = sorted(root.glob("Candidate_*.md"))
     stages = sorted(root.glob("Stages_Candidate_*.json"))
-    if len(articles) != count or len(stages) != count:
+    if requests < len(articles):
+        raise ConfidentialHandoffError("P5 manuscript count/request count inconsistent")
+    if ((complete and (len(articles) != count or len(stages) != count))
+            or (partial and (not 1 <= len(articles) == len(stages) < count))):
         raise ConfidentialHandoffError("Incomplete P5 article/stage archive")
+    expected_labels = set((manifest.get("candidates") or {}).keys())
+    if partial and (len(expected_labels) != len(articles)
+                    or {p.name for p in articles} != {
+                        "Candidate_" + label + ".md" for label in expected_labels
+                    } or {p.name for p in stages} != {
+                        "Stages_Candidate_" + label + ".json" for label in expected_labels
+                    }):
+        raise ConfidentialHandoffError("P5 partial manuscript identity mismatch")
     expected = {f.name for f in [*required, *articles, *stages]}
     actual = {x.name for x in root.iterdir()}
     if actual != expected or any(f.is_symlink() or not f.is_file() for f in [*articles, *stages]):
@@ -76,9 +94,10 @@ def _private_files(root: Path) -> list[Path]:
 def encrypt_and_deliver(
     source: Path, destination: Path, *,
     token: str, chat_id: str, run_id: str,
+    allow_partial: bool = False,
 ) -> None:
     assert_private_chat(token, chat_id)
-    files = _private_files(source)
+    files = _private_files(source, allow_partial=allow_partial)
     if destination.exists() or destination.is_symlink():
         raise ConfidentialHandoffError("Encrypted artifact destination already exists")
     if source.resolve() == destination.resolve().parent:
@@ -94,8 +113,9 @@ def encrypt_and_deliver(
         with os.fdopen(fd, "wb") as handle:
             handle.write(ciphertext)
         message = (
-            "AIIF P5 比較実験の復号鍵（暗号化成果物と別経路）\\n"
-            "GitHub Actions Run: " + str(run_id) + "\\n"
+            ("AIIF P5 部分保存・再開用の復号鍵\\n" if allow_partial else
+             "AIIF P5 比較実験の復号鍵（暗号化成果物と別経路）\\n")
+            + "GitHub Actions Run: " + str(run_id) + "\\n"
             "Fernet key: " + key.decode("ascii") + "\\n"
             "この鍵は第三者に共有しないでください。"
         )
@@ -103,7 +123,8 @@ def encrypt_and_deliver(
     except Exception:
         destination.unlink(missing_ok=True)
         raise
-    print("P5_ENCRYPTED_HANDOFF_READY; private Telegram delivered; no plaintext artifact")
+    print("P5_ENCRYPTED_HANDOFF_READY; private Telegram delivered; no plaintext artifact;"
+          + (" checkpoint_partial=true" if allow_partial else " checkpoint_partial=false"))
 
 
 def main() -> None:
@@ -128,6 +149,7 @@ def main() -> None:
     encrypt_and_deliver(
         Path(private), Path(artifact),
         token=token, chat_id=chat, run_id=os.getenv("GITHUB_RUN_ID", ""),
+        allow_partial=os.getenv("AIIF_P5_ALLOW_PARTIAL") == "true",
     )
 
 
