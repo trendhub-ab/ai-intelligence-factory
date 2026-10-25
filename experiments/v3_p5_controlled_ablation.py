@@ -23,7 +23,7 @@ from local_skills.v3_p5_one_shot import _extract_bundle, _p5_prompt
 MODEL = "gemini-3.8-flash"
 FALLBACK_MODEL = "gemini-3.6-flash"
 MIXED_MODEL_PLAN = {"B": FALLBACK_MODEL, "D": FALLBACK_MODEL}
-MAX_PROVIDER_REQUESTS = 8  # Five samples plus at most three per-arm fallbacks.
+MAX_PROVIDER_REQUESTS = None  # No P5 cumulative cap; canonical persistent quota and 3 attempts per arm remain.
 FALLBACK_PROVIDER_CODES = frozenset({404, 429, 503})
 CONFIRM = "RUN_P5_ABLATION_ONCE"
 PACE_SECONDS = 90
@@ -51,15 +51,30 @@ def provider_error_code(exc: BaseException) -> int | None:
 def dispatch_with_fallback(
     arm: Arm, attempt: Callable[[Arm, str], Any],
     sleep: Callable[[int], None] = time.sleep,
+    can_retry: Callable[[], bool] = lambda: True,
 ) -> tuple[Any, str]:
-    """One 3.8 to 3.6 downgrade on recognized provider status, never other errors."""
-    try:
-        return attempt(arm, arm.model), arm.model
-    except Exception as exc:
-        if arm.model != MODEL or provider_error_code(exc) not in FALLBACK_PROVIDER_CODES:
-            raise
-        sleep(PACE_SECONDS)
-        return attempt(arm, FALLBACK_MODEL), FALLBACK_MODEL
+    """Bounded 503/429 retry; 3.8 may downgrade once, never reverse upgrade.
+
+    Reserve calls for all remaining arms BEFORE spending retry budget.
+    HTTP 404 may switch 3.8 to 3.6 once, but is not retried on 3.6.
+    """
+    model = arm.model
+    for retry_index in range(3):
+        try:
+            return attempt(arm, model), model
+        except Exception as exc:
+            code = provider_error_code(exc)
+            if code not in FALLBACK_PROVIDER_CODES or not can_retry():
+                raise
+            if model == MODEL and code in FALLBACK_PROVIDER_CODES:
+                model = FALLBACK_MODEL
+            elif model == FALLBACK_MODEL and code in (429, 503):
+                if retry_index >= 2:
+                    raise
+            else:
+                raise
+            sleep(PACE_SECONDS * (retry_index + 1))
+    raise RuntimeError("P5 impossible provider retry state")
 
 
 def sha(text: str) -> str:
@@ -94,6 +109,7 @@ def build_arms(mixed_models: bool = False) -> tuple[Arm, ...]:
 def manifest_for(arms: tuple[Arm, ...]) -> dict:
     return {
         "status": "PROVIDER_FREE_PREFLIGHT",
+        "checkpoint_schema": "p5-resume-v1",
         "model": MODEL if len({arm.model for arm in arms}) == 1 else "MIXED",
         "primary_models_by_arm": {arm.code: arm.model for arm in arms},
         "max_provider_requests": MAX_PROVIDER_REQUESTS,
@@ -129,19 +145,44 @@ def private_write(path: Path, text: str) -> None:
 
 def run_private(arms: tuple[Arm, ...], output: Path,
                 send: Callable[[Arm], Any],
-                sleep: Callable[[int], None] = time.sleep) -> dict:
-    output = private_directory(output)
-    blind = list("ABCDE"[:len(arms)])
-    secrets.SystemRandom().shuffle(blind)
-    key = dict(zip((x.code for x in arms), blind))
-    actual_models: dict[str, str] = {}
+                sleep: Callable[[int], None] = time.sleep,
+                resume_bundle: Path | None = None,
+                resume_key: str = "") -> dict:
     result = manifest_for(arms)
+    start_at = 0
+    saved_files: dict[str, bytes] = {}
+    if resume_bundle is not None:
+        from experiments.v3_p5_checkpoint import open_checkpoint
+        result, key, saved_files, start_at = open_checkpoint(
+            resume_bundle, resume_key, result,
+        )
+        actual_models = dict(key["__actual_models_by_arm__"])
+        if result.get("max_provider_requests") == 8:
+            result["legacy_checkpoint_max_provider_requests"] = 8
+        result["max_provider_requests"] = None
+        result.pop("error_type", None)
+    else:
+        blind = list("ABCDE"[:len(arms)])
+        secrets.SystemRandom().shuffle(blind)
+        key = dict(zip((x.code for x in arms), blind))
+        actual_models: dict[str, str] = {}
+        result["candidates"] = {}
+    output = private_directory(output)
+    for name, data in saved_files.items():
+        fd = os.open(output / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
     result["status"] = "IN_PROGRESS_UNREVIEWED"
-    result["candidates"] = {}
+    if hasattr(send, "max_request_attempts"):
+        send.max_request_attempts = None  # Previous attempt counts are kept for audit, not a restart cap.
     try:
         for index, arm in enumerate(arms):
-            if index:
+            if index < start_at:
+                continue
+            if index > 0 and index != start_at:
                 sleep(PACE_SECONDS)
+            if hasattr(send, "remaining_arms"):
+                send.remaining_arms = len(arms) - index - 1
             before = getattr(send, "request_attempts", None)
             try:
                 sent = send(arm)
@@ -149,12 +190,9 @@ def run_private(arms: tuple[Arm, ...], output: Path,
                 after = getattr(send, "request_attempts", None)
                 count = max(1, after - before) if type(before) is int and type(after) is int else 1
                 result["gemini_requests"] += count
-            if result["gemini_requests"] > MAX_PROVIDER_REQUESTS:
-                raise RuntimeError("P5 bounded provider-request cap exceeded")
             response, actual_model = sent if isinstance(sent, tuple) else (sent, arm.model)
             if actual_model not in (MODEL, FALLBACK_MODEL):
                 raise RuntimeError("Unapproved P5 response model")
-            actual_models[arm.code] = actual_model
             article, stages = _extract_bundle(str(getattr(response, "text", "") or ""))
             label = key[arm.code]
             private_write(output / ("Candidate_" + label + ".md"), article + "\n")
@@ -166,6 +204,7 @@ def run_private(arms: tuple[Arm, ...], output: Path,
                 "writing_stage_chars": len(stages["Persona Article Generation"]),
                 "review_stage_chars": len(stages["Fact-Safe Review"]),
             }
+            actual_models[arm.code] = actual_model
         result["status"] = "ALL_VALID_AWAITING_BLIND_HUMAN_REVIEW"
     except Exception as error:
         result["status"] = "INCOMPLETE_TECHNICAL_NO_GO"
@@ -201,8 +240,6 @@ def native_sender() -> tuple[Callable[[Arm], Any], Callable[[], None]]:
     from canonical_article_contract import aiif_editor_persona
 
     def provider_attempt(arm: Arm, model_name: str) -> Any:
-        if send.request_attempts >= MAX_PROVIDER_REQUESTS:
-            raise RuntimeError("P5 provider request limit exhausted")
         send.request_attempts += 1
         config = arm.config
         if arm.code == "E":
@@ -238,9 +275,17 @@ def native_sender() -> tuple[Callable[[Arm], Any], Callable[[], None]]:
         return response
 
     def send(arm: Arm) -> tuple[Any, str]:
-        return dispatch_with_fallback(arm, provider_attempt)
+        def can_retry() -> bool:
+            # Retry count is already limited to three inside dispatch_with_fallback.
+            # Canonical persistent Gemini quotas remain authoritative per attempt.
+            return True
+        return dispatch_with_fallback(
+            arm, provider_attempt, can_retry=can_retry,
+        )
 
     send.request_attempts = 0
+    send.max_request_attempts = MAX_PROVIDER_REQUESTS
+    send.remaining_arms = 0
 
     def close() -> None:
         p.client = old_client
@@ -257,6 +302,8 @@ def main() -> None:
     parser.add_argument("--mix-models", action="store_true",
                         help="A/C/E use 3.8, B/D use 3.6; 3.8 404/429/503 may fall back")
     parser.add_argument("--private-output", type=Path)
+    parser.add_argument("--resume-bundle", type=Path,
+                        help="Encrypted partial artifact from reviewed earlier P5 run")
     args = parser.parse_args()
     arms = build_arms(mixed_models=args.mix_models)[:5 if args.include_e else 4]
     if not args.live:
@@ -277,9 +324,17 @@ def main() -> None:
     target = args.private_output.expanduser().resolve()
     if target.exists() or target == REPO_ROOT or REPO_ROOT in target.parents:
         raise RuntimeError("Choose a NEW private directory outside the repository")
+    if args.resume_bundle is not None and not os.environ.get("AIIF_P5_RESUME_KEY"):
+        raise RuntimeError("Resume requires P5 key via Actions repository secret")
     sender, close = native_sender()
     try:
-        result = run_private(arms, target, sender)
+        if args.resume_bundle is None:
+            result = run_private(arms, target, sender)
+        else:
+            result = run_private(
+                arms, target, sender, resume_bundle=args.resume_bundle,
+                resume_key=os.environ["AIIF_P5_RESUME_KEY"],
+            )
         print("P5_ABLATION_COMPLETE; requests=" + str(result["gemini_requests"])
               + "; human_approved=false; publication=false")
     finally:

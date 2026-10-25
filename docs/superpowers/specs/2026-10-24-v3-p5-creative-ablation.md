@@ -77,3 +77,53 @@ remains historically valid, but cannot satisfy this new authorization by
 itself. Do not execute the old pinned workflow expecting fallback.
 Immutable source pin, audited ChatOps text, workflow request cap and tests
 must all be updated together and reviewed before any owner-only run.
+
+## 2026-10-25 — encrypted partial checkpoint and budget-aware resume (DRAFT)
+
+Failure evidence: P5 Runs 40150657370, 40163148618 and 40171771740 failed.
+Run 40163148618 received HTTP 200 for A–D and 200 for the E fallback,
+but E's response failed strict five-stage JSON parsing; Run 40171771740
+received 503 on B's 3.6-primary. Neither produced a review artifact.
+
+**Must preserve:** Never loosen bundle JSON, source/evidence, Fact,
+Publication, naturalness or blind scoring gates. Each arm is accepted
+**only after** the five-stage JSON validates and private files are durable.
+An invalid E response is not a finished manuscript.
+
+On failure with at least one complete arm, allow the manual P5 Actions job
+to seal the private RUNNER_TEMP prefix as a **Fernet-encrypted partial**
+artifact and Telegram its random key **only** to the verified private chat.
+This remains INCOMPLETE_TECHNICAL_NO_GO, never a review-ready article.
+No raw drafts, prompt, blind key, intermediate stage or resume secret may go
+to public logs, artifact names, outputs or workflow_dispatch inputs.
+
+Optional owner-only manual resume requires previous FAILED run ID and
+GitHub Actions repository secret P5_RESUME_FERNET_KEY filled with the
+previously Telegram-delivered Fernet key. Retrieve only the named P5 artifact
+from the same repository; verify origin and decrypt in runner.temp.
+Authenticate the sealed bytes and fail-closed on missing, wrong or altered
+key, unexpected files, corrupted SHA, non-prefix completed arms, wrong
+prompt/config/source/model fingerprint, and excessive cumulative requests.
+Preserve original blinded labels, stages, finished manuscripts and model
+provenance, then call Gemini **only** for missing arms in A–E order.
+
+Provider calls are independently budget-reserved by the canonical runtime
+counter. At most eight **cumulative** actual provider attempts across resume
+runs for this comparison. One 3.8→3.6 switch is allowed on structured
+404/429/503; a structured 503/429 on 3.6 can retry on **3.6 only** with
+bounded 90/180-second waits, never unlimited loops. Before retry, reserve
+at least one possible call for each not-yet-attempted arm. Do not retry
+on invalid JSON, quality problems, auth/permission errors or unstructured
+text. Retrying an arm or starting a new Run does not grant more than eight
+cumulative attempts once a checkpoint chain has begun.
+
+The checkpoint artifact TTL is seven days; rotate/update
+P5_RESUME_FERNET_KEY for each new partial checkpoint. GitHub does not
+expose existing secrets for reading. An owner must intentionally configure
+the secret through GitHub Actions settings prior to resume; no attempt to
+pass the key in issue comments, plaintext dispatch parameters or logs.
+The old failed runs, which never uploaded encrypted partial checkpoints,
+are **not recoverable** under this protocol.
+
+Production V1/V2/Daily/note/Notion stays unchanged. Do not merge or
+dispatch any API without explicit owner approval following CI verification.

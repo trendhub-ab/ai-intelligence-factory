@@ -186,7 +186,7 @@ def test_mixed_model_plan_retains_original_prompts_and_stage_order():
     ]
     manifest = exp.manifest_for(mixed)
     assert manifest["model"] == "MIXED"
-    assert manifest["max_provider_requests"] == 8
+    assert manifest["max_provider_requests"] is None
     assert manifest["gemini_requests"] == 0
 
 
@@ -239,7 +239,7 @@ def test_unstructured_503_text_must_not_trigger_fallback():
     assert attempts == [exp.MODEL]
 
 
-def test_36_primary_never_falls_back_to_38():
+def test_36_primary_retry_stays_on_36_with_budget():
     arm = exp.build_arms(mixed_models=True)[1]
     assert arm.model == exp.FALLBACK_MODEL
     attempts = []
@@ -250,6 +250,12 @@ def test_36_primary_never_falls_back_to_38():
 
     with pytest.raises(ProviderStatus):
         exp.dispatch_with_fallback(arm, attempt, sleep=lambda _: None)
+    assert attempts == [exp.FALLBACK_MODEL] * 3
+
+    attempts.clear()
+    with pytest.raises(ProviderStatus):
+        exp.dispatch_with_fallback(
+            arm, attempt, sleep=lambda _: None, can_retry=lambda: False)
     assert attempts == [exp.FALLBACK_MODEL]
 
 
@@ -290,3 +296,65 @@ def test_mix_flag_default_does_not_send_provider(monkeypatch, capsys):
     assert manifest["arms"] == list("ABCDE")
     assert manifest["model"] == "MIXED"
     assert manifest["gemini_requests"] == 0
+
+def test_36_503_once_retries_on_same_model_and_recovers():
+    arm = exp.build_arms(mixed_models=True)[1]
+    calls, pauses = [], []
+
+    def attempt(_, model):
+        calls.append(model)
+        if len(calls) == 1:
+            raise ProviderStatus(503)
+        return sample()
+
+    result, actual_model = exp.dispatch_with_fallback(
+        arm, attempt, sleep=pauses.append)
+    assert result.text
+    assert actual_model == exp.FALLBACK_MODEL
+    assert calls == [exp.FALLBACK_MODEL, exp.FALLBACK_MODEL]
+    assert pauses == [exp.PACE_SECONDS]
+
+
+def test_38_503_36_503_36_200_backoff_bounded():
+    arm = exp.build_arms()[0]
+    calls, pauses = [], []
+
+    def attempt(_, model):
+        calls.append(model)
+        if len(calls) <= 2:
+            raise ProviderStatus(503)
+        return sample()
+
+    response, actual = exp.dispatch_with_fallback(
+        arm, attempt, sleep=pauses.append)
+    assert response.text
+    assert actual == exp.FALLBACK_MODEL
+    assert calls == [exp.MODEL, exp.FALLBACK_MODEL, exp.FALLBACK_MODEL]
+    assert pauses == [90, 180]
+
+
+def test_budget_guard_prevents_retry_and_reserves_calls_for_future_arms():
+    arm = exp.build_arms()[0]
+    calls = []
+
+    def attempt(_, model):
+        calls.append(model)
+        raise ProviderStatus(503)
+
+    with pytest.raises(ProviderStatus):
+        exp.dispatch_with_fallback(
+            arm, attempt, sleep=lambda _: None, can_retry=lambda: False)
+    assert calls == [exp.MODEL]
+
+
+def test_404_on_36_is_not_retried():
+    arm = exp.build_arms(mixed_models=True)[1]
+    calls = []
+
+    def attempt(_, model):
+        calls.append(model)
+        raise ProviderStatus(404)
+
+    with pytest.raises(ProviderStatus):
+        exp.dispatch_with_fallback(arm, attempt, sleep=lambda _: None)
+    assert calls == [exp.FALLBACK_MODEL]
