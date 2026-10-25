@@ -9,7 +9,7 @@ import re
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/p5-creative-ablation-manual.yml"
 CHATOPS = ROOT / ".github/workflows/chatops-one-shot.yml"
-REVIEWED_P5_SHA = "68a6c0dc5024ac2fb72d63a482fc8124cdb06d3e"
+REVIEWED_P5_SHA = "850015e88dce07b0f5de9001c46042789f57643a"
 RETIRED_P5_SHA = "922ef5b49b76683529957d37ead155d459e886dc"
 
 
@@ -36,12 +36,14 @@ def test_p5_proof_stays_manual_private_and_capped_after_pin_update():
     assert "group: ai-intelligence-gemini-budget" in text
     assert "GEMINI_COUNTER_BRANCH: runtime-state" in text
     assert "GEMINI_PERSISTENT_DAILY_COUNTER: 'true'" in text
-    assert "GEMINI_DAILY_REQUEST_BUDGET: '8'" in text
-    assert "GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '8'" in text
+    assert "GEMINI_DAILY_REQUEST_BUDGET: '8'" not in text
+    assert "GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: '8'" not in text
     assert "AIIF_P5_CONFIDENTIAL_REVIEW: fernet_telegram_private" in text
     assert "persist-credentials: false" in text
     assert "--include-e --mix-models" in text
-    assert "max 8 attempts" in text
+    assert "max 8 attempts" not in text
+    assert "v3_p5_checkpoint_resume" in text
+    assert "No P5-local 8-call cap" in text
     assert (text.index("Check recipient is truly private before ANY Gemini send")
             < text.index("Generate A B C D E with bounded model fallback"))
     assert (text.index("Encrypt manuscripts and deliver separate one-time key privately")
