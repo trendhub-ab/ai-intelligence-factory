@@ -9,7 +9,7 @@ import re
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/p5-creative-ablation-manual.yml"
 CHATOPS = ROOT / ".github/workflows/chatops-one-shot.yml"
-REVIEWED_P5_SHA = "850015e88dce07b0f5de9001c46042789f57643a"
+REVIEWED_P5_SHA = "9e76864d2d3d31facae881a05356b941e3cc9fe3"
 RETIRED_P5_SHA = "922ef5b49b76683529957d37ead155d459e886dc"
 
 

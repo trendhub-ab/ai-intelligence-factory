@@ -215,7 +215,7 @@ jobs:
               echo '- confirmation injected: `RUN_V2_SHADOW_OBSERVATION`'
             elif [ "$MODE" = 'p5_ablation_once' ]; then
               echo '- P5 experimental model calls: at most 8 attempts for 5 manuscripts (3.8/3.6 mixed, bounded fallback)'
-              echo '- reviewed P5 source SHA: `850015e88dce07b0f5de9001c46042789f57643a`'
+              echo '- reviewed P5 source SHA: `9e76864d2d3d31facae881a05356b941e3cc9fe3`'
               echo '- outputs: encrypted artifact only; key to private Telegram'
               echo '- Production / Notion / note write: false'
             elif [ "$MODE" = 'v2_shadow_deep_dive' ]; then
