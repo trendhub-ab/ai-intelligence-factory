@@ -29,14 +29,14 @@ jobs:
       - name: Checkout immutable audited P5 experimental commit
         uses: actions/checkout@v6
         with:
-          ref: 79626784a7e2aa5647fdeda53253982009f24af6
+          ref: 68a6c0dc5024ac2fb72d63a482fc8124cdb06d3e
           persist-credentials: false
 
       - name: Verify locked experiment source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '79626784a7e2aa5647fdeda53253982009f24af6'
+          test "$(git rev-parse HEAD)" = '68a6c0dc5024ac2fb72d63a482fc8124cdb06d3e'
           test "$GITHUB_EVENT_NAME" = 'workflow_dispatch'
           test "$GITHUB_RUN_ATTEMPT" = '1'
           test "$GITHUB_ACTOR" = 'trendhub-ab'
