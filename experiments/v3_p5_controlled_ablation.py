@@ -194,7 +194,6 @@ def run_private(arms: tuple[Arm, ...], output: Path,
             response, actual_model = sent if isinstance(sent, tuple) else (sent, arm.model)
             if actual_model not in (MODEL, FALLBACK_MODEL):
                 raise RuntimeError("Unapproved P5 response model")
-            actual_models[arm.code] = actual_model
             article, stages = _extract_bundle(str(getattr(response, "text", "") or ""))
             label = key[arm.code]
             private_write(output / ("Candidate_" + label + ".md"), article + "\n")
@@ -206,6 +205,7 @@ def run_private(arms: tuple[Arm, ...], output: Path,
                 "writing_stage_chars": len(stages["Persona Article Generation"]),
                 "review_stage_chars": len(stages["Fact-Safe Review"]),
             }
+            actual_models[arm.code] = actual_model
         result["status"] = "ALL_VALID_AWAITING_BLIND_HUMAN_REVIEW"
     except Exception as error:
         result["status"] = "INCOMPLETE_TECHNICAL_NO_GO"
