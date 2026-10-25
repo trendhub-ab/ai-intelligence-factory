@@ -8,7 +8,17 @@ import pytest
 from experiments import v3_p5_checkpoint as cp
 from experiments import v3_p5_confidential_handoff as handoff
 from experiments import v3_p5_controlled_ablation as exp
-from tests.test_v3_p5_controlled_ablation import sample
+from types import SimpleNamespace
+
+
+def sample():
+    return SimpleNamespace(text=json.dumps({
+        "Writer Reaction": "不思議な点を考える。",
+        "Editorial Discovery": "根拠を調べる。",
+        "Cognitive Shift": "理解が変わる。",
+        "Persona Article Generation": "# 記事\\n\\n詳しく考える。",
+        "Fact-Safe Review": "# 記事\\n\\n詳しく確かめる。",
+    }, ensure_ascii=False))
 
 
 def checkpoint_fixture(tmp_path, monkeypatch):
@@ -24,8 +34,7 @@ def checkpoint_fixture(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="simulated provider"):
         exp.run_private(arms, output, sender, sleep=lambda _: None)
     assert sender.request_attempts == 2
-    raw = (output / "Candidate_" +
-        "A") if False else next(output.glob("Candidate_*.md"))
+    raw = next(output.glob("Candidate_*.md"))
     orig = raw.read_bytes()
     calls = []
     def fake_telegram(token, method, fields):
