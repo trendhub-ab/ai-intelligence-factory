@@ -338,7 +338,7 @@ class P5ChatOpsBridgeTests(unittest.TestCase):
         self.assertIn("p5-review-", proof)
         self.assertIn(".fernet", proof)
         self.assertNotIn("path: p5-private-", proof)
-        self.assertIn("ref: ce4485980e6f71a61d4ba5b78682ee89cb8c71d9", proof)
+        self.assertIn("ref: 922ef5b49b76683529957d37ead155d459e886dc", proof)
         self.assertLess(
             proof.index("Check recipient is truly private"),
             proof.index("Generate A B C D E once"),
