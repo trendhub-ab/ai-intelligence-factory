@@ -131,3 +131,40 @@ def test_cumulative_limit_blocks_retries_before_future_arms(tmp_path, monkeypatc
                              resume_bundle=encrypted, resume_key=key)
     assert report["gemini_requests"] == 6
     assert sender.max_request_attempts == 6
+
+
+def test_bad_fifth_json_is_not_checkpointed_as_completed_arm(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    arms = exp.build_arms(mixed_models=True)
+    calls = []
+
+    def sender(arm):
+        sender.request_attempts += 1
+        calls.append(arm.code)
+        return (SimpleNamespace(text='{"Writer Reaction": incomplete'), arm.model
+                ) if arm.code == "E" else (sample(), arm.model)
+
+    sender.request_attempts = 0
+    out = tmp_path / "bad-fifth"
+    with pytest.raises(Exception):
+        exp.run_private(arms, out, sender, sleep=lambda _: None)
+    m = json.loads((out / "manifest.json").read_text())
+    key = json.loads((out / "KEY_OPEN_AFTER_SCORING.json").read_text())
+    assert m["status"] == "INCOMPLETE_TECHNICAL_NO_GO"
+    assert m["gemini_requests"] == 5
+    assert set(key["__actual_models_by_arm__"]) == set("ABCD")
+    assert len(m["candidates"]) == 4
+    assert len(list(out.glob("Candidate_*.md"))) == 4
+    assert calls == list("ABCDE")
+
+    sent = []
+    def fake(token, method, fields):
+        sent.append(method)
+        return {"type": "private", "id": 987} if method == "getChat" else {"message_id": 1}
+    monkeypatch.setattr(handoff, "_telegram_request", fake)
+    encrypted = tmp_path / "valid-prefix.fernet"
+    handoff.encrypt_and_deliver(
+        out, encrypted, token="bot", chat_id="987",
+        run_id="3344", allow_partial=True)
+    assert encrypted.exists()
+    assert sent == ["getChat", "sendMessage"]
