@@ -117,3 +117,31 @@ def test_no_automatic_trigger_or_rerun(monkeypatch):
         monkeypatch.setenv(variable, value)
     with pytest.raises(handoff.ConfidentialHandoffError, match="manual dispatch"):
         handoff.main()
+
+
+def test_bounded_model_fallback_attempts_keep_review_encrypted(monkeypatch, tmp_path):
+    calls = fake_telegram(monkeypatch)
+    root = make_case(tmp_path, n=5)
+    manifest = json.loads((root / "manifest.json").read_text())
+    manifest["gemini_requests"] = 8
+    (root / "manifest.json").write_text(json.dumps(manifest))
+    encrypted = tmp_path / "encrypted-fallback.fernet"
+    handoff.encrypt_and_deliver(
+        root, encrypted, token="BOT", chat_id="1234", run_id="9002",
+    )
+    assert encrypted.exists()
+    assert any(method == "sendMessage" for _, method, _ in calls)
+
+
+def test_fallback_request_count_above_eight_fails_closed(monkeypatch, tmp_path):
+    calls = fake_telegram(monkeypatch)
+    root = make_case(tmp_path, n=5)
+    manifest = json.loads((root / "manifest.json").read_text())
+    manifest["gemini_requests"] = 9
+    (root / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(handoff.ConfidentialHandoffError, match="count"):
+        handoff.encrypt_and_deliver(
+            root, tmp_path / "bad.fernet",
+            token="BOT", chat_id="1234", run_id="9003",
+        )
+    assert not any(method == "sendMessage" for _, method, _ in calls)
