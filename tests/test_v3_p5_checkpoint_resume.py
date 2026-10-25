@@ -12,13 +12,14 @@ from types import SimpleNamespace
 
 
 def sample():
-    return SimpleNamespace(text=json.dumps({
+    rows = {
         "Writer Reaction": "不思議な点を考える。",
         "Editorial Discovery": "根拠を調べる。",
         "Cognitive Shift": "理解が変わる。",
-        "Persona Article Generation": "# 記事\\n\\n詳しく考える。",
-        "Fact-Safe Review": "# 記事\\n\\n詳しく確かめる。",
-    }, ensure_ascii=False))
+        "Persona Article Generation": "# 記事\n\n根拠を詳しく確かめる。",
+        "Fact-Safe Review": "# 記事\n\n根拠を詳しく確かめる。",
+    }
+    return SimpleNamespace(text=json.dumps(rows, ensure_ascii=False))
 
 
 def checkpoint_fixture(tmp_path, monkeypatch):
