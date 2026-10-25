@@ -1,7 +1,154 @@
 {
   "version": 1,
-  "updated_at": "2026-10-21T00:45:10.258866+00:00",
+  "updated_at": "2026-10-25T08:32:36.833425+00:00",
   "items": [
+    {
+      "key": "https://openai.com/products/release-notes?aif_revision=84463e68034cea98",
+      "deferred_at": "2026-10-25T08:32:36.833081+00:00",
+      "expires_at": "2026-12-24T08:32:36.833081+00:00",
+      "repo": {
+        "source": "OfficialVendor",
+        "nameWithOwner": "OpenAI — 12-hour prompt caching in the API",
+        "originalTitle": "OpenAI — 12-hour prompt caching in the API",
+        "displayName": "OpenAI — 12-hour prompt caching in the API",
+        "sourceLanguage": "en",
+        "url": "https://openai.com/products/release-notes/?aif_revision=84463e68034cea98",
+        "description": "12-hour prompt caching in the API",
+        "stargazerCount": 0,
+        "licenseInfo": null,
+        "publishedAt": "Oct 20, 2026",
+        "sourceContext": "12-hour prompt caching in the API",
+        "primaryUrl": "https://openai.com/products/release-notes/",
+        "sourceDetails": {
+          "vendor": "OpenAI",
+          "vendor_region": "US",
+          "source_role": "commercial_primary_source",
+          "official_release_url": "https://openai.com/products/release-notes/",
+          "candidate_revision": "84463e68034cea98",
+          "vendor_record_kind": "structured_html",
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "404479ff-dca9-8165-92c1-e7d2a0bc9e02",
+      "score": 82,
+      "reason": "12時間プロンプトキャッシュは実務のAPIコストに直結する。",
+      "commercial_score": 88,
+      "shelf_life_score": 85,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "INFRA",
+      "deep_dive_priority_score": 84.1
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=50225552",
+      "deferred_at": "2026-10-25T08:32:36.833192+00:00",
+      "expires_at": "2026-12-24T08:32:36.833192+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "OpenAI says it will no longer train its AI models on the live internet",
+        "originalTitle": "OpenAI says it will no longer train its AI models on the live internet",
+        "displayName": "OpenAI says it will no longer train its AI models on the live internet",
+        "sourceLanguage": "en",
+        "url": "https://techcrunch.com/2026/10/23/openai-says-it-will-no-longer-train-its-ai-models-on-the-live-internet-citing-significant-risks/",
+        "description": "OpenAI says it will no longer train its AI models on the live internet",
+        "stargazerCount": 4,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-24T21:31:16Z",
+        "sourceContext": "HN points=4 comments=1 matched_query=OpenAI",
+        "primaryUrl": "https://techcrunch.com/2026/10/23/openai-says-it-will-no-longer-train-its-ai-models-on-the-live-internet-citing-significant-risks/",
+        "sourceDetails": {
+          "hn_id": "50225552",
+          "hn_url": "https://news.ycombinator.com/item?id=50225552",
+          "external_url": "https://techcrunch.com/2026/10/23/openai-says-it-will-no-longer-train-its-ai-models-on-the-live-internet-citing-significant-risks/",
+          "comments": 1,
+          "matched_query": "OpenAI",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "404479ff-dca9-8174-bfbd-d8cfa5134854",
+      "score": 82,
+      "reason": "OpenAIによるライブインターネットデータからの学習停止方針。",
+      "commercial_score": 85,
+      "shelf_life_score": 90,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "DATA",
+      "deep_dive_priority_score": 83.05
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=50175874",
+      "deferred_at": "2026-10-25T08:32:36.833279+00:00",
+      "expires_at": "2026-12-24T08:32:36.833279+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "DeepSeek Unveils Open-Source Tool to Help Cut AI Operating Costs",
+        "originalTitle": "DeepSeek Unveils Open-Source Tool to Help Cut AI Operating Costs",
+        "displayName": "DeepSeek Unveils Open-Source Tool to Help Cut AI Operating Costs",
+        "sourceLanguage": "en",
+        "url": "https://www.bloomberg.com/news/articles/2026-10-20/deepseek-unveils-open-source-tool-to-help-cut-ai-operating-costs",
+        "description": "DeepSeek Unveils Open-Source Tool to Help Cut AI Operating Costs",
+        "stargazerCount": 4,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-21T03:50:30Z",
+        "sourceContext": "HN points=4 comments=1 matched_query=DeepSeek",
+        "primaryUrl": "https://www.bloomberg.com/news/articles/2026-10-20/deepseek-unveils-open-source-tool-to-help-cut-ai-operating-costs",
+        "sourceDetails": {
+          "hn_id": "50175874",
+          "hn_url": "https://news.ycombinator.com/item?id=50175874",
+          "external_url": "https://www.bloomberg.com/news/articles/2026-10-20/deepseek-unveils-open-source-tool-to-help-cut-ai-operating-costs",
+          "comments": 1,
+          "matched_query": "DeepSeek",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "404479ff-dca9-8196-8c20-ce903fdf3728",
+      "score": 80,
+      "reason": "DeepSeekによるAI運用コスト削減オープンソースツールの公開。",
+      "commercial_score": 88,
+      "shelf_life_score": 75,
+      "shelf_life": "EVERGREEN",
+      "portfolio_topic": "INFRA",
+      "deep_dive_priority_score": 82.8
+    },
+    {
+      "key": "https://news.ycombinator.com/item?id=50219641",
+      "deferred_at": "2026-10-25T08:32:36.833349+00:00",
+      "expires_at": "2026-11-08T08:32:36.833349+00:00",
+      "repo": {
+        "source": "HackerNews",
+        "nameWithOwner": "Took apart Claude Code, then turned it into a free course on harness engineering",
+        "originalTitle": "Took apart Claude Code, then turned it into a free course on harness engineering",
+        "displayName": "Took apart Claude Code, then turned it into a free course on harness engineering",
+        "sourceLanguage": "en",
+        "url": "https://news.ycombinator.com/item?id=50219641",
+        "description": "Took apart Claude Code, then turned it into a free course on harness engineering",
+        "stargazerCount": 4,
+        "licenseInfo": null,
+        "publishedAt": "2026-10-24T09:48:38Z",
+        "sourceContext": "HN points=4 comments=0 matched_query=Claude",
+        "primaryUrl": "https://news.ycombinator.com/item?id=50219641",
+        "sourceDetails": {
+          "hn_id": "50219641",
+          "hn_url": "https://news.ycombinator.com/item?id=50219641",
+          "external_url": "",
+          "comments": 0,
+          "matched_query": "Claude",
+          "source_role": "market_engineer_reaction",
+          "lookback_days": 30,
+          "run269_precision": true
+        }
+      },
+      "notion_page_id": "404479ff-dca9-812e-bc24-f0f39d4d11ca",
+      "score": 78,
+      "reason": "注目ツールClaude Codeの内部構造解説と教材化",
+      "commercial_score": 85,
+      "shelf_life_score": 60,
+      "shelf_life": "TREND",
+      "portfolio_topic": "DEVTOOLS",
+      "deep_dive_priority_score": 80.45
+    },
     {
       "key": "https://openai.com/products/release-notes?aif_revision=23a2c359008750a2",
       "deferred_at": "2026-10-16T17:29:20.876296+00:00",
@@ -145,43 +292,6 @@
       "reason": "エージェント用サンドボックスツールAirlockの開発",
       "commercial_score": 80,
       "shelf_life_score": 45,
-      "shelf_life": "TREND",
-      "portfolio_topic": "AGENT",
-      "deep_dive_priority_score": 78.7
-    },
-    {
-      "key": "https://cloud.google.com/blog/products/ai-machine-learning/welcome-to-gemini-at-work-2026",
-      "deferred_at": "2026-10-09T09:42:51.689450+00:00",
-      "expires_at": "2026-10-23T09:42:51.689450+00:00",
-      "repo": {
-        "source": "HackerNews",
-        "nameWithOwner": "The Gemini Agent",
-        "originalTitle": "The Gemini Agent",
-        "displayName": "The Gemini Agent",
-        "sourceLanguage": "en",
-        "url": "https://cloud.google.com/blog/products/ai-machine-learning/welcome-to-gemini-at-work-2026",
-        "description": "The Gemini Agent",
-        "stargazerCount": 17,
-        "licenseInfo": null,
-        "publishedAt": "2026-10-08T21:26:28Z",
-        "sourceContext": "HN points=17 comments=2 matched_query=Gemini",
-        "primaryUrl": "https://cloud.google.com/blog/products/ai-machine-learning/welcome-to-gemini-at-work-2026",
-        "sourceDetails": {
-          "hn_id": "50012543",
-          "hn_url": "https://news.ycombinator.com/item?id=50012543",
-          "external_url": "https://cloud.google.com/blog/products/ai-machine-learning/welcome-to-gemini-at-work-2026",
-          "comments": 2,
-          "matched_query": "Gemini",
-          "source_role": "market_engineer_reaction",
-          "lookback_days": 30,
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3f4479ff-dca9-813c-9843-eb9d3a04651d",
-      "score": 78,
-      "reason": "企業向けエージェント展開はROI重視の意思決定材料となる。",
-      "commercial_score": 80,
-      "shelf_life_score": 60,
       "shelf_life": "TREND",
       "portfolio_topic": "AGENT",
       "deep_dive_priority_score": 78.7
@@ -658,88 +768,6 @@
       "shelf_life": "EVERGREEN",
       "portfolio_topic": "PRODUCT",
       "deep_dive_priority_score": 76.75
-    },
-    {
-      "key": "https://openai.com/products/release-notes?aif_revision=63b6eae567a61eb3",
-      "deferred_at": "2026-10-10T05:50:53.442082+00:00",
-      "expires_at": "2026-12-09T05:50:53.442082+00:00",
-      "repo": {
-        "source": "OfficialVendor",
-        "nameWithOwner": "OpenAI — Workspace owners and admins in ChatGPT Enterprise and Edu workspaces with RBAC enabled can now manage plugin access by role. Set the workspace default to Available, Install, or Disabled. Custom roles can use those settin",
-        "originalTitle": "OpenAI — Workspace owners and admins in ChatGPT Enterprise and Edu workspaces with RBAC enabled can now manage plugin access by role. Set the workspace default to Available, Install, or Disabled. Custom roles can use those settin",
-        "displayName": "OpenAI — Workspace owners and admins in ChatGPT Enterprise and Edu workspaces with RBAC enabled can now manage plugin access by role. Set the workspace default to Available, Install, or Disabled. Custom roles can use those settin",
-        "sourceLanguage": "en",
-        "url": "https://openai.com/products/release-notes/?aif_revision=63b6eae567a61eb3",
-        "description": "Workspace owners and admins in ChatGPT Enterprise and Edu workspaces with RBAC enabled can now manage plugin access by role. Set the workspace default to Available, Install, or Disabled. Custom roles can use those settings or Default to inherit the workspace setting.",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "Oct 8, 2026",
-        "sourceContext": "Workspace owners and admins in ChatGPT Enterprise and Edu workspaces with RBAC enabled can now manage plugin access by role. Set the workspace default to Available, Install, or Disabled. Custom roles can use those settings or Default to inherit the workspace setting.",
-        "primaryUrl": "https://openai.com/products/release-notes/",
-        "sourceDetails": {
-          "vendor": "OpenAI",
-          "vendor_region": "US",
-          "source_role": "commercial_primary_source",
-          "official_release_url": "https://openai.com/products/release-notes/",
-          "candidate_revision": "63b6eae567a61eb3",
-          "vendor_record_kind": "structured_html",
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "3f5479ff-dca9-8151-bdb1-d917d2be37e7",
-      "score": 74,
-      "reason": "Enterprise環境の権限管理を標準化する実務的変更。",
-      "commercial_score": 80,
-      "shelf_life_score": 80,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "SECURITY",
-      "deep_dive_priority_score": 76.1
-    },
-    {
-      "key": "https://www.langchain.com/blog/langsmith-trajectories-tracing",
-      "deferred_at": "2026-10-16T17:29:20.876617+00:00",
-      "expires_at": "2026-12-15T17:29:20.876617+00:00",
-      "repo": {
-        "source": "X",
-        "nameWithOwner": "langsmith trajectories tracing — langchain.com",
-        "originalTitle": "langsmith trajectories tracing — langchain.com",
-        "displayName": "langsmith trajectories tracing — langchain.com",
-        "sourceLanguage": "en",
-        "url": "https://www.langchain.com/blog/langsmith-trajectories-tracing",
-        "description": "X監視で発見した一次情報候補URL。X投稿自体は根拠に使わず、リンク先一次情報だけを検証対象とする。",
-        "stargazerCount": 1,
-        "licenseInfo": null,
-        "publishedAt": null,
-        "sourceContext": "",
-        "primaryUrl": "https://www.langchain.com/blog/langsmith-trajectories-tracing",
-        "sourceDetails": {
-          "source_platform": "x",
-          "source_role": "discovery_signal",
-          "raw_source_not_evidence": true,
-          "evidence_status": "discovery_only",
-          "is_evidence": false,
-          "canonical_primary_url": "https://www.langchain.com/blog/langsmith-trajectories-tracing",
-          "resolution_status": "candidate_needs_primary_verification",
-          "x_source_authors": [
-            "LangChain"
-          ],
-          "x_source_post_urls": [
-            "https://x.com/LangChain/status/2111140112201605469"
-          ],
-          "x_source_post_ids": [
-            "2111140112201605469"
-          ],
-          "mention_count": 1
-        }
-      },
-      "notion_page_id": "3fb479ff-dca9-81e3-ad0e-f2caa40ba6c2",
-      "score": 75,
-      "reason": "トレーシングによるデバッグ手法の確立。",
-      "commercial_score": 78,
-      "shelf_life_score": 75,
-      "shelf_life": "EVERGREEN",
-      "portfolio_topic": "DEVTOOLS",
-      "deep_dive_priority_score": 76.05
     }
   ]
 }
