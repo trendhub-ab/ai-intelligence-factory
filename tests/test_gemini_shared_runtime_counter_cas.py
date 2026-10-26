@@ -99,3 +99,58 @@ def test_branch_cas_conflict_never_skips_count(monkeypatch):
     used = saved["counter_scopes"][counter.counter_scope]["models"]["gemini-3.8-flash"]
     assert used["used"] == 3
     assert used["by_kind"]["deep_dive"] == 3
+
+def test_canonical_36_cap_blocks_combined_35_and_36_usage(monkeypatch):
+    """These two historical names route to one physical Gemini 3.6 model."""
+    import copy
+    import pytest
+    monkeypatch.setattr(p, "GH_PAT", "test-fixture-token")
+    counter = p.PersistentGeminiDailyCounter(
+        True, {"gemini-3.5-flash":18,"gemini-3.6-flash":18},18,
+        ".runtime/gemini_daily_usage.json", "America/Los_Angeles",
+        quota_scope_id="trendhub-ab/ai-intelligence-factory"
+    )
+    counter.repo="trendhub-ab/ai-intelligence-factory"
+    counter.branch="runtime-state"
+    monkeypatch.setattr(counter,"_quota_date",lambda:"2026-10-26")
+    state={"schema_version":3,"quota_date":"2026-10-26",
+           "counter_scopes":{counter.counter_scope:{"models":{
+               "gemini-3.5-flash":{"used":12,"by_kind":{},"exhausted":False},
+               "gemini-3.6-flash":{"used":6,"by_kind":{},"exhausted":False}
+           }}}}
+    writes=[]
+    monkeypatch.setattr(counter,"_read_remote",lambda:(copy.deepcopy(state),"sha"))
+    monkeypatch.setattr(counter,"_write_remote",lambda *a,**kw:writes.append(a))
+    with pytest.raises(p.GeminiBudgetExceededError,match="budget exhausted"):
+        counter.reserve("deep_dive",model_name="gemini-3.6-flash")
+    assert not writes
+    with pytest.raises(p.GeminiBudgetExceededError,match="budget exhausted"):
+        counter.reserve("deep_dive",model_name="gemini-3.5-flash")
+    assert not writes
+
+
+def test_canonical_38_cap_allows_final_slot_and_preserves_other_models(monkeypatch):
+    import copy
+    monkeypatch.setattr(p, "GH_PAT", "test-fixture-token")
+    counter=p.PersistentGeminiDailyCounter(
+        True,{"gemini-3.7-flash":18,"gemini-3.8-flash":18},18,
+        ".runtime/gemini_daily_usage.json","America/Los_Angeles",
+        quota_scope_id="trendhub-ab/ai-intelligence-factory"
+    )
+    counter.repo="trendhub-ab/ai-intelligence-factory"
+    counter.branch="runtime-state"
+    monkeypatch.setattr(counter,"_quota_date",lambda:"2026-10-26")
+    state={"schema_version":3,"quota_date":"2026-10-26",
+           "counter_scopes":{counter.counter_scope:{"models":{
+               "gemini-3.7-flash":{"used":12,"by_kind":{"legacy":12},"exhausted":False},
+               "gemini-3.8-flash":{"used":5,"by_kind":{"quality_retry":5},"exhausted":False},
+               "gemini-3.5-flash-lite":{"used":20,"by_kind":{},"exhausted":False}
+           }}}}
+    writes=[]
+    monkeypatch.setattr(counter,"_read_remote",lambda:(copy.deepcopy(state),"sha"))
+    monkeypatch.setattr(counter,"_write_remote",lambda data,sha:writes.append(copy.deepcopy(data)))
+    counter.reserve("deep_dive",model_name="gemini-3.8-flash")
+    models=writes[0]["counter_scopes"][counter.counter_scope]["models"]
+    assert models["gemini-3.8-flash"]["used"]==6
+    assert models["gemini-3.7-flash"]["used"]==12
+    assert models["gemini-3.5-flash-lite"]["used"]==20
