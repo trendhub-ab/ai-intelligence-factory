@@ -1,0 +1,11 @@
+# V1 Canonical Flash 18/day shared counter hardening (2026-10-26)
+
+**Design / engineering decision**: the user confirmed AIIF V1 and Next use one Google Cloud project. The existing V1 repository-local counter `runtime-state:.runtime/gemini_daily_usage.json` remains the authoritative storage; do not clone or replace it.
+
+Observed state on 2026-10-25 LA has separate legacy names (`gemini-3.5-flash`, `gemini-3.6-flash`, `gemini-3.7-flash`, `gemini-3.8-flash`). Per the repo's canonical 2026-10-26 model plan, 3.5 routes to 3.6 and 3.7 routes to 3.8. Current V1 `PersistentGeminiDailyCounter.reserve` checks only the entry with the requested name; therefore alias names can independently spend past the **physical-model** ceiling.
+
+**Approaches**: A) another shared file => rejected split-brain; B) Next only consults V1 => rejected, V1 can overrun alias pool; **C) V1 modifies only reserve check to aggregate real-model aliases, Next uses exact same CAS ledger** => selected. Preserve older entries (no destructive migration) and existing `by_kind` audit. The `reserve` check combines group `used` amounts and group exhausted flags with the strictest cap, defaults 18. The new reservation is persisted under the originally requested V1 model name. Unrelated Flash-Lite models retain separate pools.
+
+Quota day is **America/Los_Angeles**, not JST. On day rollover V1's existing normalizer resets state; read-write concurrency via GitHub Contents API blob SHA and bounded 409 retry persists. V1's own workflow concurrency remains unchanged. Do NOT claim this is the actual Google API quota. When a provider alias changes, update the documented alias mapping by a new reviewed PR, not by guessing.
+
+**Scope and non-goals**: changes only V1 `pipeline.py` reserve group check + offline regression tests and this spec. Do not modify Production workflows, API triggers, Writer, Notion/note, or actual runtime-state counter values. Integration with Next is in its own PR and requires access to this existing counter. Both PRs must be merged (V1 first) before any further paid Pilot. Required unit cases: 3.5+3.6 pooled 18; 3.7+3.8 pooled 18; unrelated models unaffected; CAS unchanged; no Gemini requests. Existing protected main not modified without MERGE GO.

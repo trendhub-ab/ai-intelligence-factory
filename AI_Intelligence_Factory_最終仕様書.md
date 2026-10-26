@@ -1,10 +1,10 @@
 # AI Intelligence Factory — 現行Production仕様
 
-仕様最終変更日: **2026-10-25**
-Production最終照合日: **2026-10-25**
+仕様最終変更日: **2026-10-26**
+Production最終照合日: **2026-10-26**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`bd9d8e58525b53f2ac1899d7b60cc082f40cfbcf2771af9763d0253433e9dc86`**
+Production Contract Fingerprint: **`0f387cd903be10247565c1521ba2bfe55616ee4978cb045333eaf715f8d27a67`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
@@ -410,6 +410,7 @@ A+導入のために追加Provider callを要求しない。
 - `runtime-state`への試験書込・再読込は利用回数0件で成功（commit `a3c5ff91f910887c3138369dc406332cd4e9adda`）。初回実呼び出し時はAmerica/Los_Angeles日付に合わせて既存Counterが日次正規化される。手動AI Studioなどrepository外の呼び出しはカウント対象外であり、Google providerのquotaを保証するものではない。
 - `issue668-stage2-live-rerun.yml`はmainへのpush連動による意図しない実API再発火を防ぐため`workflow_dispatch`専用とし、主担当者による明示起動を要する。既存のモデル選択やEvidence/Fact/Publication Gateは変更しない。
 - Counter書込エラー時にはGemini呼び出し前にfail closedする。counter無効化・保護mainへの書込再導入・run専用別台帳・同時実行制限解除は認めない。
+- **2026-10-26 Flash実モデル上限統合（PR #878）**: 3.5→3.6、3.7→3.8の旧名称と現行名称はそれぞれ同一の実モデル上限（最大18回／America/Los_Angeles日）として使用回数を合算する。旧名称の履歴・by_kindは破壊せず、既存`runtime-state:.runtime/gemini_daily_usage.json`・repository scope・GitHub CAS 409再評価を正本とする。Flash-Liteは別枠。Nextからも同じリポジトリの同一scopeへ送信前に予約する。別リポジトリのActions tokenは自動的にはV1の書込権限を持たないため、Nextでは専用の最小権限tokenを別途設定し、未設定やCAS失敗は送信前にfail closedする。Google AI Studio手動利用はこの台帳の観測対象外。
 
 ### 6.2b P5 A–E原因切り分け ChatOps（2026-10-24、未昇格の実験）
 
