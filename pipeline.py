@@ -968,27 +968,13 @@ class PersistentGeminiDailyCounter:
         if not self.counter_scope:
             raise GeminiBudgetExceededError("Persistent Gemini counter has no stable scope")
         quota_date = self._quota_date()
-        # 2026-10: historical Gemini aliases resolve to one physical model.
-        # Do not let separate old/new ledger names double its 18/day safety cap.
-        alias_groups = {
-            "gemini-3.5-flash": ("gemini-3.5-flash", "gemini-3.6-flash"),
-            "gemini-3.6-flash": ("gemini-3.5-flash", "gemini-3.6-flash"),
-            "gemini-3.7-flash": ("gemini-3.7-flash", "gemini-3.8-flash"),
-            "gemini-3.8-flash": ("gemini-3.7-flash", "gemini-3.8-flash"),
-        }
-        group = alias_groups.get(model_name, (model_name,))
-        budget = min([self.budget_for(name) for name in group] +
-                     ([18] if len(group) > 1 else []))
+        budget = self.budget_for(model_name)
         for attempt in range(3):
             data, sha = self._read_remote()
             data = self._normalized_day(data, quota_date)
             state = self._model_state(data, model_name)
-            models = self._scope_state(data).get("models", {})
-            # Preserve historical per-name records for audit and rollback.
-            used = sum(int(models.get(name, {}).get("used", 0) or 0)
-                       for name in group)
-            exhausted = any(bool(models.get(name, {}).get("exhausted", False))
-                            for name in group)
+            used = int(state.get("used", 0) or 0)
+            exhausted = bool(state.get("exhausted", False))
             if exhausted or used + 1 + max(0, reserve) > budget:
                 raise GeminiBudgetExceededError(
                     f"Persistent Gemini model budget exhausted: {model_name} {used}/{budget} "
@@ -996,7 +982,7 @@ class PersistentGeminiDailyCounter:
                 )
 
             by_kind = state.get("by_kind") if isinstance(state.get("by_kind"), dict) else {}
-            state["used"] = int(state.get("used", 0) or 0) + 1
+            state["used"] = used + 1
             state["budget"] = budget
             state["by_kind"] = by_kind
             by_kind[kind] = int(by_kind.get(kind, 0) or 0) + 1
