@@ -5,10 +5,10 @@
         "gemini-3.6-flash": {
           "budget": 18,
           "by_kind": {
-            "aiif_next_private_pilot": 3
+            "aiif_next_private_pilot": 4
           },
           "exhausted": false,
-          "used": 3
+          "used": 4
         }
       }
     }
@@ -17,5 +17,5 @@
   "quota_date": "2026-10-26",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-10-26T09:07:06.261407+00:00"
+  "updated_at": "2026-10-26T09:08:26.534922+00:00"
 }
