@@ -349,9 +349,13 @@ def install(pipeline_module: Any) -> Any:
     counter = getattr(pipeline_module, "PERSISTENT_GEMINI_COUNTER", None)
     if counter is not None:
         counter.branch = branch
-        install_canonical_flash_alias_budget(
-            counter, pipeline_module.GeminiBudgetExceededError
-        )
+        # Test-only pipeline proxies may expose branch/auth without the actual
+        # reservation interface. Production always supplies both contracts.
+        if (callable(getattr(counter, "reserve", None))
+                and hasattr(pipeline_module, "GeminiBudgetExceededError")):
+            install_canonical_flash_alias_budget(
+                counter, pipeline_module.GeminiBudgetExceededError
+            )
     _install_counter_runtime_auth(pipeline_module)
     _install_provider_health_runtime_auth()
 
