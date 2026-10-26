@@ -255,6 +255,81 @@ def _install_product_review_assessment_rescue(pipeline_module: Any) -> None:
     product_review_assessment_rescue.install(pipeline_module)
 
 
+def install_canonical_flash_alias_budget(counter: Any, budget_error: type) -> None:
+    """Share an 18/day *physical model* limit across the old alias ledger rows.
+
+    The immutable Fresh protocol pins pipeline.py. Install this narrow
+    reservation overlay in the existing runtime-state layer instead.
+    Keep old ledger row identities, by_kind and the native SHA/CAS writer.
+    """
+    if getattr(counter, "_aiif_canonical_flash_cap_installed", False):
+        return
+    original = counter.reserve
+    grouped_models = {
+        "gemini-3.5-flash": ("gemini-3.5-flash", "gemini-3.6-flash"),
+        "gemini-3.6-flash": ("gemini-3.5-flash", "gemini-3.6-flash"),
+        "gemini-3.7-flash": ("gemini-3.7-flash", "gemini-3.8-flash"),
+        "gemini-3.8-flash": ("gemini-3.7-flash", "gemini-3.8-flash"),
+    }
+
+    def reserve(kind: str, reserve: int = 0, model_name: str = "default") -> None:
+        group = grouped_models.get(model_name)
+        if not group:
+            return original(kind, reserve=reserve, model_name=model_name)
+        if not counter.enabled:
+            return
+        if not counter.counter_scope:
+            raise budget_error("Persistent Gemini counter has no stable scope")
+        quota_date = counter._quota_date()
+        budget = min(18, *(counter.budget_for(name) for name in group))
+        for attempt in range(3):
+            data, sha = counter._read_remote()
+            data = counter._normalized_day(data, quota_date)
+            state = counter._model_state(data, model_name)
+            scope = counter._scope_state(data)
+            models = scope["models"]
+            used = 0
+            exhausted = False
+            for name in group:
+                row = models.get(name, {})
+                if not isinstance(row, dict):
+                    raise budget_error("Persistent Gemini counter malformed model state")
+                count = row.get("used", 0)
+                if type(count) is not int or count < 0:
+                    raise budget_error("Persistent Gemini counter malformed model usage")
+                used += count
+                exhausted = exhausted or bool(row.get("exhausted", False))
+            if exhausted or used + 1 + max(0, reserve) > budget:
+                raise budget_error(
+                    f"Persistent Gemini model budget exhausted: {model_name} "
+                    f"{used}/{budget} quota_date={quota_date}"
+                )
+            by_kind = state.get("by_kind") if isinstance(state.get("by_kind"), dict) else {}
+            state["used"] = int(state.get("used", 0) or 0) + 1
+            state["budget"] = budget
+            state["by_kind"] = by_kind
+            by_kind[kind] = int(by_kind.get(kind, 0) or 0) + 1
+            data["updated_at"] = datetime.now(timezone.utc).isoformat()
+            data["scope_kind"] = "repository_local"
+            if counter.provider_project_scope:
+                data["provider_project_fingerprint"] = counter.provider_project_scope
+            try:
+                counter._write_remote(data, sha)
+                counter.session_used += 1
+                return
+            except budget_error as error:
+                if attempt < 2 and (
+                    "HTTP 409" in str(error) or "HTTP 422" in str(error)
+                ):
+                    time.sleep(0.5 * (attempt + 1))
+                    continue
+                raise
+        raise budget_error("Persistent Gemini alias-group reservation failed after retries")
+
+    counter.reserve = reserve
+    counter._aiif_canonical_flash_cap_installed = True
+
+
 def install(pipeline_module: Any) -> Any:
     """Redirect every existing mutable GitHub state writer to the runtime-state branch."""
     branch = apply_runtime_state_env()
@@ -274,6 +349,9 @@ def install(pipeline_module: Any) -> Any:
     counter = getattr(pipeline_module, "PERSISTENT_GEMINI_COUNTER", None)
     if counter is not None:
         counter.branch = branch
+        install_canonical_flash_alias_budget(
+            counter, pipeline_module.GeminiBudgetExceededError
+        )
     _install_counter_runtime_auth(pipeline_module)
     _install_provider_health_runtime_auth()
 
