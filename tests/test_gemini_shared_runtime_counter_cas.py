@@ -4,6 +4,7 @@ import base64
 import json
 
 import pipeline as p
+from run203_runtime_state_channel import install_canonical_flash_alias_budget
 
 
 class Response:
@@ -112,6 +113,7 @@ def test_canonical_36_cap_blocks_combined_35_and_36_usage(monkeypatch):
     )
     counter.repo="trendhub-ab/ai-intelligence-factory"
     counter.branch="runtime-state"
+    install_canonical_flash_alias_budget(counter,p.GeminiBudgetExceededError)
     monkeypatch.setattr(counter,"_quota_date",lambda:"2026-10-26")
     state={"schema_version":3,"quota_date":"2026-10-26",
            "counter_scopes":{counter.counter_scope:{"models":{
@@ -139,6 +141,7 @@ def test_canonical_38_cap_allows_final_slot_and_preserves_other_models(monkeypat
     )
     counter.repo="trendhub-ab/ai-intelligence-factory"
     counter.branch="runtime-state"
+    install_canonical_flash_alias_budget(counter,p.GeminiBudgetExceededError)
     monkeypatch.setattr(counter,"_quota_date",lambda:"2026-10-26")
     state={"schema_version":3,"quota_date":"2026-10-26",
            "counter_scopes":{counter.counter_scope:{"models":{
