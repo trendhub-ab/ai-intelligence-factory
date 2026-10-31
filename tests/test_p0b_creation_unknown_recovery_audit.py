@@ -1776,7 +1776,7 @@ def test_owner_menu_navigation_never_mutates_editor_or_leaks_private_fields():
     assert "get_by_role" in source
     assert "aria-haspopup" in source
     for forbidden in (
-        "requests.post(", ".fill(", ".upload(", ".screenshot(", 
+        "requests.post(", ".fill(", ".upload(", ".screenshot(",
         "mark_draft_created(", "create_draft(", ".set_input_files(", "page.content(",
     ):
         assert forbidden not in source
