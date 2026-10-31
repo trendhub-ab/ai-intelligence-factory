@@ -64,6 +64,7 @@ def test_safe_projection_excludes_private_identity_and_unpublished_content():
         "rejection_counts": {bucket: 0 for bucket in recovery.REJECTION_BUCKETS},
         "inspection_stage_counts": {stage: 0 for stage in recovery.INSPECTION_STAGES},
         "title_failure_counts": {code: 0 for code in recovery.TITLE_FAILURE_CODES},
+        "title_dom_signal_counts": {code: 0 for code in recovery.TITLE_DOM_SIGNAL_CODES},
     }
     for forbidden in ("recovered_draft_id", "sync_id", "draft_url", "title", "manuscript"):
         assert forbidden not in safe
@@ -192,6 +193,7 @@ def test_non_unique_readonly_audit_reports_counts_without_authorizing_recovery(m
                 {"different_title": 6 - len(matches)},
                 {"title_read": 1},
                 {"title_selector_unavailable": 1},
+                {"ready_complete": 1, "editables_missing": 1},
             ),
         )
         result = recovery.run(
@@ -204,6 +206,8 @@ def test_non_unique_readonly_audit_reports_counts_without_authorizing_recovery(m
         assert result["rejection_counts"]["different_title"] == 6 - len(matches)
         assert result["inspection_stage_counts"]["title_read"] == 1
         assert result["title_failure_counts"]["title_selector_unavailable"] == 1
+        assert result["title_dom_signal_counts"]["ready_complete"] == 1
+        assert result["title_dom_signal_counts"]["editables_missing"] == 1
         assert result["read_only"] is True
         assert result["draft_mutation"] is False
         assert result["public_release"] is False
@@ -456,3 +460,112 @@ def test_title_failure_audit_counts_are_independent_of_safety_state():
     assert "counts[\"inspection_error\"] += 1" in source
     assert "record.snapshot.canonical_document_sha256" in source
     assert "context.close()" in source
+
+
+def test_title_dom_probe_reads_only_fixed_presence_signals_without_page_content():
+    recovery = _module()
+    class Locator:
+        def __init__(self, count):
+            self.value = count
+        def count(self):
+            return self.value
+
+    class Page:
+        url = "https://editor.note.com/notes/private-test-id/edit"
+        def evaluate(self, expression):
+            assert expression == "document.readyState"
+            return "complete"
+        def locator(self, selector):
+            assert selector in {
+                "body",
+                "input, textarea",
+                '[contenteditable="true"], [contenteditable="plaintext-only"]',
+                '[role="textbox"]',
+                '[role="progressbar"], [aria-busy="true"]',
+            }
+            return Locator({
+                "body": 1,
+                "input, textarea": 0,
+                '[contenteditable="true"], [contenteditable="plaintext-only"]': 0,
+                '[role="textbox"]': 0,
+                '[role="progressbar"], [aria-busy="true"]': 1,
+            }[selector])
+        def content(self):
+            raise AssertionError("raw DOM/HTML must never be read")
+        def screenshot(self, *args, **kwargs):
+            raise AssertionError("screenshots are forbidden")
+        def goto(self, *args, **kwargs):
+            raise AssertionError("navigation is forbidden")
+
+    signals = recovery._safe_title_dom_signals(Page())
+    assert signals == (
+        "ready_complete", "body_present", "inputs_missing",
+        "editables_missing", "textboxes_missing", "busy_present",
+    )
+    assert set(signals).issubset(set(recovery.TITLE_DOM_SIGNAL_CODES))
+    assert "private-test-id" not in str(signals)
+
+
+def test_title_dom_probe_fails_closed_to_unknown_when_js_or_locator_fails():
+    recovery = _module()
+    class Page:
+        url = "https://note.com/notes/private/edit"
+        def evaluate(self, expression):
+            raise RuntimeError("private title text 123")
+        def locator(self, selector):
+            raise RuntimeError("https://note.com/notes/private/edit")
+    signals = recovery._safe_title_dom_signals(Page())
+    assert signals == (
+        "ready_unknown", "body_unknown", "inputs_unknown",
+        "editables_unknown", "textboxes_unknown", "busy_unknown",
+    )
+    assert "private" not in str(signals)
+
+
+def test_title_dom_probe_never_interprets_raw_browser_values_as_output():
+    recovery = _module()
+    class Locator:
+        def count(self):
+            return 0
+    class Page:
+        url = "https://note.com/notes/private/edit"
+        def evaluate(self, expression):
+            return "secret manuscript from browser"
+        def locator(self, selector):
+            return Locator()
+    signals = recovery._safe_title_dom_signals(Page())
+    assert signals[0] == "ready_unknown"
+    assert all(signal.endswith("_missing") for signal in signals[1:])
+    assert "secret" not in str(signals)
+
+
+def test_title_dom_projection_drops_private_keys_and_arbitrary_page_data():
+    recovery = _module()
+    result = recovery.safe_recovery_projection({
+        "title_dom_signal_counts": {
+            "ready_complete": 2,
+            "editables_missing": 2,
+            "busy_present": 1,
+            "draft_url": "https://note.com/notes/private-draft/edit",
+            "raw_html": "private manuscript",
+        },
+    })
+    assert result["title_dom_signal_counts"]["ready_complete"] == 2
+    assert result["title_dom_signal_counts"]["editables_missing"] == 2
+    assert result["title_dom_signal_counts"]["busy_present"] == 1
+    assert set(result["title_dom_signal_counts"]) == set(recovery.TITLE_DOM_SIGNAL_CODES)
+    assert "private-draft" not in str(result)
+    assert "private manuscript" not in str(result)
+
+
+def test_title_dom_probe_only_follows_existing_selector_unavailable_failure():
+    recovery = _module()
+    source = inspect.getsource(recovery._discover_verified_matches)
+    assert 'stage == "title_read"' in source
+    assert 'exc.code == "title_selector_unavailable"' in source
+    assert "_safe_title_dom_signals(page)" in source
+    assert 'counts["inspection_error"] += 1' in source
+    assert "record.snapshot.canonical_document_sha256" in source
+    forbidden = (".click(", ".fill(", "page.content(", "page.screenshot(", "requests.post(")
+    function_source = inspect.getsource(recovery._safe_title_dom_signals)
+    assert all(token not in function_source for token in forbidden)

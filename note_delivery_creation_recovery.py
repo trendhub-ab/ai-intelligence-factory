@@ -53,6 +53,16 @@ TITLE_FAILURE_CODES = (
     "title_selector_unavailable", "title_selector_exception",
     "title_retry_interrupted", "title_value_unreadable", "title_other",
 )
+# Independent aggregate DOM presence signals for confirmed existing editor routes.
+# Never record page identity, raw HTML, text, attributes, counts or error messages.
+TITLE_DOM_SIGNAL_CODES = (
+    "ready_loading", "ready_interactive", "ready_complete", "ready_unknown",
+    "body_present", "body_missing", "body_unknown",
+    "inputs_present", "inputs_missing", "inputs_unknown",
+    "editables_present", "editables_missing", "editables_unknown",
+    "textboxes_present", "textboxes_missing", "textboxes_unknown",
+    "busy_present", "busy_missing", "busy_unknown",
+)
 
 
 class CreationRecoveryAuditError(RuntimeError):
@@ -99,6 +109,10 @@ def safe_recovery_projection(result: dict[str, Any]) -> dict[str, Any]:
         "title_failure_counts": {
             code: int((result.get("title_failure_counts") or {}).get(code) or 0)
             for code in TITLE_FAILURE_CODES
+        },
+        "title_dom_signal_counts": {
+            code: int((result.get("title_dom_signal_counts") or {}).get(code) or 0)
+            for code in TITLE_DOM_SIGNAL_CODES
         },
     }
 
@@ -233,10 +247,50 @@ def _read_only_title_field(page: Any, legacy_finder: Any) -> Any:
         raise TitleReadInspectionError(code) from None
 
 
+def _safe_title_dom_signals(page: Any) -> tuple[str, ...]:
+    """Read only boolean DOM presence / bounded readiness codes on an edit route.
+
+    No page content, title strings, editor URL, raw selector counts, HTML, screenshot
+    or arbitrary browser exception enters the result or logs. These probes never
+    create a title candidate or authorize recovery.
+    """
+    unknown = (
+        "ready_unknown", "body_unknown", "inputs_unknown",
+        "editables_unknown", "textboxes_unknown", "busy_unknown",
+    )
+    if not editor_readiness._is_editor_url(str(page.url or "")):
+        return unknown
+
+    try:
+        state = page.evaluate("document.readyState")
+        ready = {
+            "loading": "ready_loading",
+            "interactive": "ready_interactive",
+            "complete": "ready_complete",
+        }.get(state, "ready_unknown") if isinstance(state, str) else "ready_unknown"
+    except Exception:
+        ready = "ready_unknown"
+
+    signals = [ready]
+    for category, selector in (
+        ("body", "body"),
+        ("inputs", "input, textarea"),
+        ("editables", '[contenteditable="true"], [contenteditable="plaintext-only"]'),
+        ("textboxes", '[role="textbox"]'),
+        ("busy", '[role="progressbar"], [aria-busy="true"]'),
+    ):
+        try:
+            present = int(page.locator(selector).count()) > 0
+            signals.append(f"{category}_{'present' if present else 'missing'}")
+        except Exception:
+            signals.append(f"{category}_unknown")
+    return tuple(signals)
+
+
 def _discover_verified_matches(
     article: dict[str, Any],
     record: DeliveryRecord,
-) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, int], dict[str, int]]:
+) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, int], dict[str, int], dict[str, int]]:
     """Inspect history read-only; count only fixed codes, never private identities."""
     try:
         from playwright.sync_api import sync_playwright
@@ -247,8 +301,9 @@ def _discover_verified_matches(
     counts = {bucket: 0 for bucket in REJECTION_BUCKETS}
     stages = {stage: 0 for stage in INSPECTION_STAGES}
     title_failures = {code: 0 for code in TITLE_FAILURE_CODES}
+    title_dom_signals = {code: 0 for code in TITLE_DOM_SIGNAL_CODES}
     if not candidates:
-        return [], 0, counts, stages, title_failures
+        return [], 0, counts, stages, title_failures, title_dom_signals
 
     matches: list[dict[str, Any]] = []
     legacy_title_finder = draft_audit.note_base._find_title
@@ -323,10 +378,16 @@ def _discover_verified_matches(
                         stages[stage if stage in stages else "other"] += 1
                         if stage == "title_read":
                             title_failures[_title_failure_code(exc)] += 1
+                            if (
+                                isinstance(exc, TitleReadInspectionError)
+                                and exc.code == "title_selector_unavailable"
+                            ):
+                                for signal in _safe_title_dom_signals(page):
+                                    title_dom_signals[signal] += 1
                         continue
             finally:
                 context.close()
-    return matches, len(candidates), counts, stages, title_failures
+    return matches, len(candidates), counts, stages, title_failures, title_dom_signals
 
 
 def run(
@@ -365,13 +426,15 @@ def run(
         "rejection_counts": {bucket: 0 for bucket in REJECTION_BUCKETS},
         "inspection_stage_counts": {stage: 0 for stage in INSPECTION_STAGES},
         "title_failure_counts": {code: 0 for code in TITLE_FAILURE_CODES},
+        "title_dom_signal_counts": {code: 0 for code in TITLE_DOM_SIGNAL_CODES},
     }
     if prepare_only:
         return base_result
 
-    matches, candidate_count, rejection_counts, inspection_stage_counts, title_failure_counts = (
-        _discover_verified_matches(article, record)
-    )
+    (
+        matches, candidate_count, rejection_counts, inspection_stage_counts,
+        title_failure_counts, title_dom_signal_counts,
+    ) = _discover_verified_matches(article, record)
     base_result["history_candidate_count"] = candidate_count
     base_result["match_count"] = len(matches)
     base_result["rejection_counts"] = {
@@ -382,6 +445,9 @@ def run(
     }
     base_result["title_failure_counts"] = {
         code: int(title_failure_counts.get(code, 0)) for code in TITLE_FAILURE_CODES
+    }
+    base_result["title_dom_signal_counts"] = {
+        code: int(title_dom_signal_counts.get(code, 0)) for code in TITLE_DOM_SIGNAL_CODES
     }
     # Preserve the exact safe counts even on an ambiguous/missing match.
     # Never grant recovery authority or infer permission to create a new draft.
