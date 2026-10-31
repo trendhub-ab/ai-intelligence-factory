@@ -617,7 +617,7 @@ def _bounded_official_list_scan(page: Any, title: str) -> set[str]:
             raw = page.evaluate(r"""() => {
                 const anchors = Array.from(document.querySelectorAll('a[href]'));
                 const item = anchors.find(a => (a.getAttribute('rel') || '')
-                    .split(/\\s+/).includes('next') ||
+                    .split(/\s+/).includes('next') ||
                     /(次へ|next)/i.test(
                       (a.getAttribute('aria-label') || a.textContent || '').slice(0,60)));
                 return item ? item.getAttribute('href') : '';
