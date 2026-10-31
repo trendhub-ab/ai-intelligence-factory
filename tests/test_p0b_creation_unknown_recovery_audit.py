@@ -68,6 +68,8 @@ def test_safe_projection_excludes_private_identity_and_unpublished_content():
         "title_context_signal_counts": {code: 0 for code in recovery.TITLE_CONTEXT_CODES},
         "title_route_shape_counts": {code: 0 for code in recovery.TITLE_ROUTE_SHAPES},
         "title_atomic_dom_counts": {code: 0 for code in recovery.TITLE_ATOMIC_DOM_CODES},
+        "failed_screen_signal_counts": {code: 0 for code in recovery.SCREEN_SIGNAL_CODES},
+        "control_screen_signal_counts": {code: 0 for code in recovery.SCREEN_SIGNAL_CODES},
     }
     for forbidden in ("recovered_draft_id", "sync_id", "draft_url", "title", "manuscript"):
         assert forbidden not in safe
@@ -200,6 +202,8 @@ def test_non_unique_readonly_audit_reports_counts_without_authorizing_recovery(m
                 {"http_2xx": 1, "route_same_identity": 1, "js_responding": 1},
                 {"shape_strict_supported": 1},
                 {"atomic_available": 1, "atomic_ready_complete": 1},
+                {"surface_not_found_hint": 1, "surface_header_present": 1},
+                {"surface_header_present": 2, "surface_main_present": 2},
             ),
         )
         result = recovery.run(
@@ -217,6 +221,8 @@ def test_non_unique_readonly_audit_reports_counts_without_authorizing_recovery(m
         assert result["title_context_signal_counts"]["route_same_identity"] == 1
         assert result["title_route_shape_counts"]["shape_strict_supported"] == 1
         assert result["title_atomic_dom_counts"]["atomic_ready_complete"] == 1
+        assert result["failed_screen_signal_counts"]["surface_not_found_hint"] == 1
+        assert result["control_screen_signal_counts"]["surface_main_present"] == 2
         assert result["read_only"] is True
         assert result["draft_mutation"] is False
         assert result["public_release"] is False
@@ -803,3 +809,91 @@ def test_route_and_atomic_dom_diagnostics_do_not_change_recovery_authority():
         diagnostic = inspect.getsource(getattr(recovery, name))
         for forbidden in (".click(", ".fill(", ".goto(", ".content(", ".screenshot(", "requests.post("):
             assert forbidden not in diagnostic
+
+
+def test_private_screen_evidence_uses_fixed_bitmask_only():
+    recovery = _module()
+    class Page:
+        def __init__(self, value):
+            self.value = value
+            self.calls = 0
+        def evaluate(self, code):
+            self.calls += 1
+            assert "document" in code
+            assert "innerText" in code
+            assert "return mask" in code
+            assert "console.log" not in code
+            assert "fetch(" not in code
+            return self.value
+        def content(self):
+            raise AssertionError("never return raw private DOM")
+        def screenshot(self, *args, **kwargs):
+            raise AssertionError("never capture private screenshot")
+        def goto(self, *args, **kwargs):
+            raise AssertionError("never navigate from diagnostic")
+    page = Page(1 | 16 | 64 | 1024)
+    result = recovery._safe_visible_screen_signals(page)
+    assert result == (
+        "surface_not_found_hint", "surface_header_present",
+        "surface_button_present", "surface_short_visible_text",
+    )
+    assert page.calls == 1
+    assert set(result).issubset(set(recovery.SCREEN_SIGNAL_CODES))
+
+
+def test_private_screen_evidence_fails_closed_on_untrusted_values():
+    recovery = _module()
+    for raw in ("a private draft title", True, -1, 8192, 1.1, None, {}):
+        class Page:
+            def evaluate(self, _):
+                return raw
+        assert recovery._safe_visible_screen_signals(Page()) == ("surface_probe_unavailable",)
+    class Page:
+        def evaluate(self, _):
+            raise RuntimeError("https://note.com/notes/secret/edit private article")
+    result = recovery._safe_visible_screen_signals(Page())
+    assert result == ("surface_probe_unavailable",)
+    assert "secret" not in str(result)
+
+
+def test_private_screen_evidence_has_explicit_zero_mask_and_disallows_unknown_bits():
+    recovery = _module()
+    class Page:
+        def evaluate(self, _):
+            return 0
+    assert recovery._safe_visible_screen_signals(Page()) == ("surface_no_indicators",)
+
+
+def test_private_screen_projections_allow_only_fixed_codes():
+    recovery = _module()
+    safe = recovery.safe_recovery_projection({
+        "failed_screen_signal_counts": {
+            "surface_permission_hint": 2,
+            "title": "secret",
+            "raw_text": "private article content",
+        },
+        "control_screen_signal_counts": {
+            "surface_editor_link_present": 17,
+            "cookie": "session secret",
+        },
+    })
+    assert set(safe["failed_screen_signal_counts"]) == set(recovery.SCREEN_SIGNAL_CODES)
+    assert set(safe["control_screen_signal_counts"]) == set(recovery.SCREEN_SIGNAL_CODES)
+    assert safe["failed_screen_signal_counts"]["surface_permission_hint"] == 2
+    assert safe["control_screen_signal_counts"]["surface_editor_link_present"] == 17
+    assert "private" not in str(safe)
+    assert "cookie" not in str(safe)
+    assert "secret" not in str(safe)
+
+
+def test_private_screen_diagnostic_collects_failed_and_control_aggregates_separately():
+    recovery = _module()
+    code = inspect.getsource(recovery._discover_verified_matches)
+    assert "_safe_visible_screen_signals(page)" in code
+    assert 'control_screen_signal_counts[signal] += 1' in code
+    assert 'failed_screen_signal_counts[signal] += 1' in code
+    assert 'exc.code == "title_selector_unavailable"' in code
+    assert "record.snapshot.canonical_document_sha256" in code
+    surface = inspect.getsource(recovery._safe_visible_screen_signals)
+    for forbidden in (".click(", ".fill(", ".goto(", ".content(", ".screenshot(", "requests.post(", "print("):
+        assert forbidden not in surface
