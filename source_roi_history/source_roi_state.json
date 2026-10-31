@@ -508,8 +508,8 @@
       }
     },
     {
-      "run_id": "20261025T083454Z",
-      "recorded_at": "2026-10-25T08:34:54.466969+00:00",
+      "run_id": "20261031T001326Z",
+      "recorded_at": "2026-10-31T00:13:26.093412+00:00",
       "sources": {
         "GitHub": {
           "screened": 0,
@@ -522,33 +522,33 @@
           "pending_retry": 0
         },
         "HackerNews": {
-          "screened": 39,
+          "screened": 43,
           "stock_saved": 21,
-          "deep_dive_attempted": 0,
+          "deep_dive_attempted": 5,
+          "generation_requests": 7,
+          "ready": 0,
+          "review": 0,
+          "quality_failed": 4,
+          "pending_retry": 1
+        },
+        "ArXiv": {
+          "screened": 47,
+          "stock_saved": 24,
+          "deep_dive_attempted": 2,
           "generation_requests": 0,
           "ready": 0,
           "review": 0,
           "quality_failed": 0,
-          "pending_retry": 0
-        },
-        "ArXiv": {
-          "screened": 47,
-          "stock_saved": 28,
-          "deep_dive_attempted": 1,
-          "generation_requests": 2,
-          "ready": 0,
-          "review": 0,
-          "quality_failed": 0,
-          "pending_retry": 0
+          "pending_retry": 2
         },
         "OfficialVendor": {
-          "screened": 14,
-          "stock_saved": 13,
+          "screened": 11,
+          "stock_saved": 10,
           "deep_dive_attempted": 3,
-          "generation_requests": 7,
-          "ready": 0,
-          "review": 0,
-          "quality_failed": 3,
+          "generation_requests": 3,
+          "ready": 2,
+          "review": 1,
+          "quality_failed": 0,
           "pending_retry": 0
         }
       }
@@ -571,47 +571,47 @@
       "learning_active": true
     },
     "HackerNews": {
-      "screened": 312.4692405267573,
+      "screened": 316.4692405267573,
       "stock_saved": 106.05130904468533,
-      "deep_dive_attempted": 32.10453788691957,
-      "generation_requests": 41.2879993370837,
+      "deep_dive_attempted": 37.10453788691957,
+      "generation_requests": 48.2879993370837,
       "ready": 6.889716991659642,
       "review": 4.0070355527490005,
-      "stock_yield": 0.34,
-      "ready_yield": 0.2202,
-      "generation_efficiency": 0.1685,
-      "roi_score": 25.18,
-      "allocation_weight": 0.26974,
+      "stock_yield": 0.336,
+      "ready_yield": 0.1946,
+      "generation_efficiency": 0.1468,
+      "roi_score": 23.45,
+      "allocation_weight": 0.254769,
       "mature": true,
       "learning_active": true
     },
     "ArXiv": {
       "screened": 263.0775269839552,
-      "stock_saved": 141.29138418131492,
-      "deep_dive_attempted": 6.958489303964141,
-      "generation_requests": 11.815232368020713,
+      "stock_saved": 137.29138418131492,
+      "deep_dive_attempted": 7.958489303964141,
+      "generation_requests": 9.815232368020713,
       "ready": 0.6017008706075703,
       "review": 2.3360578706075703,
-      "stock_yield": 0.5239,
-      "ready_yield": 0.1622,
-      "generation_efficiency": 0.0944,
-      "roi_score": 27.52,
-      "allocation_weight": 0.293875,
+      "stock_yield": 0.5097,
+      "ready_yield": 0.1506,
+      "generation_efficiency": 0.1063,
+      "roi_score": 26.74,
+      "allocation_weight": 0.287257,
       "mature": true,
       "learning_active": true
     },
     "OfficialVendor": {
-      "screened": 14.0,
-      "stock_saved": 13.0,
+      "screened": 11.0,
+      "stock_saved": 10.0,
       "deep_dive_attempted": 3.0,
-      "generation_requests": 7.0,
-      "ready": 0.0,
-      "review": 0.0,
-      "stock_yield": 0.5882,
-      "ready_yield": 0.1667,
-      "generation_efficiency": 0.0831,
-      "roi_score": 29.75,
-      "allocation_weight": 0.385456,
+      "generation_requests": 3.0,
+      "ready": 2.0,
+      "review": 1.0,
+      "stock_yield": 0.5484,
+      "ready_yield": 0.3889,
+      "generation_efficiency": 0.3422,
+      "roi_score": 43.54,
+      "allocation_weight": 0.505877,
       "mature": false,
       "learning_active": true
     }
