@@ -1181,3 +1181,72 @@ def test_bounded_scan_counters_are_fixed_codes_and_not_recovery_authority():
     main=inspect.getsource(recovery._discover_verified_matches)
     assert "official_list_scan_counts" in main
     assert "matches.append(" in main
+
+
+
+def test_official_list_layout_counters_are_fixed_read_only_codes():
+    recovery = _module()
+    expected = {
+        "list_root_scrollable", "list_nested_scrollable",
+        "list_main_populated", "list_any_edit_control",
+        "list_loading_visible", "list_scroll_overflow_hidden",
+    }
+    assert expected.issubset(set(recovery.OFFICIAL_LIST_SCAN_CODES))
+    class Button:
+        def count(self): return 0
+    class Page:
+        url = "https://note.com/notes"
+        def __init__(self): self.scrolls = 0; self.navigation = []
+        def get_by_role(self, role, name, exact):
+            assert role == "button" and exact and name == "sensitiveを編集"
+            return Button()
+        def evaluate(self, script, *args):
+            if "querySelectorAll" in script:
+                return 16 | 32 | 64 | 128 | 256 | 512
+            if "window.scrollBy" in script:
+                self.scrolls += 1
+                return 0
+            if "return item ? item.getAttribute('href')" in script:
+                return ""
+            raise AssertionError("unexpected read-only probe")
+        def wait_for_timeout(self, _): pass
+        def goto(self, url, **kwargs):
+            self.navigation.append(url)
+            raise AssertionError("no navigation without explicit safe next-page anchor")
+    page = Page()
+    codes = recovery._bounded_official_list_scan(page, "sensitive")
+    assert expected.issubset(codes)
+    assert "list_scan_limit_reached" in codes
+    assert "sensitive" not in str(codes)
+    assert page.scrolls <= 4 and not page.navigation
+
+    safe = recovery.safe_recovery_projection({
+        "official_list_scan_counts": {
+            "list_nested_scrollable": 1,
+            "private_id": "secret",
+            "rendered_text": "private manuscript",
+        }
+    })
+    counts = safe["official_list_scan_counts"]
+    assert set(counts) == set(recovery.OFFICIAL_LIST_SCAN_CODES)
+    assert counts["list_nested_scrollable"] == 1
+    for forbidden in ("secret", "manuscript", "private_id", "rendered_text"):
+        assert forbidden not in str(safe)
+
+
+def test_official_list_layout_invalid_mask_fails_closed_without_recovery_authority():
+    recovery = _module()
+    class Button:
+        def count(self): return 0
+    class Page:
+        def get_by_role(self, *_args, **_kwargs): return Button()
+        def evaluate(self, script, *args):
+            if "querySelectorAll" in script: return 1 << 10
+            raise AssertionError("layout mask invalid: no followup operations")
+    codes = recovery._bounded_official_list_scan(Page(), "private")
+    assert codes == {"list_scan_unavailable"}
+    assert "list_title_found_after_scroll" not in codes
+
+    source = inspect.getsource(recovery._bounded_official_list_scan)
+    for forbidden in (".click(", ".fill(", ".screenshot(", ".content(", "requests.post("):
+        assert forbidden not in source
