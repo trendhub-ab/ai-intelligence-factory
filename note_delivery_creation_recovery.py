@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 import sqlite3
 from typing import Any, Iterable
+from unittest.mock import patch
 
 import note_delivery_runtime as delivery_runtime
 import note_document_contract as note_contract
@@ -176,6 +177,29 @@ def _current_canonical_sha256(page: Any) -> str:
         raise CreationRecoveryAuditError("private draft canonical body is unavailable") from exc
 
 
+def _read_only_title_field(page: Any, legacy_finder: Any) -> Any:
+    """Use the existing explicit title selector without editor entry or DOM mutation.
+
+    The historical editor may use a newer explicit attribute than the legacy
+    finder recognizes. This fallback only reads a currently loaded editor page;
+    no geometric guessing, navigation, text mutation, or new draft creation.
+    """
+    if not editor_readiness._is_editor_url(str(page.url or "")):
+        raise CreationRecoveryAuditError("existing private editor route is not confirmed")
+    try:
+        return legacy_finder(page)
+    except Exception:
+        for _ in range(3):
+            try:
+                field = editor_readiness._explicit_title(page)
+            except Exception:
+                field = None
+            if field is not None:
+                return field
+            page.wait_for_timeout(450)
+        raise
+
+
 def _discover_verified_matches(
     article: dict[str, Any],
     record: DeliveryRecord,
@@ -193,71 +217,79 @@ def _discover_verified_matches(
         return [], 0, counts, stages
 
     matches: list[dict[str, Any]] = []
-    with sync_playwright() as playwright:
-        context = cloud._launch_persistent_context(playwright)
-        page = context.new_page()
-        page.set_default_timeout(30000)
-        seeded = False
-        try:
-            for candidate in candidates:
-                stage = "navigation"
-                try:
-                    page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
-                    page.wait_for_timeout(1200)
-                    stage = "login_check"
-                    if draft_audit.note_base._looks_logged_out(page) and not seeded:
-                        seeded = bool(cloud._seed_note_state(context, page))
-                        if seeded:
-                            page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
-                            page.wait_for_timeout(1200)
-                    if draft_audit.note_base._looks_logged_out(page):
-                        counts["logged_out"] += 1
-                        continue
-                    stage = "editor_route"
-                    if not editor_readiness._is_editor_url(str(page.url or "")):
-                        counts["non_editor"] += 1
-                        continue
-                    stage = "title_read"
-                    if draft_audit._title_value(page) != str(article["title"]).strip():
-                        counts["different_title"] += 1
-                        continue
-                    stage = "body_audit"
-                    try:
-                        draft_audit._audit_current_page(
-                            page,
-                            str(article["title"]),
-                            str(article["manuscript"]),
-                        )
-                    except draft_audit.PrivateDraftAuditError:
-                        counts["content_or_eyecatch"] += 1
-                        continue
-                    stage = "canonical_read"
-                    if _current_canonical_sha256(page) != record.snapshot.canonical_document_sha256:
-                        counts["canonical_hash"] += 1
-                        continue
+    legacy_title_finder = draft_audit.note_base._find_title
 
-                    stage = "identity_read"
-                    verified_editor_url = str(page.url or "").strip()
-                    draft_id = reconcile.draft_identity_from_url(
-                        verified_editor_url,
-                        error_type=CreationRecoveryAuditError,
-                    )
-                    matches.append(
-                        {
-                            "draft_id": draft_id,
-                            "editor_route_hash": hashlib.sha256(
-                                verified_editor_url.encode("utf-8")
-                            ).hexdigest()[:12],
-                        }
-                    )
-                except CreationRecoveryAuditError:
-                    raise
-                except Exception:
-                    counts["inspection_error"] += 1
-                    stages[stage if stage in stages else "other"] += 1
-                    continue
-        finally:
-            context.close()
+    def read_only_title_finder(editor_page: Any) -> Any:
+        return _read_only_title_field(editor_page, legacy_title_finder)
+
+    # Use a scoped replacement so _title_value, _audit_current_page and
+    # canonical hashing read the same verified editor title field.
+    with patch.object(draft_audit.note_base, "_find_title", read_only_title_finder):
+        with sync_playwright() as playwright:
+            context = cloud._launch_persistent_context(playwright)
+            page = context.new_page()
+            page.set_default_timeout(30000)
+            seeded = False
+            try:
+                for candidate in candidates:
+                    stage = "navigation"
+                    try:
+                        page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
+                        page.wait_for_timeout(1200)
+                        stage = "login_check"
+                        if draft_audit.note_base._looks_logged_out(page) and not seeded:
+                            seeded = bool(cloud._seed_note_state(context, page))
+                            if seeded:
+                                page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
+                                page.wait_for_timeout(1200)
+                        if draft_audit.note_base._looks_logged_out(page):
+                            counts["logged_out"] += 1
+                            continue
+                        stage = "editor_route"
+                        if not editor_readiness._is_editor_url(str(page.url or "")):
+                            counts["non_editor"] += 1
+                            continue
+                        stage = "title_read"
+                        if draft_audit._title_value(page) != str(article["title"]).strip():
+                            counts["different_title"] += 1
+                            continue
+                        stage = "body_audit"
+                        try:
+                            draft_audit._audit_current_page(
+                                page,
+                                str(article["title"]),
+                                str(article["manuscript"]),
+                            )
+                        except draft_audit.PrivateDraftAuditError:
+                            counts["content_or_eyecatch"] += 1
+                            continue
+                        stage = "canonical_read"
+                        if _current_canonical_sha256(page) != record.snapshot.canonical_document_sha256:
+                            counts["canonical_hash"] += 1
+                            continue
+
+                        stage = "identity_read"
+                        verified_editor_url = str(page.url or "").strip()
+                        draft_id = reconcile.draft_identity_from_url(
+                            verified_editor_url,
+                            error_type=CreationRecoveryAuditError,
+                        )
+                        matches.append(
+                            {
+                                "draft_id": draft_id,
+                                "editor_route_hash": hashlib.sha256(
+                                    verified_editor_url.encode("utf-8")
+                                ).hexdigest()[:12],
+                            }
+                        )
+                    except CreationRecoveryAuditError:
+                        raise
+                    except Exception:
+                        counts["inspection_error"] += 1
+                        stages[stage if stage in stages else "other"] += 1
+                        continue
+            finally:
+                context.close()
     return matches, len(candidates), counts, stages
 
 
