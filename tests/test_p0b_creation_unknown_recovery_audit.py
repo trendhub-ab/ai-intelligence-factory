@@ -278,3 +278,89 @@ def test_inspection_stage_projection_is_fixed_and_never_leaks_raw_browser_data()
     assert "private_editor_url" not in str(safe)
     assert "raw_browser_error" not in str(safe)
     assert "secret" not in str(safe).lower()
+
+
+def test_readonly_title_fallback_uses_existing_explicit_finder_without_navigation(monkeypatch):
+    recovery = _module()
+    field = object()
+
+    class Page:
+        url = "https://editor.note.com/notes/existing/edit"
+
+        def __init__(self):
+            self.waits = []
+
+        def wait_for_timeout(self, milliseconds):
+            self.waits.append(milliseconds)
+
+        def goto(self, *args, **kwargs):
+            raise AssertionError("read-only recovery must never navigate to create a draft")
+
+    def old_finder(_):
+        raise recovery.draft_audit.note_base.NoteDraftError("legacy title selector absent")
+
+    monkeypatch.setattr(recovery.editor_readiness, "_explicit_title", lambda _: field)
+    page = Page()
+    assert recovery._read_only_title_field(page, old_finder) is field
+    assert page.waits == []
+
+
+def test_readonly_title_prefers_original_finder_and_does_not_use_fallback(monkeypatch):
+    recovery = _module()
+    field = object()
+
+    class Page:
+        url = "https://note.com/notes/existing/edit"
+
+    def fallback(_):
+        raise AssertionError("fallback should not run when canonical finder succeeds")
+
+    monkeypatch.setattr(recovery.editor_readiness, "_explicit_title", fallback)
+    assert recovery._read_only_title_field(Page(), lambda _: field) is field
+
+
+def test_readonly_title_absence_stays_blocked_without_guessing_or_writes(monkeypatch):
+    recovery = _module()
+
+    class Page:
+        url = "https://note.com/notes/existing/edit"
+
+        def __init__(self):
+            self.waits = []
+
+        def wait_for_timeout(self, milliseconds):
+            self.waits.append(milliseconds)
+
+    def old_finder(_):
+        raise recovery.draft_audit.note_base.NoteDraftError("missing")
+
+    monkeypatch.setattr(recovery.editor_readiness, "_explicit_title", lambda _: None)
+    page = Page()
+    with pytest.raises(recovery.draft_audit.note_base.NoteDraftError):
+        recovery._read_only_title_field(page, old_finder)
+    assert page.waits == [450, 450, 450]
+
+
+def test_readonly_title_fallback_requires_existing_editor_route(monkeypatch):
+    recovery = _module()
+
+    class Page:
+        url = "https://note.com/"
+
+    def forbidden(_):
+        raise AssertionError("must not inspect title on a non-editor route")
+
+    monkeypatch.setattr(recovery.editor_readiness, "_explicit_title", forbidden)
+    with pytest.raises(recovery.CreationRecoveryAuditError):
+        recovery._read_only_title_field(Page(), forbidden)
+
+
+def test_readonly_finder_scoped_across_title_body_and_canonical_checks():
+    recovery = _module()
+    source = inspect.getsource(recovery._discover_verified_matches)
+    assert 'patch.object(draft_audit.note_base, "_find_title", read_only_title_finder)' in source
+    assert source.index('patch.object(draft_audit.note_base, "_find_title"') < source.index('draft_audit._title_value(page)')
+    assert source.index('patch.object(draft_audit.note_base, "_find_title"') < source.index('draft_audit._audit_current_page(')
+    assert source.index('patch.object(draft_audit.note_base, "_find_title"') < source.index('_current_canonical_sha256(page)')
+    assert "record.snapshot.canonical_document_sha256" in source
+    assert "len(matches)" not in inspect.getsource(recovery._read_only_title_field)
