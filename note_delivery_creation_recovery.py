@@ -143,6 +143,13 @@ OFFICIAL_LIST_SCAN_CODES = (
     "list_draft_title_not_visible", "list_self_articles_nav_visible",
     "list_draft_filter_nav_visible", "list_draft_filter_selected",
     "list_draft_any_edit_control",
+    # Authenticated real-DOM menu/card shape; never raw text, links or IDs.
+    "list_owner_nav_anchor", "list_owner_nav_button",
+    "list_owner_nav_note_href", "list_title_exact_anchor",
+    "list_title_exact_plain_text", "list_existing_edit_href",
+    "list_article_card_present", "list_profile_menu_trigger",
+    "list_main_content_populated", "list_empty_or_error_notice",
+    "list_loading_placeholder", "list_embedded_frame",
 )
 
 
@@ -819,26 +826,93 @@ def _bounded_draft_view_probe(page: Any, title: str) -> set[str]:
     except Exception:
         return {"list_draft_view_unavailable"}
 
-    # Private browser UI never leaves the VM: only a fixed 4-bit integer.
+    # Evaluate a bounded, fixed-code DOM bitmask in the private browser.
+    # The exact owner-title comparison is local to the VM; no private DOM,
+    # article identifiers, links, visible text or element counts leave it.
     try:
-        mask = page.evaluate(r"""() => {
-            const candidates = Array.from(document.querySelectorAll(
-                'a,button,[role="tab"],[role="menuitem"]'
+        mask = page.evaluate(r"""(targetTitle) => {
+            const controls = Array.from(document.querySelectorAll(
+                'a,button,[role="tab"],[role="menuitem"],[role="button"]'
             )).slice(0,300);
-            const label = el => String(
-                el.getAttribute('aria-label') || el.textContent || ''
-            ).trim().slice(0,80);
+            const norm = s => String(s || '').replace(/\s+/g,' ').trim();
+            const name = el => norm(el.getAttribute('aria-label') ||
+                el.textContent || '').slice(0,120);
+            const visible = el => {
+                const box = el.getBoundingClientRect();
+                const style = getComputedStyle(el);
+                return box.width > 0 && box.height > 0 &&
+                    style.visibility !== 'hidden' && style.display !== 'none';
+            };
+            const owner = controls.filter(el => visible(el) &&
+                name(el) === '自分の記事');
+            const draft = controls.filter(el => visible(el) &&
+                name(el) === '下書き');
+            const safeNotesHref = el => {
+                try {
+                    const raw = el.getAttribute('href');
+                    if (!raw) return false;
+                    const u = new URL(raw, location.origin);
+                    return u.protocol === 'https:' && u.hostname === 'note.com' &&
+                        u.port === '' && u.pathname === '/notes' &&
+                        (!u.search || u.search === '?kind=draft') &&
+                        u.hash === '';
+                } catch (_) { return false; }
+            };
             let bits = 0;
-            if (candidates.some(el => label(el) === '自分の記事')) bits |= 1;
-            if (candidates.some(el => label(el) === '下書き')) bits |= 2;
-            if (candidates.some(el => label(el) === '下書き' &&
-                (el.getAttribute('aria-selected') === 'true' ||
-                 el.getAttribute('aria-current') === 'page' ||
-                 el.getAttribute('aria-pressed') === 'true'))) bits |= 4;
-            if (candidates.some(el => /を編集/.test(label(el)))) bits |= 8;
+            if (owner.length) bits |= 1;
+            if (draft.length) bits |= 2;
+            if (draft.some(el =>
+                el.getAttribute('aria-selected') === 'true' ||
+                el.getAttribute('aria-current') === 'page' ||
+                el.getAttribute('aria-pressed') === 'true')) bits |= 4;
+            if (controls.some(el => visible(el) && /を編集/.test(name(el))))
+                bits |= 8;
+            if (owner.some(el => el.tagName === 'A')) bits |= 16;
+            if (owner.some(el => el.tagName === 'BUTTON' ||
+                el.getAttribute('role') === 'button')) bits |= 32;
+            if (owner.some(el => el.tagName === 'A' && safeNotesHref(el)))
+                bits |= 64;
+            const target = norm(targetTitle);
+            if (controls.some(el => el.tagName === 'A' && visible(el) &&
+                name(el) === target)) bits |= 128;
+            // Exact, visible, leaf-level text evidence (never export the text).
+            const main = document.querySelector('main,[role="main"]');
+            const root = main || document.body;
+            const textNodes = Array.from(root.querySelectorAll(
+                'h1,h2,h3,h4,p,span,div'
+            )).slice(0,600);
+            if (textNodes.some(el => visible(el) && norm(el.textContent) === target &&
+                (!el.children.length || el.children.length <= 1))) bits |= 256;
+            if (controls.some(el => el.tagName === 'A' && visible(el) &&
+                (() => { try {
+                    const u = new URL(el.getAttribute('href') || '', location.origin);
+                    return u.protocol === 'https:' &&
+                        (u.hostname === 'note.com' ||
+                         u.hostname === 'editor.note.com') &&
+                        /^\/notes\/n[a-z0-9]+\/edit\/?$/.test(u.pathname);
+                } catch (_) { return false; } })())) bits |= 512;
+            if (Array.from(root.querySelectorAll('article')).some(visible) ||
+                controls.some(el => el.tagName === 'A' && visible(el) &&
+                    (() => { try {
+                        const u = new URL(el.getAttribute('href') || '', location.origin);
+                        return u.protocol === 'https:' &&
+                            u.hostname === 'note.com' &&
+                            /^\/trendhub_biz\/n\/n[a-z0-9]+\/?$/.test(u.pathname);
+                    } catch (_) { return false; } })())) bits |= 1024;
+            if (controls.some(el => el.tagName === 'BUTTON' && visible(el) &&
+                el.getAttribute('aria-haspopup') === 'menu' &&
+                /(プロフィール|アカウント|メニュー)/.test(name(el))))
+                bits |= 2048;
+            if (main && main.children.length > 0) bits |= 4096;
+            const bodyText = norm(root.textContent).slice(0,6000);
+            if (/(記事がありません|記事はありません|表示できません|エラーが発生|読み込みに失敗)/.test(bodyText))
+                bits |= 8192;
+            if (root.querySelector('[aria-busy="true"],[role="progressbar"],[class*="skeleton"]'))
+                bits |= 16384;
+            if (document.querySelector('iframe')) bits |= 32768;
             return bits;
-        }""")
-        if not isinstance(mask, int) or isinstance(mask, bool) or not 0 <= mask < 16:
+        }""", title)
+        if not isinstance(mask, int) or isinstance(mask, bool) or not 0 <= mask < (1 << 16):
             evidence.add("list_draft_structure_unavailable")
         else:
             for bit, code in (
@@ -846,6 +920,18 @@ def _bounded_draft_view_probe(page: Any, title: str) -> set[str]:
                 (2, "list_draft_filter_nav_visible"),
                 (4, "list_draft_filter_selected"),
                 (8, "list_draft_any_edit_control"),
+                (16, "list_owner_nav_anchor"),
+                (32, "list_owner_nav_button"),
+                (64, "list_owner_nav_note_href"),
+                (128, "list_title_exact_anchor"),
+                (256, "list_title_exact_plain_text"),
+                (512, "list_existing_edit_href"),
+                (1024, "list_article_card_present"),
+                (2048, "list_profile_menu_trigger"),
+                (4096, "list_main_content_populated"),
+                (8192, "list_empty_or_error_notice"),
+                (16384, "list_loading_placeholder"),
+                (32768, "list_embedded_frame"),
             ):
                 if mask & bit:
                     evidence.add(code)

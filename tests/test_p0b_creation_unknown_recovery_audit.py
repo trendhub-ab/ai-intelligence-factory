@@ -1560,3 +1560,87 @@ def test_draft_view_probe_fixed_code_projection_and_account_gate():
     assert source.index('codes.add("account_proven")') < source.index('_bounded_draft_view_probe(')
     assert "title_button_not_visible" in source
     assert "list_draft_view_open" in source
+
+
+
+def test_owner_draft_view_extended_dom_mask_is_allowlisted_and_private(monkeypatch):
+    """Only fixed booleans, never article identifiers, DOM or private text."""
+    recovery = _module()
+    mapping = {
+        16: "list_owner_nav_anchor",
+        32: "list_owner_nav_button",
+        64: "list_owner_nav_note_href",
+        128: "list_title_exact_anchor",
+        256: "list_title_exact_plain_text",
+        512: "list_existing_edit_href",
+        1024: "list_article_card_present",
+        2048: "list_profile_menu_trigger",
+        4096: "list_main_content_populated",
+        8192: "list_empty_or_error_notice",
+        16384: "list_loading_placeholder",
+        32768: "list_embedded_frame",
+    }
+    class Button:
+        def count(self): return 0
+    class Page:
+        url="https://note.com/notes"
+        def __init__(self, mask): self.mask=mask;self.visits=[]
+        def goto(self, url, **kwargs):
+            assert url == "https://note.com/notes?kind=draft"
+            self.url=url
+            self.visits.append(url)
+        def wait_for_timeout(self, n): assert n <= 1500
+        def evaluate(self, script, *args):
+            assert "querySelectorAll" in script
+            assert len(args) == 1 and args[0] == "PRIVATE TERRA TITLE"
+            return self.mask
+        def get_by_role(self, role, name, exact):
+            assert (role, name, exact) == ("button", "PRIVATE TERRA TITLEを編集", True)
+            return Button()
+    monkeypatch.setattr(recovery.draft_audit.note_base, "_looks_logged_out",lambda _: False)
+    for bit, code in mapping.items():
+        p=Page(bit)
+        evidence=recovery._bounded_draft_view_probe(p,"PRIVATE TERRA TITLE")
+        assert evidence == {
+            "list_draft_view_open", "list_draft_title_not_visible", code
+        }
+        assert p.visits == ["https://note.com/notes?kind=draft"]
+        assert "PRIVATE" not in str(evidence)
+    expected=set(mapping.values())
+    assert expected.issubset(set(recovery.OFFICIAL_LIST_SCAN_CODES))
+    safe=recovery.safe_recovery_projection({
+        "official_list_scan_counts": {
+            **{code:1 for code in expected},
+            "actual_dom": "<private>secret manuscript</private>",
+            "private_note_id": "nsecret",
+        }
+    })
+    assert set(safe["official_list_scan_counts"]) == set(recovery.OFFICIAL_LIST_SCAN_CODES)
+    assert "secret" not in str(safe)
+
+
+def test_owner_draft_view_mask_invalid_and_oversize_fail_closed(monkeypatch):
+    recovery = _module()
+    class Page:
+        url="https://note.com/notes"
+        def goto(self, url, **kwargs): self.url=url
+        def wait_for_timeout(self, _): pass
+        def __init__(self, mask): self.mask=mask
+        def evaluate(self, *_args): return self.mask
+        def get_by_role(self, *_args, **_kwargs):
+            return type("Button", (), {"count": lambda self: 0})()
+    monkeypatch.setattr(recovery.draft_audit.note_base, "_looks_logged_out",lambda _: False)
+    for value in (True, None, 65536, -1, "private", 2.5):
+        result = recovery._bounded_draft_view_probe(Page(value), "secret")
+        assert result == {
+            "list_draft_view_open",
+            "list_draft_structure_unavailable",
+            "list_draft_title_not_visible",
+        }
+    source = inspect.getsource(recovery._bounded_draft_view_probe)
+    assert "document.querySelectorAll" in source
+    assert "getBoundingClientRect" in source
+    assert "location.origin" in source
+    assert "api/" not in source
+    for forbidden in (".click(", ".fill(", ".screenshot(", ".content(", "requests.post(", "console.log("):
+        assert forbidden not in source
