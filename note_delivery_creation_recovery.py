@@ -15,7 +15,7 @@ import hashlib
 import json
 import os
 import re
-from urllib.parse import urlsplit, urlparse, urljoin
+from urllib.parse import urlsplit, urlparse, urljoin, parse_qs
 from pathlib import Path
 import sqlite3
 from typing import Any, Iterable
@@ -115,6 +115,13 @@ OFFICIAL_LIST_CODES = (
     "body_eyecatch_unverified", "body_eyecatch_equal",
     "canonical_unverified", "canonical_mismatch", "canonical_equal",
 )
+OFFICIAL_LIST_SCAN_CODES = (
+    "list_draft_filter_visible", "list_draft_filter_active",
+    "list_more_control_visible", "list_pagination_visible",
+    "list_scroll_attempted", "list_scroll_no_motion",
+    "list_title_found_after_scroll", "list_pagination_followed",
+    "list_scan_limit_reached", "list_scan_unavailable",
+)
 
 
 class CreationRecoveryAuditError(RuntimeError):
@@ -189,6 +196,10 @@ def safe_recovery_projection(result: dict[str, Any]) -> dict[str, Any]:
         "official_list_proof_counts": {
             code: int((result.get("official_list_proof_counts") or {}).get(code) or 0)
             for code in OFFICIAL_LIST_CODES
+        },
+        "official_list_scan_counts": {
+            code: int((result.get("official_list_scan_counts") or {}).get(code) or 0)
+            for code in OFFICIAL_LIST_SCAN_CODES
         },
     }
 
@@ -536,6 +547,111 @@ def _safe_visible_screen_signals(page: Any) -> tuple[str, ...]:
     return tuple(code for index, code in enumerate(mapped) if mask & (1 << index))
 
 
+def _bounded_official_list_scan(page: Any, title: str) -> set[str]:
+    """Bounded observation of an already authenticated note official article list.
+
+    No click, filter selection, form submission, arbitrary route construction or
+    private browser text export. Scrolling can reveal lazily loaded list entries.
+    Explicit next-page *anchors* are followed only when an HTTPS note.com/notes
+    link has one numeric page query; no other queries, hosts or paths are allowed.
+    An incomplete scan can NEVER establish absence of a draft.
+    """
+    evidence: set[str] = set()
+    visited = {str(page.url or "")}
+    try:
+        for page_index in range(3):  # at most three actual list pages
+            mask = page.evaluate(r"""() => {
+                const items = Array.from(document.querySelectorAll(
+                    'button,[role="button"],[role="tab"],select,option,a[rel="next"]'
+                )).slice(0,300);
+                const label = el => String(el.getAttribute('aria-label') ||
+                    el.textContent || '').slice(0,100);
+                let mask = 0;
+                if (items.some(el => /(下書き|公開中|公開済み)/.test(label(el)))) mask |= 1;
+                if (items.some(el => /(もっと見る|さらに表示|more|load more)/i.test(label(el)))) mask |= 2;
+                if (items.some(el => el.tagName === 'A' &&
+                    (el.getAttribute('rel') || '').includes('next') ||
+                    /(次へ|next)/i.test(label(el)) && el.tagName === 'A')) mask |= 4;
+                if (items.some(el => /(下書き)/.test(label(el)) &&
+                    (el.getAttribute('aria-selected') === 'true' ||
+                     el.getAttribute('aria-pressed') === 'true'))) mask |= 8;
+                return mask;
+            }""")
+            if not isinstance(mask, int) or isinstance(mask, bool) or not 0 <= mask < 16:
+                return evidence | {"list_scan_unavailable"}
+            for bit, code in (
+                (1, "list_draft_filter_visible"), (2, "list_more_control_visible"),
+                (4, "list_pagination_visible"), (8, "list_draft_filter_active"),
+            ):
+                if mask & bit:
+                    evidence.add(code)
+
+            for _ in range(4):  # at most twelve scroll operations in total
+                if int(page.get_by_role(
+                    "button", name=title + "を編集", exact=True
+                ).count()) != 0:
+                    evidence.add("list_title_found_after_scroll")
+                    return evidence
+                delta = page.evaluate("""() => {
+                    const root = document.scrollingElement || document.documentElement;
+                    const before = root.scrollTop;
+                    window.scrollBy(0, 1000);
+                    return Number(root.scrollTop > before);
+                }""")
+                evidence.add("list_scroll_attempted")
+                if delta not in (0, 1) or isinstance(delta, bool):
+                    return evidence | {"list_scan_unavailable"}
+                if delta == 0:
+                    evidence.add("list_scroll_no_motion")
+                page.wait_for_timeout(650)
+                if int(page.get_by_role(
+                    "button", name=title + "を編集", exact=True
+                ).count()) != 0:
+                    evidence.add("list_title_found_after_scroll")
+                    return evidence
+
+            # Do not invent a page number or click any UI control. Only the
+            # explicitly rendered next anchor's href may be visited.
+            if page_index == 2:
+                break
+            raw = page.evaluate(r"""() => {
+                const anchors = Array.from(document.querySelectorAll('a[href]'));
+                const item = anchors.find(a => (a.getAttribute('rel') || '')
+                    .split(/\\s+/).includes('next') ||
+                    /(次へ|next)/i.test(
+                      (a.getAttribute('aria-label') || a.textContent || '').slice(0,60)));
+                return item ? item.getAttribute('href') : '';
+            }""")
+            if not isinstance(raw, str) or not raw or len(raw) > 400:
+                break
+            candidate = urljoin("https://note.com/notes", raw)
+            parsed = urlsplit(candidate)
+            if (parsed.scheme != "https" or parsed.hostname != "note.com"
+                or parsed.path != "/notes" or parsed.fragment
+                or parsed.username or parsed.password or parsed.port):
+                break
+            params = parse_qs(parsed.query, keep_blank_values=True)
+            if set(params) != {"page"} or len(params["page"]) != 1:
+                break
+            page_value = params["page"][0]
+            if not page_value.isascii() or not page_value.isdecimal() or not 2 <= int(page_value) <= 500:
+                break
+            if candidate in visited:
+                break
+            page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(650)
+            actual = urlsplit(str(page.url or ""))
+            if (actual.scheme != "https" or actual.hostname != "note.com"
+                or actual.path != "/notes" or
+                draft_audit.note_base._looks_logged_out(page)):
+                return evidence | {"list_scan_unavailable"}
+            visited.add(candidate)
+            evidence.add("list_pagination_followed")
+    except Exception:
+        return evidence | {"list_scan_unavailable"}
+    return evidence | {"list_scan_limit_reached"}
+
+
 def _probe_official_article_list(
     context: Any,
     article: dict[str, Any],
@@ -580,7 +696,17 @@ def _probe_official_article_list(
         except Exception:
             return codes | {"title_button_uninspectable"}
         if count == 0:
-            return codes | {"title_button_not_visible"}
+            scan = _bounded_official_list_scan(page, str(article["title"]).strip())
+            codes.update(scan)
+            try:
+                button = page.get_by_role(
+                    "button", name=str(article["title"]).strip() + "を編集", exact=True
+                )
+                count = int(button.count())
+            except Exception:
+                return codes | {"title_button_uninspectable"}
+            if count == 0:
+                return codes | {"title_button_not_visible"}
         if count != 1:
             return codes | {"title_button_ambiguous"}
         codes.add("title_button_unique")
@@ -674,6 +800,7 @@ def _discover_verified_matches(
     failed_screen_signal_counts = {code: 0 for code in SCREEN_SIGNAL_CODES}
     control_screen_signal_counts = {code: 0 for code in SCREEN_SIGNAL_CODES}
     official_list_proof_counts = {code: 0 for code in OFFICIAL_LIST_CODES}
+    official_list_scan_counts = {code: 0 for code in OFFICIAL_LIST_SCAN_CODES}
 
     matches: list[dict[str, Any]] = []
     legacy_title_finder = draft_audit.note_base._find_title
@@ -695,7 +822,10 @@ def _discover_verified_matches(
                 except Exception:
                     official_evidence = {"account_unverified"}
                 for signal in official_evidence:
-                    official_list_proof_counts[signal] += 1
+                    if signal in OFFICIAL_LIST_SCAN_CODES:
+                        official_list_scan_counts[signal] += 1
+                    elif signal in OFFICIAL_LIST_CODES:
+                        official_list_proof_counts[signal] += 1
                 for candidate in candidates:
                     stage = "navigation"
                     response = None
@@ -776,7 +906,7 @@ def _discover_verified_matches(
     return (matches, len(candidates), counts, stages, title_failures,
             title_dom_signals, title_context_signals, title_route_shapes, title_atomic_dom,
             failed_screen_signal_counts, control_screen_signal_counts,
-            official_list_proof_counts)
+            official_list_proof_counts, official_list_scan_counts)
 
 
 def run(
@@ -822,6 +952,7 @@ def run(
         "failed_screen_signal_counts": {code: 0 for code in SCREEN_SIGNAL_CODES},
         "control_screen_signal_counts": {code: 0 for code in SCREEN_SIGNAL_CODES},
         "official_list_proof_counts": {code: 0 for code in OFFICIAL_LIST_CODES},
+        "official_list_scan_counts": {code: 0 for code in OFFICIAL_LIST_SCAN_CODES},
     }
     if prepare_only:
         return base_result
@@ -831,7 +962,7 @@ def run(
         title_failure_counts, title_dom_signal_counts, title_context_signal_counts,
         title_route_shape_counts, title_atomic_dom_counts,
         failed_screen_signal_counts, control_screen_signal_counts,
-        official_list_proof_counts,
+        official_list_proof_counts, official_list_scan_counts,
     ) = _discover_verified_matches(article, record)
     base_result["history_candidate_count"] = candidate_count
     base_result["match_count"] = len(matches)
@@ -864,6 +995,9 @@ def run(
     }
     base_result["official_list_proof_counts"] = {
         code: int(official_list_proof_counts.get(code, 0)) for code in OFFICIAL_LIST_CODES
+    }
+    base_result["official_list_scan_counts"] = {
+        code: int(official_list_scan_counts.get(code, 0)) for code in OFFICIAL_LIST_SCAN_CODES
     }
     # Preserve the exact safe counts even on an ambiguous/missing match.
     # Never grant recovery authority or infer permission to create a new draft.
