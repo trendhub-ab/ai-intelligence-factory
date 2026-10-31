@@ -1962,3 +1962,113 @@ def test_home_profile_probe_runs_after_account_ownership_and_is_not_recovery_aut
     assert recovery._EXACT_READONLY_NOTE_HOME_URL == "https://note.com/"
     assert "_EXACT_READONLY_NOTE_HOME_URL" in src
     assert "cloud.PROFILE_SETTINGS_URL" not in src
+
+
+def test_note_home_loading_settles_before_unique_owner_link_is_evaluated(monkeypatch):
+    """The bounded probe sees the hydrated home instead of the initial skeleton."""
+    recovery = _module()
+    monkeypatch.setattr(recovery.draft_audit.note_base, "_looks_logged_out", lambda _: False)
+    seen = []
+
+    class Link:
+        def count(self): return 1
+        def is_visible(self): return True
+        def get_attribute(self, name):
+            assert name == "href"
+            return "/notes"
+
+    class Page:
+        url = "https://note.com/settings/profile"
+        def __init__(self):
+            self.masks = [1 | 256 | 1024, 1 | 256 | 1024, 1 | 4 | 16 | 1024]
+            self.waits = []
+        def goto(self, url, **kwargs):
+            assert url in ("https://note.com/", "https://note.com/notes")
+            seen.append(url)
+            self.url = url
+        def wait_for_timeout(self, duration):
+            assert duration == 1200
+            self.waits.append(duration)
+        def evaluate(self, script, *args):
+            assert "querySelectorAll" in script
+            assert not args
+            if self.url == "https://note.com/notes":
+                return 1 | 2 | 4
+            return self.masks.pop(0)
+        def get_by_role(self, role, name, exact):
+            assert (role, name, exact) == ("link", "自分の記事", True)
+            return Link()
+
+    page = Page()
+    evidence = recovery._safe_note_home_profile_probe(page)
+    assert "home_open" in evidence
+    assert "home_loading_visible" not in evidence
+    assert "home_owner_article_link_visible" in evidence
+    assert "home_owner_link_exact" in evidence
+    assert "home_owner_route_open" in evidence
+    assert "home_owner_route_article_card_present" in evidence
+    assert seen == ["https://note.com/", "https://note.com/notes"]
+    assert len(page.waits) == 3
+    assert not page.masks
+
+
+def test_note_home_persistent_loading_has_fixed_wait_limit_and_no_navigation(monkeypatch):
+    """A never-settling skeleton cannot authorize a draft creation or a guessed URL."""
+    recovery = _module()
+    monkeypatch.setattr(recovery.draft_audit.note_base, "_looks_logged_out", lambda _: False)
+
+    class Link:
+        def count(self): return 0
+
+    class Page:
+        url = "https://note.com/settings/profile"
+        def __init__(self):
+            self.visits = []
+            self.waits = []
+            self.probes = 0
+        def goto(self, url, **kwargs):
+            assert url == "https://note.com/"
+            self.visits.append(url)
+            self.url = url
+        def wait_for_timeout(self, duration):
+            assert duration == 1200
+            self.waits.append(duration)
+        def evaluate(self, script, *args):
+            assert "querySelectorAll" in script
+            self.probes += 1
+            return 256
+        def get_by_role(self, role, name, exact):
+            return Link()
+
+    page = Page()
+    evidence = recovery._safe_note_home_profile_probe(page)
+    assert evidence == {"home_open", "home_loading_visible", "home_owner_link_missing"}
+    assert page.visits == ["https://note.com/"]
+    assert len(page.waits) == 9  # 1 initial wait + 8 bounded rechecks
+    assert page.probes == 9
+
+
+def test_note_home_loading_redirect_during_wait_fails_closed(monkeypatch):
+    recovery = _module()
+    monkeypatch.setattr(recovery.draft_audit.note_base, "_looks_logged_out", lambda _: False)
+
+    class Page:
+        url = "https://note.com/settings/profile"
+        def __init__(self): self.waits = 0
+        def goto(self, url, **kwargs):
+            assert url == "https://note.com/"
+            self.url = url
+        def wait_for_timeout(self, duration):
+            self.waits += 1
+            if self.waits == 2:
+                self.url = "https://other.example/"
+        def evaluate(self, script, *args):
+            return 256
+        def get_by_role(self, *args, **kwargs):
+            raise AssertionError("No navigation permitted after redirect")
+
+    page = Page()
+    assert recovery._safe_note_home_profile_probe(page) == {
+        "home_open", "home_route_unverified"
+    }
+    assert page.waits == 2
