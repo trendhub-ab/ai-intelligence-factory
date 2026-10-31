@@ -976,7 +976,7 @@ def test_official_list_proof_zero_title_is_not_draft_absence(monkeypatch):
         type("C", (), {"new_page": lambda self: Page()})(),
         {"title": "secret", "manuscript": "secret"}, object(), [],
     )
-    assert result == {"account_proven", "list_open", "title_button_not_visible", "list_scan_unavailable"}
+    assert result == {"account_proven", "list_open", "title_button_not_visible", "list_scan_unavailable", "list_draft_view_open", "list_draft_title_not_visible", "list_draft_structure_unavailable"}
     assert "draft_absent" not in str(result)
 
 
@@ -1461,3 +1461,102 @@ def test_api_diagnostics_projection_remains_opaque_and_allowlisted():
     assert set(counts) == set(recovery.OFFICIAL_LIST_SCAN_CODES)
     for raw in ("secret-uuid", "private-uuid", "confidential text"):
         assert raw not in str(safe)
+
+
+
+def test_draft_view_probe_only_uses_bounded_same_origin_readonly_url(monkeypatch):
+    recovery = _module()
+    events = []
+    class Button:
+        def count(self): return 1
+        def click(self, **_):
+            raise AssertionError("must not click controls in uncertain recovery")
+    class Page:
+        url = "https://note.com/notes"
+        def goto(self, url, **kwargs):
+            assert url == "https://note.com/notes?kind=draft"
+            assert kwargs["wait_until"] == "domcontentloaded"
+            events.append("read_only_draft_view_get")
+            self.url = url
+        def wait_for_timeout(self, timeout):
+            assert timeout <= 1500
+        def evaluate(self, script, *args):
+            assert "querySelectorAll" in script
+            return 1 | 2 | 4 | 8
+        def get_by_role(self, role, name, exact):
+            assert role == "button" and name == "secretを編集" and exact is True
+            return Button()
+    monkeypatch.setattr(recovery.draft_audit.note_base, "_looks_logged_out", lambda _: False)
+    codes = recovery._bounded_draft_view_probe(Page(), "secret")
+    assert codes == {
+        "list_draft_view_open", "list_draft_title_unique",
+        "list_self_articles_nav_visible", "list_draft_filter_nav_visible",
+        "list_draft_filter_selected", "list_draft_any_edit_control",
+    }
+    assert events == ["read_only_draft_view_get"]
+    assert "secret" not in str(codes)
+
+
+def test_draft_view_probe_rejects_redirect_and_logout_without_inspecting_title(monkeypatch):
+    recovery = _module()
+    class Page:
+        def __init__(self, redirect): self.url = ""
+        def goto(self, url, **kwargs): self.url = self.redirect
+        def wait_for_timeout(self, _): pass
+        def evaluate(self, *_): raise AssertionError("redirected view cannot be trusted")
+        def get_by_role(self, *_args, **_kwargs):
+            raise AssertionError("redirected view cannot be trusted")
+    for bad in (
+        "https://evil.example/notes?kind=draft",
+        "https://note.com/notes",
+        "https://note.com/notes?kind=all",
+        "http://note.com/notes?kind=draft",
+        "https://note.com/notes?kind=draft&token=secret",
+        "https://note.com/notes/new?kind=draft",
+    ):
+        page=Page(bad);page.redirect=bad
+        assert recovery._bounded_draft_view_probe(page,"secret") == {"list_draft_route_unverified"}
+    p=Page("https://note.com/notes?kind=draft")
+    p.redirect="https://note.com/notes?kind=draft"
+    monkeypatch.setattr(recovery.draft_audit.note_base, "_looks_logged_out", lambda _: True)
+    assert recovery._bounded_draft_view_probe(p, "secret") == {"list_draft_route_unverified"}
+
+
+def test_draft_view_probe_zero_buttons_is_not_proof_of_absence(monkeypatch):
+    recovery = _module()
+    class Page:
+        url = "https://note.com/notes"
+        def goto(self, url, **kwargs): self.url = url
+        def wait_for_timeout(self, _): pass
+        def evaluate(self, *_): return 0
+        def get_by_role(self, *_args, **_kwargs):
+            return type("Button", (), {"count": lambda self: 0})()
+    monkeypatch.setattr(recovery.draft_audit.note_base, "_looks_logged_out", lambda _: False)
+    result = recovery._bounded_draft_view_probe(Page(), "private")
+    assert result == {"list_draft_view_open", "list_draft_title_not_visible"}
+    assert "draft_absent" not in str(result)
+    source = inspect.getsource(recovery._bounded_draft_view_probe)
+    for forbidden in (".click(", ".fill(", ".screenshot(", ".content(", "requests.post(", "/api/"):
+        assert forbidden not in source
+
+
+def test_draft_view_probe_fixed_code_projection_and_account_gate():
+    recovery = _module()
+    safe = recovery.safe_recovery_projection({
+        "official_list_scan_counts": {
+            "list_draft_view_open": 1,
+            "list_draft_title_unique": 1,
+            "list_draft_any_edit_control": 1,
+            "draft_private_id": "secret-id",
+            "private_title": "secret title",
+        }
+    })
+    counts = safe["official_list_scan_counts"]
+    assert set(counts) == set(recovery.OFFICIAL_LIST_SCAN_CODES)
+    assert counts["list_draft_view_open"] == 1
+    assert "secret-id" not in str(safe)
+    assert "secret title" not in str(safe)
+    source = inspect.getsource(recovery._probe_official_article_list)
+    assert source.index('codes.add("account_proven")') < source.index('_bounded_draft_view_probe(')
+    assert "title_button_not_visible" in source
+    assert "list_draft_view_open" in source
