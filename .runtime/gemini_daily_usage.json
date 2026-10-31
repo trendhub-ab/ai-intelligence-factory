@@ -32,10 +32,11 @@
           "budget": 18,
           "by_kind": {
             "aiif_next_private_pilot": 9,
-            "eyecatch_layout": 2
+            "eyecatch_layout": 2,
+            "product_review": 1
           },
           "exhausted": false,
-          "used": 11
+          "used": 12
         }
       }
     }
@@ -44,5 +45,5 @@
   "quota_date": "2026-10-30",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-10-31T00:12:39.417317+00:00"
+  "updated_at": "2026-10-31T00:14:47.889265+00:00"
 }
