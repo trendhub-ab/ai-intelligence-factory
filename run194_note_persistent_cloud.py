@@ -23,6 +23,11 @@ import run222_note_presentation_integrity as run222
 def main() -> None:
     cloud.install()
     current_contract.install()
+    # Run194's legacy compatibility installer resets _upload_header_image to the
+    # old selector after cloud.install() has loaded the official Run193 UI.
+    # Reinstall only the proven official header path here, preserving Run194's
+    # current-manuscript/paste guards, before P0-B delivery authority goes last.
+    cloud.run193.install()
     # Validate the byte-exact stored manuscript first; only then strip the duplicated H1 and
     # correct the footer order for note's editor presentation.
     run222.install_note(cloud.base)
