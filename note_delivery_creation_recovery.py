@@ -37,6 +37,12 @@ from note_delivery_ledger import (
 
 CONFIRM_TOKEN = "AUDIT_CREATION_UNKNOWN"
 
+# Only aggregate counts are exposed; never expose candidate URLs, titles or draft IDs.
+REJECTION_BUCKETS = (
+    "logged_out", "non_editor", "different_title",
+    "content_or_eyecatch", "canonical_hash", "inspection_error",
+)
+
 
 class CreationRecoveryAuditError(RuntimeError):
     pass
@@ -53,6 +59,10 @@ def safe_recovery_projection(result: dict[str, Any]) -> dict[str, Any]:
         "match_count": int(result.get("match_count") or 0),
         "history_candidate_count": int(result.get("history_candidate_count") or 0),
         "editor_route_hash": str(result.get("editor_route_hash") or ""),
+        "rejection_counts": {
+            bucket: int((result.get("rejection_counts") or {}).get(bucket) or 0)
+            for bucket in REJECTION_BUCKETS
+        },
     }
 
 
@@ -160,16 +170,17 @@ def _current_canonical_sha256(page: Any) -> str:
 def _discover_verified_matches(
     article: dict[str, Any],
     record: DeliveryRecord,
-) -> tuple[list[dict[str, Any]], int]:
-    """Inspect recent existing edit routes read-only and return only losslessly verified matches."""
+) -> tuple[list[dict[str, Any]], int, dict[str, int]]:
+    """Inspect history read-only; count rejection reasons without disclosing identities."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
         raise CreationRecoveryAuditError("Playwright is required for read-only recovery") from exc
 
     candidates = cloud._recent_private_edit_urls(cloud._profile_dir())
+    counts = {bucket: 0 for bucket in REJECTION_BUCKETS}
     if not candidates:
-        return [], 0
+        return [], 0, counts
 
     matches: list[dict[str, Any]] = []
     with sync_playwright() as playwright:
@@ -188,10 +199,13 @@ def _discover_verified_matches(
                             page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
                             page.wait_for_timeout(1200)
                     if draft_audit.note_base._looks_logged_out(page):
+                        counts["logged_out"] += 1
                         continue
                     if not editor_readiness._is_editor_url(str(page.url or "")):
+                        counts["non_editor"] += 1
                         continue
                     if draft_audit._title_value(page) != str(article["title"]).strip():
+                        counts["different_title"] += 1
                         continue
                     try:
                         draft_audit._audit_current_page(
@@ -200,8 +214,10 @@ def _discover_verified_matches(
                             str(article["manuscript"]),
                         )
                     except draft_audit.PrivateDraftAuditError:
+                        counts["content_or_eyecatch"] += 1
                         continue
                     if _current_canonical_sha256(page) != record.snapshot.canonical_document_sha256:
+                        counts["canonical_hash"] += 1
                         continue
 
                     verified_editor_url = str(page.url or "").strip()
@@ -220,10 +236,11 @@ def _discover_verified_matches(
                 except CreationRecoveryAuditError:
                     raise
                 except Exception:
+                    counts["inspection_error"] += 1
                     continue
         finally:
             context.close()
-    return matches, len(candidates)
+    return matches, len(candidates), counts
 
 
 def run(
@@ -259,13 +276,17 @@ def run(
         "match_count": 0,
         "history_candidate_count": 0,
         "editor_route_hash": "",
+        "rejection_counts": {bucket: 0 for bucket in REJECTION_BUCKETS},
     }
     if prepare_only:
         return base_result
 
-    matches, candidate_count = _discover_verified_matches(article, record)
+    matches, candidate_count, rejection_counts = _discover_verified_matches(article, record)
     base_result["history_candidate_count"] = candidate_count
     base_result["match_count"] = len(matches)
+    base_result["rejection_counts"] = {
+        bucket: int(rejection_counts.get(bucket, 0)) for bucket in REJECTION_BUCKETS
+    }
     # Preserve the exact safe counts even on an ambiguous/missing match.
     # Never grant recovery authority or infer permission to create a new draft.
     if len(matches) != 1:
