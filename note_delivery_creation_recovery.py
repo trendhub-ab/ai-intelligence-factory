@@ -42,6 +42,11 @@ REJECTION_BUCKETS = (
     "logged_out", "non_editor", "different_title",
     "content_or_eyecatch", "canonical_hash", "inspection_error",
 )
+# Fixed stage labels only; never log exception texts, candidate URLs or article text.
+INSPECTION_STAGES = (
+    "navigation", "login_check", "editor_route", "title_read",
+    "body_audit", "canonical_read", "identity_read", "other",
+)
 
 
 class CreationRecoveryAuditError(RuntimeError):
@@ -62,6 +67,10 @@ def safe_recovery_projection(result: dict[str, Any]) -> dict[str, Any]:
         "rejection_counts": {
             bucket: int((result.get("rejection_counts") or {}).get(bucket) or 0)
             for bucket in REJECTION_BUCKETS
+        },
+        "inspection_stage_counts": {
+            stage: int((result.get("inspection_stage_counts") or {}).get(stage) or 0)
+            for stage in INSPECTION_STAGES
         },
     }
 
@@ -170,8 +179,8 @@ def _current_canonical_sha256(page: Any) -> str:
 def _discover_verified_matches(
     article: dict[str, Any],
     record: DeliveryRecord,
-) -> tuple[list[dict[str, Any]], int, dict[str, int]]:
-    """Inspect history read-only; count rejection reasons without disclosing identities."""
+) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, int]]:
+    """Inspect history read-only; count fixed rejection/stage codes without identities."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
@@ -179,8 +188,9 @@ def _discover_verified_matches(
 
     candidates = cloud._recent_private_edit_urls(cloud._profile_dir())
     counts = {bucket: 0 for bucket in REJECTION_BUCKETS}
+    stages = {stage: 0 for stage in INSPECTION_STAGES}
     if not candidates:
-        return [], 0, counts
+        return [], 0, counts, stages
 
     matches: list[dict[str, Any]] = []
     with sync_playwright() as playwright:
@@ -190,9 +200,11 @@ def _discover_verified_matches(
         seeded = False
         try:
             for candidate in candidates:
+                stage = "navigation"
                 try:
                     page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
                     page.wait_for_timeout(1200)
+                    stage = "login_check"
                     if draft_audit.note_base._looks_logged_out(page) and not seeded:
                         seeded = bool(cloud._seed_note_state(context, page))
                         if seeded:
@@ -201,12 +213,15 @@ def _discover_verified_matches(
                     if draft_audit.note_base._looks_logged_out(page):
                         counts["logged_out"] += 1
                         continue
+                    stage = "editor_route"
                     if not editor_readiness._is_editor_url(str(page.url or "")):
                         counts["non_editor"] += 1
                         continue
+                    stage = "title_read"
                     if draft_audit._title_value(page) != str(article["title"]).strip():
                         counts["different_title"] += 1
                         continue
+                    stage = "body_audit"
                     try:
                         draft_audit._audit_current_page(
                             page,
@@ -216,10 +231,12 @@ def _discover_verified_matches(
                     except draft_audit.PrivateDraftAuditError:
                         counts["content_or_eyecatch"] += 1
                         continue
+                    stage = "canonical_read"
                     if _current_canonical_sha256(page) != record.snapshot.canonical_document_sha256:
                         counts["canonical_hash"] += 1
                         continue
 
+                    stage = "identity_read"
                     verified_editor_url = str(page.url or "").strip()
                     draft_id = reconcile.draft_identity_from_url(
                         verified_editor_url,
@@ -237,10 +254,11 @@ def _discover_verified_matches(
                     raise
                 except Exception:
                     counts["inspection_error"] += 1
+                    stages[stage if stage in stages else "other"] += 1
                     continue
         finally:
             context.close()
-    return matches, len(candidates), counts
+    return matches, len(candidates), counts, stages
 
 
 def run(
@@ -277,15 +295,19 @@ def run(
         "history_candidate_count": 0,
         "editor_route_hash": "",
         "rejection_counts": {bucket: 0 for bucket in REJECTION_BUCKETS},
+        "inspection_stage_counts": {stage: 0 for stage in INSPECTION_STAGES},
     }
     if prepare_only:
         return base_result
 
-    matches, candidate_count, rejection_counts = _discover_verified_matches(article, record)
+    matches, candidate_count, rejection_counts, inspection_stage_counts = _discover_verified_matches(article, record)
     base_result["history_candidate_count"] = candidate_count
     base_result["match_count"] = len(matches)
     base_result["rejection_counts"] = {
         bucket: int(rejection_counts.get(bucket, 0)) for bucket in REJECTION_BUCKETS
+    }
+    base_result["inspection_stage_counts"] = {
+        stage: int(inspection_stage_counts.get(stage, 0)) for stage in INSPECTION_STAGES
     }
     # Preserve the exact safe counts even on an ambiguous/missing match.
     # Never grant recovery authority or infer permission to create a new draft.

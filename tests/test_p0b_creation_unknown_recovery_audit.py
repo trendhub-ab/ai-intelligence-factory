@@ -62,6 +62,7 @@ def test_safe_projection_excludes_private_identity_and_unpublished_content():
         "history_candidate_count": 7,
         "editor_route_hash": "abcdef123456",
         "rejection_counts": {bucket: 0 for bucket in recovery.REJECTION_BUCKETS},
+        "inspection_stage_counts": {stage: 0 for stage in recovery.INSPECTION_STAGES},
     }
     for forbidden in ("recovered_draft_id", "sync_id", "draft_url", "title", "manuscript"):
         assert forbidden not in safe
@@ -188,6 +189,7 @@ def test_non_unique_readonly_audit_reports_counts_without_authorizing_recovery(m
             lambda article, record, matches=matches: (
                 matches, 6,
                 {"different_title": 6 - len(matches)},
+                {"title_read": 1},
             ),
         )
         result = recovery.run(
@@ -198,6 +200,7 @@ def test_non_unique_readonly_audit_reports_counts_without_authorizing_recovery(m
         assert result["match_count"] == len(matches)
         assert result["history_candidate_count"] == 6
         assert result["rejection_counts"]["different_title"] == 6 - len(matches)
+        assert result["inspection_stage_counts"]["title_read"] == 1
         assert result["read_only"] is True
         assert result["draft_mutation"] is False
         assert result["public_release"] is False
@@ -257,3 +260,21 @@ def test_failed_recovery_still_requires_exact_one_verified_match():
     assert "recovery_no_verified_match" in inspect.getsource(recovery.run)
     assert "recovery_multiple_verified_matches" in inspect.getsource(recovery.run)
     assert "len(matches) != 1" in inspect.getsource(recovery.run)
+
+
+def test_inspection_stage_projection_is_fixed_and_never_leaks_raw_browser_data():
+    recovery = _module()
+    safe = recovery.safe_recovery_projection({
+        "status": "recovery_no_verified_match",
+        "inspection_stage_counts": {
+            "title_read": 5, "navigation": 1,
+            "private_editor_url": "https://note.com/notes/secret/edit",
+            "raw_browser_error": "Private title is secret",
+        },
+    })
+    assert safe["inspection_stage_counts"]["title_read"] == 5
+    assert safe["inspection_stage_counts"]["navigation"] == 1
+    assert set(safe["inspection_stage_counts"]) == set(recovery.INSPECTION_STAGES)
+    assert "private_editor_url" not in str(safe)
+    assert "raw_browser_error" not in str(safe)
+    assert "secret" not in str(safe).lower()
