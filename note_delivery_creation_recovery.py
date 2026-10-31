@@ -121,6 +121,10 @@ OFFICIAL_LIST_SCAN_CODES = (
     "list_scroll_attempted", "list_scroll_no_motion",
     "list_title_found_after_scroll", "list_pagination_followed",
     "list_scan_limit_reached", "list_scan_unavailable",
+    # Browser-private structural evidence only; never identity or raw DOM.
+    "list_root_scrollable", "list_nested_scrollable",
+    "list_main_populated", "list_any_edit_control",
+    "list_loading_visible", "list_scroll_overflow_hidden",
 )
 
 
@@ -575,13 +579,36 @@ def _bounded_official_list_scan(page: Any, title: str) -> set[str]:
                 if (items.some(el => /(下書き)/.test(label(el)) &&
                     (el.getAttribute('aria-selected') === 'true' ||
                      el.getAttribute('aria-pressed') === 'true'))) mask |= 8;
+                // Structural-only, allowlisted evidence. No page text, DOM,
+                // private identifiers, URLs or element counts leave the VM.
+                const root = document.scrollingElement || document.documentElement;
+                if (root && root.scrollHeight > root.clientHeight + 8) mask |= 16;
+                const main = document.querySelector('main,[role="main"]');
+                if (main && main.children.length > 0) mask |= 64;
+                const descendants = main ?
+                    Array.from(main.querySelectorAll('*')).slice(0,300) : [];
+                if (descendants.some(el => {
+                    const overflow = getComputedStyle(el).overflowY;
+                    return (overflow === 'auto' || overflow === 'scroll') &&
+                        el.scrollHeight > el.clientHeight + 8;
+                })) mask |= 32;
+                if (items.some(el => el.tagName === 'BUTTON' &&
+                    /を編集/.test(label(el)))) mask |= 128;
+                if (document.querySelector('[aria-busy="true"],[role="progressbar"]'))
+                    mask |= 256;
+                if (root && (getComputedStyle(root).overflowY === 'hidden' ||
+                    (document.body && getComputedStyle(document.body).overflowY === 'hidden')))
+                    mask |= 512;
                 return mask;
             }""")
-            if not isinstance(mask, int) or isinstance(mask, bool) or not 0 <= mask < 16:
+            if not isinstance(mask, int) or isinstance(mask, bool) or not 0 <= mask < (1 << 10):
                 return evidence | {"list_scan_unavailable"}
             for bit, code in (
                 (1, "list_draft_filter_visible"), (2, "list_more_control_visible"),
                 (4, "list_pagination_visible"), (8, "list_draft_filter_active"),
+                (16, "list_root_scrollable"), (32, "list_nested_scrollable"),
+                (64, "list_main_populated"), (128, "list_any_edit_control"),
+                (256, "list_loading_visible"), (512, "list_scroll_overflow_hidden"),
             ):
                 if mask & bit:
                     evidence.add(code)
