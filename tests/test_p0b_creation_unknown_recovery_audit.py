@@ -1959,5 +1959,6 @@ def test_home_profile_probe_runs_after_account_ownership_and_is_not_recovery_aut
         "requests.post(", "create_draft(", "mark_draft_created(", "page.content("
     ):
         assert forbidden not in src
-    assert "https://note.com/" in src
+    assert recovery._EXACT_READONLY_NOTE_HOME_URL == "https://note.com/"
+    assert "_EXACT_READONLY_NOTE_HOME_URL" in src
     assert "cloud.PROFILE_SETTINGS_URL" not in src
