@@ -48,10 +48,33 @@ INSPECTION_STAGES = (
     "navigation", "login_check", "editor_route", "title_read",
     "body_audit", "canonical_read", "identity_read", "other",
 )
+# Fixed aggregate reasons for title-read exceptions only. No page/exception content.
+TITLE_FAILURE_CODES = (
+    "title_selector_unavailable", "title_selector_exception",
+    "title_retry_interrupted", "title_value_unreadable", "title_other",
+)
 
 
 class CreationRecoveryAuditError(RuntimeError):
     pass
+
+
+class TitleReadInspectionError(RuntimeError):
+    """An explicitly allowlisted, content-free reason code for audit counters."""
+
+    def __init__(self, code: str) -> None:
+        if code not in TITLE_FAILURE_CODES:
+            raise ValueError("title inspection code must be allowlisted")
+        self.code = code
+        super().__init__(code)
+
+
+def _title_failure_code(exc: Exception) -> str:
+    if isinstance(exc, TitleReadInspectionError):
+        return exc.code
+    if isinstance(exc, draft_audit.PrivateDraftAuditError):
+        return "title_value_unreadable"
+    return "title_other"
 
 
 def safe_recovery_projection(result: dict[str, Any]) -> dict[str, Any]:
@@ -72,6 +95,10 @@ def safe_recovery_projection(result: dict[str, Any]) -> dict[str, Any]:
         "inspection_stage_counts": {
             stage: int((result.get("inspection_stage_counts") or {}).get(stage) or 0)
             for stage in INSPECTION_STAGES
+        },
+        "title_failure_counts": {
+            code: int((result.get("title_failure_counts") or {}).get(code) or 0)
+            for code in TITLE_FAILURE_CODES
         },
     }
 
@@ -189,22 +216,28 @@ def _read_only_title_field(page: Any, legacy_finder: Any) -> Any:
     try:
         return legacy_finder(page)
     except Exception:
+        explicit_error = False
         for _ in range(3):
             try:
                 field = editor_readiness._explicit_title(page)
             except Exception:
+                explicit_error = True
                 field = None
             if field is not None:
                 return field
-            page.wait_for_timeout(450)
-        raise
+            try:
+                page.wait_for_timeout(450)
+            except Exception:
+                raise TitleReadInspectionError("title_retry_interrupted") from None
+        code = "title_selector_exception" if explicit_error else "title_selector_unavailable"
+        raise TitleReadInspectionError(code) from None
 
 
 def _discover_verified_matches(
     article: dict[str, Any],
     record: DeliveryRecord,
-) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, int]]:
-    """Inspect history read-only; count fixed rejection/stage codes without identities."""
+) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, int], dict[str, int]]:
+    """Inspect history read-only; count only fixed codes, never private identities."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
@@ -213,8 +246,9 @@ def _discover_verified_matches(
     candidates = cloud._recent_private_edit_urls(cloud._profile_dir())
     counts = {bucket: 0 for bucket in REJECTION_BUCKETS}
     stages = {stage: 0 for stage in INSPECTION_STAGES}
+    title_failures = {code: 0 for code in TITLE_FAILURE_CODES}
     if not candidates:
-        return [], 0, counts, stages
+        return [], 0, counts, stages, title_failures
 
     matches: list[dict[str, Any]] = []
     legacy_title_finder = draft_audit.note_base._find_title
@@ -284,13 +318,15 @@ def _discover_verified_matches(
                         )
                     except CreationRecoveryAuditError:
                         raise
-                    except Exception:
+                    except Exception as exc:
                         counts["inspection_error"] += 1
                         stages[stage if stage in stages else "other"] += 1
+                        if stage == "title_read":
+                            title_failures[_title_failure_code(exc)] += 1
                         continue
             finally:
                 context.close()
-    return matches, len(candidates), counts, stages
+    return matches, len(candidates), counts, stages, title_failures
 
 
 def run(
@@ -328,11 +364,14 @@ def run(
         "editor_route_hash": "",
         "rejection_counts": {bucket: 0 for bucket in REJECTION_BUCKETS},
         "inspection_stage_counts": {stage: 0 for stage in INSPECTION_STAGES},
+        "title_failure_counts": {code: 0 for code in TITLE_FAILURE_CODES},
     }
     if prepare_only:
         return base_result
 
-    matches, candidate_count, rejection_counts, inspection_stage_counts = _discover_verified_matches(article, record)
+    matches, candidate_count, rejection_counts, inspection_stage_counts, title_failure_counts = (
+        _discover_verified_matches(article, record)
+    )
     base_result["history_candidate_count"] = candidate_count
     base_result["match_count"] = len(matches)
     base_result["rejection_counts"] = {
@@ -340,6 +379,9 @@ def run(
     }
     base_result["inspection_stage_counts"] = {
         stage: int(inspection_stage_counts.get(stage, 0)) for stage in INSPECTION_STAGES
+    }
+    base_result["title_failure_counts"] = {
+        code: int(title_failure_counts.get(code, 0)) for code in TITLE_FAILURE_CODES
     }
     # Preserve the exact safe counts even on an ambiguous/missing match.
     # Never grant recovery authority or infer permission to create a new draft.
