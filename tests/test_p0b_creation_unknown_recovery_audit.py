@@ -66,6 +66,8 @@ def test_safe_projection_excludes_private_identity_and_unpublished_content():
         "title_failure_counts": {code: 0 for code in recovery.TITLE_FAILURE_CODES},
         "title_dom_signal_counts": {code: 0 for code in recovery.TITLE_DOM_SIGNAL_CODES},
         "title_context_signal_counts": {code: 0 for code in recovery.TITLE_CONTEXT_CODES},
+        "title_route_shape_counts": {code: 0 for code in recovery.TITLE_ROUTE_SHAPES},
+        "title_atomic_dom_counts": {code: 0 for code in recovery.TITLE_ATOMIC_DOM_CODES},
     }
     for forbidden in ("recovered_draft_id", "sync_id", "draft_url", "title", "manuscript"):
         assert forbidden not in safe
@@ -196,6 +198,8 @@ def test_non_unique_readonly_audit_reports_counts_without_authorizing_recovery(m
                 {"title_selector_unavailable": 1},
                 {"ready_complete": 1, "editables_missing": 1},
                 {"http_2xx": 1, "route_same_identity": 1, "js_responding": 1},
+                {"shape_strict_supported": 1},
+                {"atomic_available": 1, "atomic_ready_complete": 1},
             ),
         )
         result = recovery.run(
@@ -211,6 +215,8 @@ def test_non_unique_readonly_audit_reports_counts_without_authorizing_recovery(m
         assert result["title_dom_signal_counts"]["ready_complete"] == 1
         assert result["title_dom_signal_counts"]["editables_missing"] == 1
         assert result["title_context_signal_counts"]["route_same_identity"] == 1
+        assert result["title_route_shape_counts"]["shape_strict_supported"] == 1
+        assert result["title_atomic_dom_counts"]["atomic_ready_complete"] == 1
         assert result["read_only"] is True
         assert result["draft_mutation"] is False
         assert result["public_release"] is False
@@ -694,3 +700,106 @@ def test_title_context_probe_only_inspects_title_selector_unavailable_without_mu
     diagnostic = inspect.getsource(recovery._safe_title_context_signals)
     for forbidden in (".click(", ".fill(", ".goto(", ".content(", ".screenshot(", "requests.post("):
         assert forbidden not in diagnostic
+
+
+def test_title_route_shape_distinguishes_suffix_and_www_without_leaking_path():
+    recovery = _module()
+    classify = recovery._safe_title_route_shape
+    base = "https://editor.note.com/notes/private123/edit"
+    assert classify(base) == "shape_strict_supported"
+    assert classify(base + "?tab=edit") == "shape_query_or_fragment"
+    assert classify(base + "#draft") == "shape_query_or_fragment"
+    assert classify("https://www.note.com/notes/private123/edit") == "shape_www_host"
+    assert classify("http://note.com/notes/private123/edit") == "shape_non_https"
+    assert classify("https://note.com/notes/private123/edit/extra") == "shape_other_path"
+    assert classify("https://note.com/notes/invalid@id/edit") == "shape_invalid_identity"
+    assert classify("https://example.invalid/notes/private123/edit") == "shape_other_host"
+    assert "private123" not in str([classify(base + "?tab=edit"), classify(base)])
+
+
+def test_atomic_dom_snapshot_one_read_does_not_return_private_browser_content():
+    recovery = _module()
+    class Page:
+        url = "https://editor.note.com/notes/private123/edit"
+        def __init__(self): self.evaluate_calls = 0
+        def evaluate(self, code):
+            self.evaluate_calls += 1
+            assert "d.readyState" in code
+            assert "querySelector" in code
+            assert "textContent" not in code
+            assert "innerHTML" not in code
+            return {
+                "ready": "complete", "body": True, "inputs": False,
+                "editables": False, "textboxes": False, "busy": False,
+                "untrusted": "secret manuscript and private link",
+            }
+        def content(self):
+            raise AssertionError("never access HTML")
+        def screenshot(self, *args, **kwargs):
+            raise AssertionError("never capture screenshots")
+        def goto(self, *args, **kwargs):
+            raise AssertionError("no navigation")
+    page = Page()
+    signals = recovery._safe_title_atomic_dom_signals(page)
+    assert signals == (
+        "atomic_available", "atomic_ready_complete", "atomic_body_present",
+        "atomic_inputs_missing", "atomic_editables_missing",
+        "atomic_textboxes_missing", "atomic_busy_missing",
+    )
+    assert page.evaluate_calls == 1
+    assert set(signals).issubset(set(recovery.TITLE_ATOMIC_DOM_CODES))
+    assert "secret" not in str(signals)
+
+
+def test_atomic_dom_snapshot_unavailable_is_safe_and_does_not_guess():
+    recovery = _module()
+    class Page:
+        def evaluate(self, _):
+            raise RuntimeError("private editor URL and secret draft title")
+    assert recovery._safe_title_atomic_dom_signals(Page()) == ("atomic_unavailable",)
+    class UnexpectedPage:
+        def evaluate(self, _):
+            return {"ready": "private", "body": "secret", "inputs": 1,
+                    "editables": {}, "textboxes": [], "busy": None}
+    unknown = recovery._safe_title_atomic_dom_signals(UnexpectedPage())
+    assert unknown[0] == "atomic_available"
+    assert unknown[1] == "atomic_ready_unknown"
+    assert unknown[2:] == (
+        "atomic_body_unknown", "atomic_inputs_unknown",
+        "atomic_editables_unknown", "atomic_textboxes_unknown",
+        "atomic_busy_unknown",
+    )
+
+
+def test_atomic_dom_projection_only_fixed_codes_and_no_candidate_identifiers():
+    recovery = _module()
+    result = recovery.safe_recovery_projection({
+        "title_route_shape_counts": {
+            "shape_www_host": 1,
+            "untrusted_url": "https://note.com/notes/private123/edit",
+        },
+        "title_atomic_dom_counts": {
+            "atomic_unavailable": 1,
+            "raw_html": "a private manuscript",
+        },
+    })
+    assert result["title_route_shape_counts"]["shape_www_host"] == 1
+    assert result["title_atomic_dom_counts"]["atomic_unavailable"] == 1
+    assert set(result["title_route_shape_counts"]) == set(recovery.TITLE_ROUTE_SHAPES)
+    assert set(result["title_atomic_dom_counts"]) == set(recovery.TITLE_ATOMIC_DOM_CODES)
+    assert "private" not in str(result)
+    assert "manuscript" not in str(result)
+
+
+def test_route_and_atomic_dom_diagnostics_do_not_change_recovery_authority():
+    recovery = _module()
+    source = inspect.getsource(recovery._discover_verified_matches)
+    assert 'exc.code == "title_selector_unavailable"' in source
+    assert "_safe_title_route_shape(str(page.url or \"\"))" in source
+    assert "_safe_title_atomic_dom_signals(page)" in source
+    assert "record.snapshot.canonical_document_sha256" in source
+    assert 'counts["inspection_error"] += 1' in source
+    for name in ("_safe_title_route_shape", "_safe_title_atomic_dom_signals"):
+        diagnostic = inspect.getsource(getattr(recovery, name))
+        for forbidden in (".click(", ".fill(", ".goto(", ".content(", ".screenshot(", "requests.post("):
+            assert forbidden not in diagnostic

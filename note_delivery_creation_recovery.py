@@ -14,6 +14,8 @@ import argparse
 import hashlib
 import json
 import os
+import re
+from urllib.parse import urlsplit
 from pathlib import Path
 import sqlite3
 from typing import Any, Iterable
@@ -72,6 +74,22 @@ TITLE_CONTEXT_CODES = (
     "js_responding", "js_unavailable",
     "login_markers_present", "login_markers_absent", "login_markers_unknown",
 )
+# Candidate-specific values never leave memory. These are only fixed aggregate signals.
+TITLE_ROUTE_SHAPES = (
+    "shape_strict_supported", "shape_query_or_fragment", "shape_www_host",
+    "shape_non_https", "shape_other_path", "shape_invalid_identity",
+    "shape_other_host", "shape_unknown",
+)
+TITLE_ATOMIC_DOM_CODES = (
+    "atomic_available", "atomic_unavailable",
+    "atomic_ready_complete", "atomic_ready_interactive",
+    "atomic_ready_loading", "atomic_ready_unknown",
+    "atomic_body_present", "atomic_body_missing", "atomic_body_unknown",
+    "atomic_inputs_present", "atomic_inputs_missing", "atomic_inputs_unknown",
+    "atomic_editables_present", "atomic_editables_missing", "atomic_editables_unknown",
+    "atomic_textboxes_present", "atomic_textboxes_missing", "atomic_textboxes_unknown",
+    "atomic_busy_present", "atomic_busy_missing", "atomic_busy_unknown",
+)
 
 
 class CreationRecoveryAuditError(RuntimeError):
@@ -126,6 +144,14 @@ def safe_recovery_projection(result: dict[str, Any]) -> dict[str, Any]:
         "title_context_signal_counts": {
             code: int((result.get("title_context_signal_counts") or {}).get(code) or 0)
             for code in TITLE_CONTEXT_CODES
+        },
+        "title_route_shape_counts": {
+            code: int((result.get("title_route_shape_counts") or {}).get(code) or 0)
+            for code in TITLE_ROUTE_SHAPES
+        },
+        "title_atomic_dom_counts": {
+            code: int((result.get("title_atomic_dom_counts") or {}).get(code) or 0)
+            for code in TITLE_ATOMIC_DOM_CODES
         },
     }
 
@@ -355,10 +381,75 @@ def _safe_title_context_signals(page: Any, requested_url: str, response: Any) ->
     return http, route, browser, js, login
 
 
+def _safe_title_route_shape(url: str) -> str:
+    """Classify a URL's format without returning its host, path or identity.
+
+    This does not validate a draft, normalize a URL for use, or override the
+    strict identity validator. Identity is not retained after classification.
+    """
+    try:
+        parsed = urlsplit(str(url or ""))
+        if parsed.scheme != "https":
+            return "shape_non_https"
+        host = (parsed.hostname or "").lower()
+        if host == "www.note.com":
+            return "shape_www_host"
+        if host not in {"note.com", "editor.note.com"}:
+            return "shape_other_host"
+        if parsed.query or parsed.fragment:
+            return "shape_query_or_fragment"
+        match = re.fullmatch(r"/notes/([^/]+)/edit/?", parsed.path or "")
+        if match is None or parsed.username or parsed.password or parsed.port:
+            return "shape_other_path"
+        identity = match.group(1)
+        if len(identity) > 200 or re.fullmatch(r"[A-Za-z0-9_-]+", identity) is None:
+            return "shape_invalid_identity"
+        return "shape_strict_supported"
+    except Exception:
+        return "shape_unknown"
+
+
+def _safe_title_atomic_dom_signals(page: Any) -> tuple[str, ...]:
+    """One read-only browser call returning only six fixed DOM boolean signals.
+
+    No HTML/attributes/innerText/URL/title leave the browser. Untrusted result
+    keys, types, script failures and browser exception text are never output.
+    This probe never supplies a title match or changes the recovery decision.
+    """
+    try:
+        snapshot = page.evaluate("""() => {
+            const d = document;
+            return {
+                ready: d.readyState,
+                body: !!d.body,
+                inputs: !!d.querySelector('input, textarea'),
+                editables: !!d.querySelector('[contenteditable="true"], [contenteditable="plaintext-only"]'),
+                textboxes: !!d.querySelector('[role="textbox"]'),
+                busy: !!d.querySelector('[role="progressbar"], [aria-busy="true"]')
+            };
+        }""")
+    except Exception:
+        return ("atomic_unavailable",)
+    if not isinstance(snapshot, dict):
+        return ("atomic_unavailable",)
+    state = snapshot.get("ready")
+    ready = {
+        "complete": "atomic_ready_complete",
+        "interactive": "atomic_ready_interactive",
+        "loading": "atomic_ready_loading",
+    }.get(state, "atomic_ready_unknown") if isinstance(state, str) else "atomic_ready_unknown"
+    signals = ["atomic_available", ready]
+    for name in ("body", "inputs", "editables", "textboxes", "busy"):
+        value = snapshot.get(name)
+        status = "present" if value is True else ("missing" if value is False else "unknown")
+        signals.append(f"atomic_{name}_{status}")
+    return tuple(signals)
+
+
 def _discover_verified_matches(
     article: dict[str, Any],
     record: DeliveryRecord,
-) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int]]:
+) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int]]:
     """Inspect history read-only; count only fixed codes, never private identities."""
     try:
         from playwright.sync_api import sync_playwright
@@ -371,8 +462,11 @@ def _discover_verified_matches(
     title_failures = {code: 0 for code in TITLE_FAILURE_CODES}
     title_dom_signals = {code: 0 for code in TITLE_DOM_SIGNAL_CODES}
     title_context_signals = {code: 0 for code in TITLE_CONTEXT_CODES}
+    title_route_shapes = {code: 0 for code in TITLE_ROUTE_SHAPES}
+    title_atomic_dom = {code: 0 for code in TITLE_ATOMIC_DOM_CODES}
     if not candidates:
-        return [], 0, counts, stages, title_failures, title_dom_signals, title_context_signals
+        return ([], 0, counts, stages, title_failures, title_dom_signals,
+                title_context_signals, title_route_shapes, title_atomic_dom)
 
     matches: list[dict[str, Any]] = []
     legacy_title_finder = draft_audit.note_base._find_title
@@ -456,11 +550,14 @@ def _discover_verified_matches(
                                     title_dom_signals[signal] += 1
                                 for signal in _safe_title_context_signals(page, candidate, response):
                                     title_context_signals[signal] += 1
+                                title_route_shapes[_safe_title_route_shape(str(page.url or ""))] += 1
+                                for signal in _safe_title_atomic_dom_signals(page):
+                                    title_atomic_dom[signal] += 1
                         continue
             finally:
                 context.close()
     return (matches, len(candidates), counts, stages, title_failures,
-            title_dom_signals, title_context_signals)
+            title_dom_signals, title_context_signals, title_route_shapes, title_atomic_dom)
 
 
 def run(
@@ -501,6 +598,8 @@ def run(
         "title_failure_counts": {code: 0 for code in TITLE_FAILURE_CODES},
         "title_dom_signal_counts": {code: 0 for code in TITLE_DOM_SIGNAL_CODES},
         "title_context_signal_counts": {code: 0 for code in TITLE_CONTEXT_CODES},
+        "title_route_shape_counts": {code: 0 for code in TITLE_ROUTE_SHAPES},
+        "title_atomic_dom_counts": {code: 0 for code in TITLE_ATOMIC_DOM_CODES},
     }
     if prepare_only:
         return base_result
@@ -508,6 +607,7 @@ def run(
     (
         matches, candidate_count, rejection_counts, inspection_stage_counts,
         title_failure_counts, title_dom_signal_counts, title_context_signal_counts,
+        title_route_shape_counts, title_atomic_dom_counts,
     ) = _discover_verified_matches(article, record)
     base_result["history_candidate_count"] = candidate_count
     base_result["match_count"] = len(matches)
@@ -525,6 +625,12 @@ def run(
     }
     base_result["title_context_signal_counts"] = {
         code: int(title_context_signal_counts.get(code, 0)) for code in TITLE_CONTEXT_CODES
+    }
+    base_result["title_route_shape_counts"] = {
+        code: int(title_route_shape_counts.get(code, 0)) for code in TITLE_ROUTE_SHAPES
+    }
+    base_result["title_atomic_dom_counts"] = {
+        code: int(title_atomic_dom_counts.get(code, 0)) for code in TITLE_ATOMIC_DOM_CODES
     }
     # Preserve the exact safe counts even on an ambiguous/missing match.
     # Never grant recovery authority or infer permission to create a new draft.
