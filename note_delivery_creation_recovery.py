@@ -90,6 +90,19 @@ TITLE_ATOMIC_DOM_CODES = (
     "atomic_textboxes_present", "atomic_textboxes_missing", "atomic_textboxes_unknown",
     "atomic_busy_present", "atomic_busy_missing", "atomic_busy_unknown",
 )
+# Read rendered page text only inside note's private VM and return an integer
+# evidence bitmask; never log, persist, upload, or return text/screenshots/IDs.
+# Hints are not definitive proof of authentication, authorization or draft absence.
+SCREEN_SIGNAL_CODES = (
+    "surface_not_found_hint", "surface_permission_hint",
+    "surface_login_required_hint", "surface_error_or_retry_hint",
+    "surface_header_present", "surface_main_present",
+    "surface_button_present", "surface_frame_present",
+    "surface_dialog_present", "surface_alert_present",
+    "surface_short_visible_text", "surface_editor_link_present",
+    "surface_app_mount_present", "surface_no_indicators",
+    "surface_probe_unavailable",
+)
 
 
 class CreationRecoveryAuditError(RuntimeError):
@@ -152,6 +165,14 @@ def safe_recovery_projection(result: dict[str, Any]) -> dict[str, Any]:
         "title_atomic_dom_counts": {
             code: int((result.get("title_atomic_dom_counts") or {}).get(code) or 0)
             for code in TITLE_ATOMIC_DOM_CODES
+        },
+        "failed_screen_signal_counts": {
+            code: int((result.get("failed_screen_signal_counts") or {}).get(code) or 0)
+            for code in SCREEN_SIGNAL_CODES
+        },
+        "control_screen_signal_counts": {
+            code: int((result.get("control_screen_signal_counts") or {}).get(code) or 0)
+            for code in SCREEN_SIGNAL_CODES
         },
     }
 
@@ -446,10 +467,63 @@ def _safe_title_atomic_dom_signals(page: Any) -> tuple[str, ...]:
     return tuple(signals)
 
 
+def _safe_visible_screen_signals(page: Any) -> tuple[str, ...]:
+    """Observe the actual rendered browser screen without exporting page content.
+
+    Only a number of preapproved bit flags is returned from the in-browser
+    evaluation. Screen text is used solely within that evaluation to detect
+    literal user-facing error hints; it is never sent to Python, GitHub logs,
+    an external service, artifacts or the result file. No screenshots.
+    """
+    try:
+        mask = page.evaluate(r"""() => {
+            const d = document;
+            const content = (d.body && typeof d.body.innerText === 'string')
+                ? d.body.innerText.slice(0, 12000) : '';
+            let mask = 0;
+            if (/(ページが見つかりません|お探しのページが見つかりません|404 Not Found|page not found)/i.test(content))
+                mask |= 1;
+            if (/(権限がありません|アクセス権限|アクセスできません|閲覧できません|公開されていません|削除されました)/i.test(content))
+                mask |= 2;
+            if (/(ログインしてください|ログインが必要|ログインしてから|ログインしないと)/i.test(content))
+                mask |= 4;
+            if (/(エラーが発生|読み込みに失敗|しばらく経ってから|もう一度お試し|一時的に利用できません|temporarily unavailable)/i.test(content))
+                mask |= 8;
+            if (d.querySelector('header, [role="banner"]')) mask |= 16;
+            if (d.querySelector('main, [role="main"]')) mask |= 32;
+            if (d.querySelector('button, [role="button"]')) mask |= 64;
+            if (d.querySelector('iframe')) mask |= 128;
+            if (d.querySelector('[role="dialog"], dialog[open]')) mask |= 256;
+            if (d.querySelector('[role="alert"], [aria-live="assertive"]')) mask |= 512;
+            if (content.trim().length < 25) mask |= 1024;
+            if (d.querySelector('a[href="/notes/new"], a[href*="/notes/new"]'))
+                mask |= 2048;
+            if (d.querySelector('#__next, #root, [data-reactroot]'))
+                mask |= 4096;
+            return mask;
+        }""")
+    except Exception:
+        return ("surface_probe_unavailable",)
+    if isinstance(mask, bool) or not isinstance(mask, int) or not 0 <= mask < (1 << 13):
+        return ("surface_probe_unavailable",)
+    if mask == 0:
+        return ("surface_no_indicators",)
+    mapped = (
+        "surface_not_found_hint", "surface_permission_hint",
+        "surface_login_required_hint", "surface_error_or_retry_hint",
+        "surface_header_present", "surface_main_present",
+        "surface_button_present", "surface_frame_present",
+        "surface_dialog_present", "surface_alert_present",
+        "surface_short_visible_text", "surface_editor_link_present",
+        "surface_app_mount_present",
+    )
+    return tuple(code for index, code in enumerate(mapped) if mask & (1 << index))
+
+
 def _discover_verified_matches(
     article: dict[str, Any],
     record: DeliveryRecord,
-) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int]]:
+) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int]]:
     """Inspect history read-only; count only fixed codes, never private identities."""
     try:
         from playwright.sync_api import sync_playwright
@@ -464,9 +538,12 @@ def _discover_verified_matches(
     title_context_signals = {code: 0 for code in TITLE_CONTEXT_CODES}
     title_route_shapes = {code: 0 for code in TITLE_ROUTE_SHAPES}
     title_atomic_dom = {code: 0 for code in TITLE_ATOMIC_DOM_CODES}
+    failed_screen_signal_counts = {code: 0 for code in SCREEN_SIGNAL_CODES}
+    control_screen_signal_counts = {code: 0 for code in SCREEN_SIGNAL_CODES}
     if not candidates:
         return ([], 0, counts, stages, title_failures, title_dom_signals,
-                title_context_signals, title_route_shapes, title_atomic_dom)
+                title_context_signals, title_route_shapes, title_atomic_dom,
+                failed_screen_signal_counts, control_screen_signal_counts)
 
     matches: list[dict[str, Any]] = []
     legacy_title_finder = draft_audit.note_base._find_title
@@ -505,6 +582,8 @@ def _discover_verified_matches(
                         stage = "title_read"
                         if draft_audit._title_value(page) != str(article["title"]).strip():
                             counts["different_title"] += 1
+                            for signal in _safe_visible_screen_signals(page):
+                                control_screen_signal_counts[signal] += 1
                             continue
                         stage = "body_audit"
                         try:
@@ -553,11 +632,14 @@ def _discover_verified_matches(
                                 title_route_shapes[_safe_title_route_shape(str(page.url or ""))] += 1
                                 for signal in _safe_title_atomic_dom_signals(page):
                                     title_atomic_dom[signal] += 1
+                                for signal in _safe_visible_screen_signals(page):
+                                    failed_screen_signal_counts[signal] += 1
                         continue
             finally:
                 context.close()
     return (matches, len(candidates), counts, stages, title_failures,
-            title_dom_signals, title_context_signals, title_route_shapes, title_atomic_dom)
+            title_dom_signals, title_context_signals, title_route_shapes, title_atomic_dom,
+            failed_screen_signal_counts, control_screen_signal_counts)
 
 
 def run(
@@ -600,6 +682,8 @@ def run(
         "title_context_signal_counts": {code: 0 for code in TITLE_CONTEXT_CODES},
         "title_route_shape_counts": {code: 0 for code in TITLE_ROUTE_SHAPES},
         "title_atomic_dom_counts": {code: 0 for code in TITLE_ATOMIC_DOM_CODES},
+        "failed_screen_signal_counts": {code: 0 for code in SCREEN_SIGNAL_CODES},
+        "control_screen_signal_counts": {code: 0 for code in SCREEN_SIGNAL_CODES},
     }
     if prepare_only:
         return base_result
@@ -608,6 +692,7 @@ def run(
         matches, candidate_count, rejection_counts, inspection_stage_counts,
         title_failure_counts, title_dom_signal_counts, title_context_signal_counts,
         title_route_shape_counts, title_atomic_dom_counts,
+        failed_screen_signal_counts, control_screen_signal_counts,
     ) = _discover_verified_matches(article, record)
     base_result["history_candidate_count"] = candidate_count
     base_result["match_count"] = len(matches)
@@ -631,6 +716,12 @@ def run(
     }
     base_result["title_atomic_dom_counts"] = {
         code: int(title_atomic_dom_counts.get(code, 0)) for code in TITLE_ATOMIC_DOM_CODES
+    }
+    base_result["failed_screen_signal_counts"] = {
+        code: int(failed_screen_signal_counts.get(code, 0)) for code in SCREEN_SIGNAL_CODES
+    }
+    base_result["control_screen_signal_counts"] = {
+        code: int(control_screen_signal_counts.get(code, 0)) for code in SCREEN_SIGNAL_CODES
     }
     # Preserve the exact safe counts even on an ambiguous/missing match.
     # Never grant recovery authority or infer permission to create a new draft.
