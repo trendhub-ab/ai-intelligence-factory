@@ -1790,3 +1790,174 @@ def test_owner_menu_navigation_never_mutates_editor_or_leaks_private_fields():
     assert "confidential" not in str(safe)
     probe=inspect.getsource(recovery._probe_official_article_list)
     assert probe.index('codes.add("account_proven")')<probe.index("_safe_owner_articles_menu_route(")
+
+
+
+def test_home_profile_probe_classifies_visible_home_controls_without_private_dom(monkeypatch):
+    recovery = _module()
+    mapping = {
+        1: "home_main_populated",
+        2: "home_creator_profile_link_visible",
+        4: "home_avatar_button_visible",
+        8: "home_profile_menu_trigger_visible",
+        16: "home_owner_article_link_visible",
+        32: "home_owner_article_link_hidden",
+        64: "home_draft_link_visible",
+        128: "home_article_card_visible",
+        256: "home_loading_visible",
+        512: "home_profile_label_visible",
+        1024: "home_header_visible",
+        2048: "home_avatar_image_visible",
+        4096: "home_avatar_svg_button_visible",
+        8192: "home_post_dropdown_visible",
+    }
+    class Link:
+        def count(self): return 0
+    class Page:
+        url = "https://note.com/settings/profile"
+        def __init__(self, mask): self.mask=mask;self.visits=[]
+        def goto(self, url, **kwargs):
+            assert url == "https://note.com/"
+            assert kwargs["wait_until"] == "domcontentloaded"
+            self.visits.append(url)
+            self.url = url
+        def wait_for_timeout(self, delay): assert delay <= 1500
+        def evaluate(self, script, *args):
+            assert "querySelectorAll" in script
+            assert "getBoundingClientRect" in script
+            assert args == ()
+            return self.mask
+        def get_by_role(self, role, name, exact):
+            assert (role,name,exact) == ("link", "自分の記事", True)
+            return Link()
+    monkeypatch.setattr(recovery.draft_audit.note_base,"_looks_logged_out",lambda _: False)
+    for bit, code in mapping.items():
+        p=Page(bit)
+        result=recovery._safe_note_home_profile_probe(p)
+        assert result == {"home_open",code,"home_owner_link_missing"}
+        assert p.visits == ["https://note.com/"]
+    safe=recovery.safe_recovery_projection({
+        "official_list_scan_counts": {
+            **{code:1 for code in mapping.values()},
+            "actual_dom": "PRIVATE note article",
+            "cookie": "private-secret",
+        }
+    })
+    assert set(safe["official_list_scan_counts"]) == set(recovery.OFFICIAL_LIST_SCAN_CODES)
+    assert "PRIVATE" not in str(safe)
+    assert "private-secret" not in str(safe)
+
+
+def test_home_profile_probe_uses_only_unique_observed_same_origin_article_link(monkeypatch):
+    recovery=_module()
+    events=[]
+    class Link:
+        def count(self): return 1
+        def is_visible(self): return True
+        def get_attribute(self, name):
+            assert name == "href"
+            return "/notes?kind=draft"
+    class Page:
+        url="https://note.com/settings/profile"
+        def goto(self, url, **kwargs):
+            assert url in ("https://note.com/","https://note.com/notes?kind=draft")
+            self.url=url
+            events.append(url)
+        def wait_for_timeout(self,_): pass
+        def evaluate(self,script,*args):
+            assert "querySelectorAll" in script
+            if self.url=="https://note.com/":
+                return 1|4|16
+            return 1|2|4
+        def get_by_role(self,*_args,**_kwargs):return Link()
+    monkeypatch.setattr(recovery.draft_audit.note_base,"_looks_logged_out",lambda _: False)
+    result=recovery._safe_note_home_profile_probe(Page())
+    assert result=={
+        "home_open","home_main_populated","home_avatar_button_visible",
+        "home_owner_article_link_visible","home_owner_link_exact",
+        "home_owner_route_open","home_owner_route_main_populated",
+        "home_owner_route_article_card_present","home_owner_route_edit_control_present",
+    }
+    assert events==["https://note.com/","https://note.com/notes?kind=draft"]
+
+
+def test_home_profile_probe_refuses_untrusted_or_ambiguous_navigation(monkeypatch):
+    recovery=_module()
+    monkeypatch.setattr(recovery.draft_audit.note_base,"_looks_logged_out",lambda _: False)
+    class Link:
+        def __init__(self, href, count):self.href=href;self.n=count
+        def count(self):return self.n
+        def is_visible(self):return True
+        def get_attribute(self,key):return self.href
+    class Page:
+        url="https://note.com/settings/profile"
+        def __init__(self, href, count=1):self.href=href;self.n=count;self.visits=[]
+        def goto(self, url, **_kwargs):
+            if self.visits:
+                raise AssertionError("untrusted navigation attempted")
+            assert url=="https://note.com/"
+            self.visits.append(url)
+            self.url=url
+        def wait_for_timeout(self,_):pass
+        def evaluate(self,*_args):return 0
+        def get_by_role(self,*_args,**_kwargs):return Link(self.href,self.n)
+    for href in (
+        "https://evil.example/notes", "//evil.example/notes",
+        "https://note.com.evil.example/notes", "http://note.com/notes",
+        "https://note.com/notes/new", "/notes?status=draft",
+        "/notes?kind=draft&token=secret", "/notes#secret",
+        "javascript:alert('bad')",
+    ):
+        p=Page(href)
+        assert recovery._safe_note_home_profile_probe(p)=={
+            "home_open","home_owner_link_rejected"
+        }
+        assert p.visits==["https://note.com/"]
+    assert recovery._safe_note_home_profile_probe(Page("/notes",count=2))=={
+        "home_open","home_owner_link_ambiguous"
+    }
+
+
+def test_home_profile_probe_redirect_logout_and_malformed_dom_fail_closed(monkeypatch):
+    recovery=_module()
+    class Page:
+        url="https://note.com/settings/profile"
+        def __init__(self, url, mask):self.target=url;self.mask=mask
+        def goto(self,*_args,**_kwargs):self.url=self.target
+        def wait_for_timeout(self,_):pass
+        def evaluate(self,*_args):return self.mask
+        def get_by_role(self,*_args,**_kwargs):
+            return type("L",(),{"count":lambda self:0})()
+    monkeypatch.setattr(recovery.draft_audit.note_base,"_looks_logged_out",lambda _:False)
+    for url in (
+        "https://evil.example/", "http://note.com/",
+        "https://note.com/notes", "https://note.com/?redirect=1",
+    ):
+        assert recovery._safe_note_home_profile_probe(Page(url,0))=={
+            "home_route_unverified"
+        }
+    monkeypatch.setattr(recovery.draft_audit.note_base,"_looks_logged_out",lambda _:True)
+    assert recovery._safe_note_home_profile_probe(Page("https://note.com/",0))=={
+        "home_route_unverified"
+    }
+    monkeypatch.setattr(recovery.draft_audit.note_base,"_looks_logged_out",lambda _:False)
+    for mask in (True,None,-1,1<<14,"hidden",1.25):
+        assert recovery._safe_note_home_profile_probe(Page("https://note.com/",mask))=={
+            "home_open","home_dom_uninspectable","home_owner_link_missing"
+        }
+
+
+def test_home_profile_probe_runs_after_account_ownership_and_is_not_recovery_authority():
+    recovery=_module()
+    probe=inspect.getsource(recovery._probe_official_article_list)
+    assert probe.index('codes.add("account_proven")') < probe.index('_safe_note_home_profile_probe(')
+    assert "title_button_not_visible" in probe
+    assert "record.snapshot.canonical_document_sha256" in probe
+    src=inspect.getsource(recovery._safe_note_home_profile_probe)
+    for forbidden in (
+        ".click(", ".fill(", ".screenshot(", ".set_input_files(",
+        "requests.post(", "create_draft(", "mark_draft_created(", "page.content("
+    ):
+        assert forbidden not in src
+    assert "https://note.com/" in src
+    assert "cloud.PROFILE_SETTINGS_URL" not in src
