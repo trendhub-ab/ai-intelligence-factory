@@ -61,6 +61,7 @@ def test_safe_projection_excludes_private_identity_and_unpublished_content():
         "match_count": 1,
         "history_candidate_count": 7,
         "editor_route_hash": "abcdef123456",
+        "rejection_counts": {bucket: 0 for bucket in recovery.REJECTION_BUCKETS},
     }
     for forbidden in ("recovered_draft_id", "sync_id", "draft_url", "title", "manuscript"):
         assert forbidden not in safe
@@ -184,7 +185,10 @@ def test_non_unique_readonly_audit_reports_counts_without_authorizing_recovery(m
     ):
         monkeypatch.setattr(
             recovery, "_discover_verified_matches",
-            lambda article, record, matches=matches: (matches, 6),
+            lambda article, record, matches=matches: (
+                matches, 6,
+                {"different_title": 6 - len(matches)},
+            ),
         )
         result = recovery.run(
             confirm=recovery.CONFIRM_TOKEN, sync_id="a" * 32,
@@ -193,6 +197,7 @@ def test_non_unique_readonly_audit_reports_counts_without_authorizing_recovery(m
         assert result["status"] == expected
         assert result["match_count"] == len(matches)
         assert result["history_candidate_count"] == 6
+        assert result["rejection_counts"]["different_title"] == 6 - len(matches)
         assert result["read_only"] is True
         assert result["draft_mutation"] is False
         assert result["public_release"] is False
@@ -209,6 +214,7 @@ def test_cli_writes_safe_blocked_result_then_returns_failure(tmp_path, monkeypat
         "draft_mutation": False, "public_release": False,
         "match_count": 0, "history_candidate_count": 9,
         "editor_route_hash": "",
+        "rejection_counts": {"different_title": 9},
     }
     monkeypatch.setattr(recovery, "run", lambda **kwargs: dict(blocked))
     target = tmp_path / "read-only-result.json"
@@ -220,3 +226,34 @@ def test_cli_writes_safe_blocked_result_then_returns_failure(tmp_path, monkeypat
     assert '"match_count": 0' in output
     assert '"history_candidate_count": 9' in output
     assert "draft_id" not in output
+
+
+def test_rejection_diagnostics_are_fixed_bucket_counts_without_private_identity():
+    recovery = _module()
+    unsafe = {
+        "status": "recovery_no_verified_match",
+        "rejection_counts": {
+            "different_title": 16,
+            "logged_out": 2,
+            "inspection_error": 6,
+            "candidate_private_url": "https://note.com/notes/secret/edit",
+            "secret_manuscript": "private text",
+        },
+        "recovered_draft_id": "secret",
+    }
+    safe = recovery.safe_recovery_projection(unsafe)
+    assert safe["rejection_counts"] == {
+        "logged_out": 2, "non_editor": 0, "different_title": 16,
+        "content_or_eyecatch": 0, "canonical_hash": 0,
+        "inspection_error": 6,
+    }
+    assert "candidate_private_url" not in str(safe)
+    assert "secret_manuscript" not in str(safe)
+    assert "recovered_draft_id" not in str(safe)
+
+
+def test_failed_recovery_still_requires_exact_one_verified_match():
+    recovery = _module()
+    assert "recovery_no_verified_match" in inspect.getsource(recovery.run)
+    assert "recovery_multiple_verified_matches" in inspect.getsource(recovery.run)
+    assert "len(matches) != 1" in inspect.getsource(recovery.run)
