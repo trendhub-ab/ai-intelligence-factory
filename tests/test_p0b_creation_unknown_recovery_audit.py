@@ -65,6 +65,7 @@ def test_safe_projection_excludes_private_identity_and_unpublished_content():
         "inspection_stage_counts": {stage: 0 for stage in recovery.INSPECTION_STAGES},
         "title_failure_counts": {code: 0 for code in recovery.TITLE_FAILURE_CODES},
         "title_dom_signal_counts": {code: 0 for code in recovery.TITLE_DOM_SIGNAL_CODES},
+        "title_context_signal_counts": {code: 0 for code in recovery.TITLE_CONTEXT_CODES},
     }
     for forbidden in ("recovered_draft_id", "sync_id", "draft_url", "title", "manuscript"):
         assert forbidden not in safe
@@ -194,6 +195,7 @@ def test_non_unique_readonly_audit_reports_counts_without_authorizing_recovery(m
                 {"title_read": 1},
                 {"title_selector_unavailable": 1},
                 {"ready_complete": 1, "editables_missing": 1},
+                {"http_2xx": 1, "route_same_identity": 1, "js_responding": 1},
             ),
         )
         result = recovery.run(
@@ -208,6 +210,7 @@ def test_non_unique_readonly_audit_reports_counts_without_authorizing_recovery(m
         assert result["title_failure_counts"]["title_selector_unavailable"] == 1
         assert result["title_dom_signal_counts"]["ready_complete"] == 1
         assert result["title_dom_signal_counts"]["editables_missing"] == 1
+        assert result["title_context_signal_counts"]["route_same_identity"] == 1
         assert result["read_only"] is True
         assert result["draft_mutation"] is False
         assert result["public_release"] is False
@@ -569,3 +572,125 @@ def test_title_dom_probe_only_follows_existing_selector_unavailable_failure():
     forbidden = (".click(", ".fill(", "page.content(", "page.screenshot(", "requests.post(")
     function_source = inspect.getsource(recovery._safe_title_dom_signals)
     assert all(token not in function_source for token in forbidden)
+
+
+def test_title_context_probe_distinguishes_http_route_browser_and_login_markers(monkeypatch):
+    recovery = _module()
+    class Response:
+        status = 200
+    class Page:
+        url = "https://editor.note.com/notes/secret1/edit"
+        def is_closed(self):
+            return False
+        def evaluate(self, expression):
+            assert expression == "1"
+            return 1
+        def content(self):
+            raise AssertionError("must not read raw HTML")
+        def screenshot(self, *args, **kwargs):
+            raise AssertionError("must not capture screenshots")
+        def goto(self, *args, **kwargs):
+            raise AssertionError("must not navigate")
+    monkeypatch.setattr(recovery.draft_audit.note_base, "_looks_logged_out", lambda p: False)
+    signals = recovery._safe_title_context_signals(
+        Page(), "https://note.com/notes/secret1/edit/", Response()
+    )
+    assert signals == (
+        "http_2xx", "route_same_identity", "browser_open",
+        "js_responding", "login_markers_absent",
+    )
+    assert set(signals).issubset(set(recovery.TITLE_CONTEXT_CODES))
+    assert "secret1" not in str(signals)
+
+
+def test_title_context_probe_classifies_another_editor_identity_and_client_http(monkeypatch):
+    recovery = _module()
+    class Response:
+        status = 404
+    class Page:
+        url = "https://editor.note.com/notes/different/edit"
+        def is_closed(self): return False
+        def evaluate(self, expression): return 1
+    monkeypatch.setattr(recovery.draft_audit.note_base, "_looks_logged_out", lambda p: True)
+    signals = recovery._safe_title_context_signals(
+        Page(), "https://editor.note.com/notes/expected/edit", Response()
+    )
+    assert signals == (
+        "http_4xx", "route_other_identity", "browser_open",
+        "js_responding", "login_markers_present",
+    )
+
+
+def test_title_context_probe_unknowns_do_not_leak_browser_exception_content(monkeypatch):
+    recovery = _module()
+    class Response:
+        @property
+        def status(self):
+            raise RuntimeError("secret HTTP response body")
+    class Page:
+        url = "https://note.com/notes/secret/edit"
+        def is_closed(self):
+            raise RuntimeError("secret screenshot text")
+        def evaluate(self, expression):
+            raise RuntimeError("secret user manuscript")
+    def login(_):
+        raise RuntimeError("session token secret")
+    monkeypatch.setattr(recovery.draft_audit.note_base, "_looks_logged_out", login)
+    signals = recovery._safe_title_context_signals(
+        Page(), "https://note.com/notes/secret/edit", Response()
+    )
+    assert signals == (
+        "http_unknown", "route_same_identity", "browser_unknown",
+        "js_unavailable", "login_markers_unknown",
+    )
+    assert "secret" not in str(signals)
+    assert "token" not in str(signals)
+
+
+def test_title_context_probe_closed_page_and_invalid_routes_are_fail_closed(monkeypatch):
+    recovery = _module()
+    class Page:
+        url = "https://editor.note.com/notes/secret/edit?malformed=1"
+        def is_closed(self): return True
+        def evaluate(self, expression):
+            raise AssertionError("no JS required on closed page")
+    monkeypatch.setattr(recovery.draft_audit.note_base, "_looks_logged_out", lambda _: False)
+    signals = recovery._safe_title_context_signals(
+        Page(), "https://note.com/notes/secret/edit", None
+    )
+    assert signals == (
+        "http_unknown", "route_unverified", "browser_closed",
+        "js_unavailable", "login_markers_absent",
+    )
+
+
+def test_title_context_projection_allowlist_disallows_private_keys_and_error_text():
+    recovery = _module()
+    projection = recovery.safe_recovery_projection({
+        "title_context_signal_counts": {
+            "http_4xx": 1, "route_unverified": 1,
+            "js_unavailable": 1,
+            "raw_draft_url": "https://note.com/notes/private/edit",
+            "response_body": "secret unpublished manuscript",
+            "exception_detail": "private token",
+        }
+    })
+    counts = projection["title_context_signal_counts"]
+    assert set(counts) == set(recovery.TITLE_CONTEXT_CODES)
+    assert counts["http_4xx"] == 1
+    assert counts["route_unverified"] == 1
+    assert counts["js_unavailable"] == 1
+    assert "private" not in str(projection)
+    assert "manuscript" not in str(projection)
+
+
+def test_title_context_probe_only_inspects_title_selector_unavailable_without_mutation():
+    recovery = _module()
+    code = inspect.getsource(recovery._discover_verified_matches)
+    assert 'exc.code == "title_selector_unavailable"' in code
+    assert "_safe_title_context_signals(page, candidate, response)" in code
+    assert "record.snapshot.canonical_document_sha256" in code
+    assert 'counts["inspection_error"] += 1' in code
+    diagnostic = inspect.getsource(recovery._safe_title_context_signals)
+    for forbidden in (".click(", ".fill(", ".goto(", ".content(", ".screenshot(", "requests.post("):
+        assert forbidden not in diagnostic
