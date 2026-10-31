@@ -557,7 +557,7 @@ def _bounded_official_list_scan(page: Any, title: str) -> set[str]:
     An incomplete scan can NEVER establish absence of a draft.
     """
     evidence: set[str] = set()
-    visited = {str(page.url or "")}
+    visited = {str(getattr(page, "url", "") or "")}
     try:
         for page_index in range(3):  # at most three actual list pages
             mask = page.evaluate(r"""() => {
