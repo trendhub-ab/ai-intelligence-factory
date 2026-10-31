@@ -41,7 +41,7 @@ def test_read_only_and_browser_resource_guards():
         "gh workflow run", "note-ready-sync.yml", "note-create-draft.yml",
         "git push", "upload-artifact", "notion.pages.update", "note.com/new",
         "record_draft_created", "record_queue_confirmed", "record_blocked",
-        "gemini", "公開する", "投稿する",
+        "generate_content", "公開する", "投稿する",
     ):
         assert forbidden not in data
 
