@@ -1154,7 +1154,7 @@ def _safe_note_home_profile_probe(page: Any) -> set[str]:
 
     # Every private DOM decision stays in the owner VM; export fixed bits only.
     try:
-        mask = page.evaluate(r"""() => {
+        home_mask_script = r"""() => {
             const controls = Array.from(document.querySelectorAll(
                 'a[href],button,[role="button"],[role="menuitem"],[role="tab"]'
             )).slice(0,400);
@@ -1210,7 +1210,28 @@ def _safe_note_home_profile_probe(page: Any) -> set[str]:
                 /(投稿|書く)/.test(text(el)) &&
                 el.getAttribute('aria-haspopup'))) bits |= 8192;
             return bits;
-        }""")
+        }"""
+        mask = page.evaluate(home_mask_script)
+        # The home page is often still hydrating after DOMContentLoaded.
+        # Only re-read a fixed-bit DOM signature while a loading placeholder
+        # persists and no account/navigation controls have appeared. At most
+        # eight 1.2-second waits; never click or follow an unobserved route.
+        for _ in range(8):
+            if (not isinstance(mask, int) or isinstance(mask, bool) or
+                not 0 <= mask < (1 << 14)):
+                break
+            if not (mask & 256) or (mask & (2 | 4 | 8 | 16 | 32 | 512 | 2048 | 4096)):
+                break
+            page.wait_for_timeout(1200)
+            refreshed_url = urlsplit(str(page.url or ""))
+            if (refreshed_url.scheme != "https" or
+                refreshed_url.hostname != "note.com" or
+                refreshed_url.path != "/" or refreshed_url.query or
+                refreshed_url.fragment or refreshed_url.username or
+                refreshed_url.password or refreshed_url.port is not None or
+                draft_audit.note_base._looks_logged_out(page)):
+                return evidence | {"home_route_unverified"}
+            mask = page.evaluate(home_mask_script)
         if not isinstance(mask, int) or isinstance(mask, bool) or not 0 <= mask < (1 << 14):
             evidence.add("home_dom_uninspectable")
         else:
