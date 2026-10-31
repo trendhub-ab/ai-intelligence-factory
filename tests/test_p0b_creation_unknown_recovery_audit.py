@@ -190,6 +190,7 @@ def test_non_unique_readonly_audit_reports_counts_without_authorizing_recovery(m
                 matches, 6,
                 {"different_title": 6 - len(matches)},
                 {"title_read": 1},
+                {"title_selector_unavailable": 1},
             ),
         )
         result = recovery.run(
@@ -201,6 +202,7 @@ def test_non_unique_readonly_audit_reports_counts_without_authorizing_recovery(m
         assert result["history_candidate_count"] == 6
         assert result["rejection_counts"]["different_title"] == 6 - len(matches)
         assert result["inspection_stage_counts"]["title_read"] == 1
+        assert result["title_failure_counts"]["title_selector_unavailable"] == 1
         assert result["read_only"] is True
         assert result["draft_mutation"] is False
         assert result["public_release"] is False
@@ -336,8 +338,9 @@ def test_readonly_title_absence_stays_blocked_without_guessing_or_writes(monkeyp
 
     monkeypatch.setattr(recovery.editor_readiness, "_explicit_title", lambda _: None)
     page = Page()
-    with pytest.raises(recovery.draft_audit.note_base.NoteDraftError):
+    with pytest.raises(recovery.TitleReadInspectionError) as exc:
         recovery._read_only_title_field(page, old_finder)
+    assert exc.value.code == "title_selector_unavailable"
     assert page.waits == [450, 450, 450]
 
 
@@ -364,3 +367,91 @@ def test_readonly_finder_scoped_across_title_body_and_canonical_checks():
     assert source.index('patch.object(draft_audit.note_base, "_find_title"') < source.index('_current_canonical_sha256(page)')
     assert "record.snapshot.canonical_document_sha256" in source
     assert "len(matches)" not in inspect.getsource(recovery._read_only_title_field)
+
+def test_title_failure_safe_projection_drops_untrusted_browser_details():
+    recovery = _module()
+    result = recovery.safe_recovery_projection({
+        "title_failure_counts": {
+            "title_selector_unavailable": 2,
+            "title_selector_exception": 1,
+            "title_value_unreadable": 3,
+            "title_retry_interrupted": 0,
+            "title_other": 0,
+            "raw_page_url": "https://note.com/notes/private-identity/edit",
+            "exception_text": "private manuscript and title",
+        }
+    })
+    assert result["title_failure_counts"] == {
+        "title_selector_unavailable": 2,
+        "title_selector_exception": 1,
+        "title_retry_interrupted": 0,
+        "title_value_unreadable": 3,
+        "title_other": 0,
+    }
+    assert "private-identity" not in str(result)
+    assert "manuscript" not in str(result)
+    assert set(result["title_failure_counts"]) == set(recovery.TITLE_FAILURE_CODES)
+
+
+def test_title_fallback_failed_explicit_selector_is_fixed_code_only(monkeypatch):
+    recovery = _module()
+
+    class Page:
+        url = "https://note.com/notes/existing/edit"
+        def wait_for_timeout(self, milliseconds):
+            assert milliseconds == 450
+
+    def legacy(_):
+        raise RuntimeError("secret URL https://note.com/notes/private-id/edit")
+
+    def broken_explicit(_):
+        raise ValueError("secret unpublished title")
+
+    monkeypatch.setattr(recovery.editor_readiness, "_explicit_title", broken_explicit)
+    with pytest.raises(recovery.TitleReadInspectionError) as exc:
+        recovery._read_only_title_field(Page(), legacy)
+    assert exc.value.code == "title_selector_exception"
+    assert "secret" not in str(exc.value)
+    assert "private-id" not in str(exc.value)
+    assert recovery._title_failure_code(exc.value) == "title_selector_exception"
+
+
+def test_title_fallback_retry_interrupted_is_coded_without_exception_text(monkeypatch):
+    recovery = _module()
+
+    class Page:
+        url = "https://editor.note.com/notes/existing/edit"
+        def wait_for_timeout(self, milliseconds):
+            raise RuntimeError("candidate editor private path")
+
+    def legacy(_):
+        raise RuntimeError("private title")
+
+    monkeypatch.setattr(recovery.editor_readiness, "_explicit_title", lambda _: None)
+    with pytest.raises(recovery.TitleReadInspectionError) as exc:
+        recovery._read_only_title_field(Page(), legacy)
+    assert exc.value.code == "title_retry_interrupted"
+    assert "private" not in str(exc.value)
+
+
+def test_title_failure_code_never_propagates_raw_exception():
+    recovery = _module()
+    assert recovery._title_failure_code(
+        recovery.draft_audit.PrivateDraftAuditError("secret unpublished title")
+    ) == "title_value_unreadable"
+    assert recovery._title_failure_code(RuntimeError("https://note.com/notes/hidden/edit")) == "title_other"
+    assert recovery._title_failure_code(
+        recovery.TitleReadInspectionError("title_selector_unavailable")
+    ) == "title_selector_unavailable"
+    with pytest.raises(ValueError):
+        recovery.TitleReadInspectionError("raw_private_browser_error")
+
+
+def test_title_failure_audit_counts_are_independent_of_safety_state():
+    recovery = _module()
+    source = inspect.getsource(recovery._discover_verified_matches)
+    assert 'if stage == "title_read":' in source
+    assert 'title_failures[_title_failure_code(exc)] += 1' in source
+    assert "counts[\"inspection_error\"] += 1" in source
+    assert "record.snapshot.canonical_document_sha256" in source
+    assert "context.close()" in source
