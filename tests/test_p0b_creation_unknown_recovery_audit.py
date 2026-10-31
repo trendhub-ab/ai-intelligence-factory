@@ -1114,13 +1114,13 @@ def test_bounded_list_scan_detects_filters_and_requires_explicit_same_origin_pag
         def get_by_role(self, role, name, exact):
             return type("B", (), {"count": lambda self: 0})()
         def evaluate(self, script, *args):
-            if "querySelectorAll" in script:
-                return 1 | 2 | 4
+            if "return item ? item.getAttribute('href')" in script:
+                return "/notes?page=2" if not self.navigated else ""
             if "window.scrollBy" in script:
                 self.scrolls += 1
                 return 0
-            if "getAttribute('href')" in script:
-                return "/notes?page=2" if not self.navigated else ""
+            if "querySelectorAll" in script:
+                return 1 | 2 | 4
             raise AssertionError("unexpected evaluation")
         def wait_for_timeout(self, _): pass
         def goto(self, url, **kwargs):
@@ -1145,9 +1145,9 @@ def test_bounded_list_scan_never_navigates_to_external_or_malformed_pagination()
         def get_by_role(self,*args,**kwargs):
             return type("B", (), {"count":lambda self:0})()
         def evaluate(self,script,*args):
-            if "querySelectorAll" in script:return 0
+            if "return item ? item.getAttribute('href')" in script:return self.href
             if "window.scrollBy" in script:return 0
-            if "getAttribute('href')" in script:return self.href
+            if "querySelectorAll" in script:return 0
         def wait_for_timeout(self,_):pass
         def goto(self, url, **kwargs):
             self.visits.append(url)
