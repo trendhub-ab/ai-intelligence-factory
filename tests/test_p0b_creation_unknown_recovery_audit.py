@@ -2008,7 +2008,7 @@ def test_note_home_loading_settles_before_unique_owner_link_is_evaluated(monkeyp
     assert "home_owner_route_open" in evidence
     assert "home_owner_route_article_card_present" in evidence
     assert seen == ["https://note.com/", "https://note.com/notes"]
-    assert len(page.waits) == 3
+    assert len(page.waits) == 4  # initial home + two hydration checks + owner-route settling
     assert not page.masks
 
 
