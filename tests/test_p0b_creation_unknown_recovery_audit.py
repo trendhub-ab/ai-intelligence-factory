@@ -71,6 +71,7 @@ def test_safe_projection_excludes_private_identity_and_unpublished_content():
         "failed_screen_signal_counts": {code: 0 for code in recovery.SCREEN_SIGNAL_CODES},
         "control_screen_signal_counts": {code: 0 for code in recovery.SCREEN_SIGNAL_CODES},
         "official_list_proof_counts": {code: 0 for code in recovery.OFFICIAL_LIST_CODES},
+        "official_list_scan_counts": {code: 0 for code in recovery.OFFICIAL_LIST_SCAN_CODES},
     }
     for forbidden in ("recovered_draft_id", "sync_id", "draft_url", "title", "manuscript"):
         assert forbidden not in safe
@@ -973,7 +974,7 @@ def test_official_list_proof_zero_title_is_not_draft_absence(monkeypatch):
         type("C", (), {"new_page": lambda self: Page()})(),
         {"title": "secret", "manuscript": "secret"}, object(), [],
     )
-    assert result == {"account_proven", "list_open", "title_button_not_visible"}
+    assert result == {"account_proven", "list_open", "title_button_not_visible", "list_scan_unavailable"}
     assert "draft_absent" not in str(result)
 
 
@@ -1074,3 +1075,107 @@ def test_official_list_without_explicit_edit_href_does_not_click_or_invent_route
         "account_proven", "list_open", "title_button_unique", "editor_route_unverified",
     }
     assert events == ["account", "official_list", "inspect_href", "close"]
+
+
+def test_bounded_list_scan_scrolling_discovers_exact_title_without_click(monkeypatch):
+    recovery = _module()
+    calls = []
+    class Button:
+        def count(self):
+            return int("scroll" in calls)
+    class Page:
+        def get_by_role(self, role, name, exact):
+            assert role == "button" and exact and name == "secretを編集"
+            return Button()
+        def evaluate(self, script, *args):
+            if "querySelectorAll" in script:
+                return 0  # only a bounded fixed code leaves the private browser
+            if "window.scrollBy" in script:
+                calls.append("scroll")
+                return 1
+            if "getAttribute('href')" in script:
+                raise AssertionError("do not paginate after title found")
+            raise AssertionError("unexpected probe")
+        def wait_for_timeout(self, n):
+            assert n <= 1000
+    codes = recovery._bounded_official_list_scan(Page(), "secret")
+    assert "list_scroll_attempted" in codes
+    assert "list_title_found_after_scroll" in codes
+    assert "list_pagination_followed" not in codes
+    assert len(calls) == 1
+    assert "secret" not in str(codes)
+
+
+def test_bounded_list_scan_detects_filters_and_requires_explicit_same_origin_page_link():
+    recovery = _module()
+    class Page:
+        url = "https://note.com/notes"
+        def __init__(self): self.scrolls = 0; self.navigated = []
+        def get_by_role(self, role, name, exact):
+            return type("B", (), {"count": lambda self: 0})()
+        def evaluate(self, script, *args):
+            if "querySelectorAll" in script:
+                return 1 | 2 | 4
+            if "window.scrollBy" in script:
+                self.scrolls += 1
+                return 0
+            if "getAttribute('href')" in script:
+                return "/notes?page=2" if not self.navigated else ""
+            raise AssertionError("unexpected evaluation")
+        def wait_for_timeout(self, _): pass
+        def goto(self, url, **kwargs):
+            self.navigated.append(url); self.url=url
+    page=Page()
+    codes=recovery._bounded_official_list_scan(page,"secret")
+    assert "list_draft_filter_visible" in codes
+    assert "list_more_control_visible" in codes
+    assert "list_pagination_visible" in codes
+    assert "list_pagination_followed" in codes
+    assert "list_scroll_no_motion" in codes
+    assert "list_scan_limit_reached" in codes
+    assert page.navigated == ["https://note.com/notes?page=2"]
+    assert page.scrolls <= 12
+
+
+def test_bounded_list_scan_never_navigates_to_external_or_malformed_pagination():
+    recovery=_module()
+    class Page:
+        url="https://note.com/notes"
+        def __init__(self, href):self.href=href;self.visits=[]
+        def get_by_role(self,*args,**kwargs):
+            return type("B", (), {"count":lambda self:0})()
+        def evaluate(self,script,*args):
+            if "querySelectorAll" in script:return 0
+            if "window.scrollBy" in script:return 0
+            if "getAttribute('href')" in script:return self.href
+        def wait_for_timeout(self,_):pass
+        def goto(self, url, **kwargs):
+            self.visits.append(url)
+            raise AssertionError("must not leave official article list")
+    for href in ("https://evil.example/notes?page=2",
+                 "https://note.com/notes/new?page=2",
+                 "https://note.com/notes?page=2&token=secret",
+                 "https://note.com/notes?page=two",
+                 "javascript:alert(1)", "//evil.example/notes?page=2"):
+        p=Page(href)
+        codes=recovery._bounded_official_list_scan(p,"private")
+        assert not p.visits
+        assert "list_pagination_followed" not in codes
+        assert "private" not in str(codes)
+
+
+def test_bounded_scan_counters_are_fixed_codes_and_not_recovery_authority():
+    recovery=_module()
+    safe=recovery.safe_recovery_projection({
+       "official_list_scan_counts": {"list_title_found_after_scroll": 1,
+           "private_draft_id": "secret", "raw_html": "manuscript"},
+    })
+    assert set(safe["official_list_scan_counts"]) == set(recovery.OFFICIAL_LIST_SCAN_CODES)
+    assert safe["official_list_scan_counts"]["list_title_found_after_scroll"] == 1
+    assert "secret" not in str(safe) and "manuscript" not in str(safe)
+    source=inspect.getsource(recovery._bounded_official_list_scan)
+    for forbidden in (".click(", ".fill(", ".screenshot(", ".content(", "requests.post("):
+        assert forbidden not in source
+    main=inspect.getsource(recovery._discover_verified_matches)
+    assert "official_list_scan_counts" in main
+    assert "matches.append(" in main
