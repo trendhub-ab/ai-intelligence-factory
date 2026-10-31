@@ -140,6 +140,15 @@ def test_recovery_module_is_read_only_and_reuses_current_contract_verification()
     assert "run194_note_current_contract" in source
     assert "run291_note_private_draft_audit" in source
     assert "_recent_private_edit_urls" in source
+    # The sole permitted click is the exact account menu opener. It is
+    # unique, aria-haspopup=menu, owner-verified, and never an article action.
+    allowed_menu_click = 'semantic[0].click(timeout=3000)'
+    assert source.count(".click(") == 1
+    assert allowed_menu_click in source
+    menu_source = inspect.getsource(recovery._safe_owner_articles_menu_route)
+    assert 'button[aria-haspopup="menu"]:visible' in menu_source
+    assert 'codes.add("account_proven")' in inspect.getsource(recovery._probe_official_article_list)
+    source = source.replace(allowed_menu_click, "")
     forbidden = (
         "_create_browser_draft(",
         "_mark_draft_created(",
