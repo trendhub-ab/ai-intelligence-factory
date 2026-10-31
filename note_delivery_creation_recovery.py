@@ -63,6 +63,15 @@ TITLE_DOM_SIGNAL_CODES = (
     "textboxes_present", "textboxes_missing", "textboxes_unknown",
     "busy_present", "busy_missing", "busy_unknown",
 )
+# High-level response, stable private identity, browser and login-marker signals.
+# Counts only: do not emit URLs, opaque IDs, session data or raw exceptions.
+TITLE_CONTEXT_CODES = (
+    "http_2xx", "http_3xx", "http_4xx", "http_5xx", "http_unknown",
+    "route_same_identity", "route_other_identity", "route_unverified",
+    "browser_open", "browser_closed", "browser_unknown",
+    "js_responding", "js_unavailable",
+    "login_markers_present", "login_markers_absent", "login_markers_unknown",
+)
 
 
 class CreationRecoveryAuditError(RuntimeError):
@@ -113,6 +122,10 @@ def safe_recovery_projection(result: dict[str, Any]) -> dict[str, Any]:
         "title_dom_signal_counts": {
             code: int((result.get("title_dom_signal_counts") or {}).get(code) or 0)
             for code in TITLE_DOM_SIGNAL_CODES
+        },
+        "title_context_signal_counts": {
+            code: int((result.get("title_context_signal_counts") or {}).get(code) or 0)
+            for code in TITLE_CONTEXT_CODES
         },
     }
 
@@ -287,10 +300,65 @@ def _safe_title_dom_signals(page: Any) -> tuple[str, ...]:
     return tuple(signals)
 
 
+def _safe_title_context_signals(page: Any, requested_url: str, response: Any) -> tuple[str, ...]:
+    """Only classify pre-existing navigation and browser state, never read content.
+
+    HTTP response is the existing page.goto return value; no additional request.
+    Route comparison uses private IDs only in memory; output contains a fixed code.
+    Missing login markers do NOT prove an authenticated session.
+    """
+    try:
+        status = response.status
+        if not isinstance(status, int) or isinstance(status, bool):
+            http = "http_unknown"
+        elif 200 <= status < 300:
+            http = "http_2xx"
+        elif 300 <= status < 400:
+            http = "http_3xx"
+        elif 400 <= status < 500:
+            http = "http_4xx"
+        elif 500 <= status < 600:
+            http = "http_5xx"
+        else:
+            http = "http_unknown"
+    except Exception:
+        http = "http_unknown"
+
+    try:
+        expected_id = reconcile.draft_identity_from_url(requested_url)
+        observed_id = reconcile.draft_identity_from_url(str(page.url or ""))
+        route = "route_same_identity" if expected_id == observed_id else "route_other_identity"
+    except Exception:
+        route = "route_unverified"
+
+    try:
+        closed = page.is_closed()
+        browser = "browser_closed" if closed is True else (
+            "browser_open" if closed is False else "browser_unknown"
+        )
+    except Exception:
+        browser = "browser_unknown"
+
+    if browser == "browser_closed":
+        js = "js_unavailable"
+    else:
+        try:
+            js = "js_responding" if page.evaluate("1") == 1 else "js_unavailable"
+        except Exception:
+            js = "js_unavailable"
+
+    try:
+        logged_out = draft_audit.note_base._looks_logged_out(page)
+        login = "login_markers_present" if logged_out else "login_markers_absent"
+    except Exception:
+        login = "login_markers_unknown"
+    return http, route, browser, js, login
+
+
 def _discover_verified_matches(
     article: dict[str, Any],
     record: DeliveryRecord,
-) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, int], dict[str, int], dict[str, int]]:
+) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int]]:
     """Inspect history read-only; count only fixed codes, never private identities."""
     try:
         from playwright.sync_api import sync_playwright
@@ -302,8 +370,9 @@ def _discover_verified_matches(
     stages = {stage: 0 for stage in INSPECTION_STAGES}
     title_failures = {code: 0 for code in TITLE_FAILURE_CODES}
     title_dom_signals = {code: 0 for code in TITLE_DOM_SIGNAL_CODES}
+    title_context_signals = {code: 0 for code in TITLE_CONTEXT_CODES}
     if not candidates:
-        return [], 0, counts, stages, title_failures, title_dom_signals
+        return [], 0, counts, stages, title_failures, title_dom_signals, title_context_signals
 
     matches: list[dict[str, Any]] = []
     legacy_title_finder = draft_audit.note_base._find_title
@@ -322,14 +391,15 @@ def _discover_verified_matches(
             try:
                 for candidate in candidates:
                     stage = "navigation"
+                    response = None
                     try:
-                        page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
+                        response = page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
                         page.wait_for_timeout(1200)
                         stage = "login_check"
                         if draft_audit.note_base._looks_logged_out(page) and not seeded:
                             seeded = bool(cloud._seed_note_state(context, page))
                             if seeded:
-                                page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
+                                response = page.goto(candidate, wait_until="domcontentloaded", timeout=60000)
                                 page.wait_for_timeout(1200)
                         if draft_audit.note_base._looks_logged_out(page):
                             counts["logged_out"] += 1
@@ -384,10 +454,13 @@ def _discover_verified_matches(
                             ):
                                 for signal in _safe_title_dom_signals(page):
                                     title_dom_signals[signal] += 1
+                                for signal in _safe_title_context_signals(page, candidate, response):
+                                    title_context_signals[signal] += 1
                         continue
             finally:
                 context.close()
-    return matches, len(candidates), counts, stages, title_failures, title_dom_signals
+    return (matches, len(candidates), counts, stages, title_failures,
+            title_dom_signals, title_context_signals)
 
 
 def run(
@@ -427,13 +500,14 @@ def run(
         "inspection_stage_counts": {stage: 0 for stage in INSPECTION_STAGES},
         "title_failure_counts": {code: 0 for code in TITLE_FAILURE_CODES},
         "title_dom_signal_counts": {code: 0 for code in TITLE_DOM_SIGNAL_CODES},
+        "title_context_signal_counts": {code: 0 for code in TITLE_CONTEXT_CODES},
     }
     if prepare_only:
         return base_result
 
     (
         matches, candidate_count, rejection_counts, inspection_stage_counts,
-        title_failure_counts, title_dom_signal_counts,
+        title_failure_counts, title_dom_signal_counts, title_context_signal_counts,
     ) = _discover_verified_matches(article, record)
     base_result["history_candidate_count"] = candidate_count
     base_result["match_count"] = len(matches)
@@ -448,6 +522,9 @@ def run(
     }
     base_result["title_dom_signal_counts"] = {
         code: int(title_dom_signal_counts.get(code, 0)) for code in TITLE_DOM_SIGNAL_CODES
+    }
+    base_result["title_context_signal_counts"] = {
+        code: int(title_context_signal_counts.get(code, 0)) for code in TITLE_CONTEXT_CODES
     }
     # Preserve the exact safe counts even on an ambiguous/missing match.
     # Never grant recovery authority or infer permission to create a new draft.
