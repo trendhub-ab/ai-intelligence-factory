@@ -150,6 +150,15 @@ OFFICIAL_LIST_SCAN_CODES = (
     "list_article_card_present", "list_profile_menu_trigger",
     "list_main_content_populated", "list_empty_or_error_notice",
     "list_loading_placeholder", "list_embedded_frame",
+    # Same-account visible owner-menu route versus direct URL, fixed codes only.
+    "menu_origin_unverified", "menu_link_exact", "menu_link_missing",
+    "menu_link_ambiguous", "menu_link_uninspectable", "menu_link_rejected",
+    "menu_trigger_unique", "menu_trigger_missing", "menu_trigger_ambiguous",
+    "menu_opened", "menu_open_failed", "menu_route_open",
+    "menu_route_unverified", "menu_route_unavailable",
+    "menu_route_main_populated", "menu_route_article_card_present",
+    "menu_route_edit_control_present", "menu_route_title_visible",
+    "menu_route_draft_filter_visible", "menu_route_loading",
 )
 
 
@@ -953,6 +962,151 @@ def _bounded_draft_view_probe(page: Any, title: str) -> set[str]:
     return evidence
 
 
+def _safe_owner_articles_menu_route(page: Any, title: str) -> set[str]:
+    """Navigate only an observed "自分の記事" link on verified owner settings.
+
+    The sole optional click opens a uniquely identified *profile menu* button
+    with aria-haspopup=menu. It never clicks an article, save/publish control,
+    arbitrary URL or an unevidenced navigation. The link must be a visible
+    exact accessible link to one of two known HTTPS note.com article-list
+    browser routes. All DOM/text stays on the private VM.
+    """
+    try:
+        settings = urlsplit(str(page.url or ""))
+        expected = urlsplit(cloud.PROFILE_SETTINGS_URL)
+        if (settings.scheme != expected.scheme or
+            settings.hostname != expected.hostname or
+            settings.path != expected.path or settings.query or
+            settings.fragment or settings.username or settings.password or
+            settings.port is not None):
+            return {"menu_origin_unverified"}
+    except Exception:
+        return {"menu_origin_unverified"}
+
+    evidence: set[str] = set()
+
+    def exact_link() -> tuple[str, Any | None]:
+        try:
+            item = page.get_by_role("link", name="自分の記事", exact=True)
+            count = int(item.count())
+            if count > 1:
+                return ("ambiguous", None)
+            if count == 1 and item.is_visible():
+                return ("found", item)
+            return ("missing", None)
+        except Exception:
+            return ("uninspectable", None)
+
+    status, link = exact_link()
+    if status == "ambiguous":
+        return {"menu_link_ambiguous"}
+    if status == "uninspectable":
+        return {"menu_link_uninspectable"}
+    if status == "missing":
+        try:
+            candidates = page.locator('button[aria-haspopup="menu"]:visible')
+            count = min(int(candidates.count()), 25)
+            semantic = []
+            for index in range(count):
+                trigger = candidates.nth(index)
+                label = str(trigger.get_attribute("aria-label") or "").strip()
+                if label in {
+                    "プロフィール", "プロフィールメニュー",
+                    "アカウント", "アカウントメニュー",
+                } and trigger.is_visible():
+                    semantic.append(trigger)
+        except Exception:
+            return {"menu_trigger_missing", "menu_link_missing"}
+        if len(semantic) != 1:
+            return {
+                "menu_trigger_ambiguous" if semantic else "menu_trigger_missing",
+                "menu_link_missing",
+            }
+        evidence.add("menu_trigger_unique")
+        try:
+            semantic[0].click(timeout=3000)
+            page.wait_for_timeout(350)
+            if urlsplit(str(page.url or "")) != settings:
+                return evidence | {"menu_open_failed"}
+        except Exception:
+            return evidence | {"menu_open_failed"}
+        evidence.add("menu_opened")
+        status, link = exact_link()
+        if status == "ambiguous":
+            return evidence | {"menu_link_ambiguous"}
+        if status == "uninspectable":
+            return evidence | {"menu_link_uninspectable"}
+        if status == "missing":
+            return evidence | {"menu_link_missing"}
+
+    try:
+        raw = str(link.get_attribute("href") or "")
+        dest = urlsplit(urljoin("https://note.com", raw))
+        if (dest.scheme != "https" or dest.hostname != "note.com" or
+            dest.username or dest.password or dest.port is not None or
+            dest.path != "/notes" or
+            dest.query not in ("", "kind=draft") or dest.fragment):
+            return evidence | {"menu_link_rejected"}
+        url = dest.geturl()
+    except Exception:
+        return evidence | {"menu_link_rejected"}
+    evidence.add("menu_link_exact")
+
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(1200)
+        actual = urlsplit(str(page.url or ""))
+        if (actual != dest or draft_audit.note_base._looks_logged_out(page)):
+            return evidence | {"menu_route_unverified"}
+        evidence.add("menu_route_open")
+    except Exception:
+        return evidence | {"menu_route_unavailable"}
+
+    # Bounded DOM signature, comparable to the direct-list fixed-code probe.
+    try:
+        mask = page.evaluate(r"""(targetTitle) => {
+            const visible = el => {
+                const r = el.getBoundingClientRect();
+                const s = getComputedStyle(el);
+                return r.width > 0 && r.height > 0 &&
+                    s.visibility !== 'hidden' && s.display !== 'none';
+            };
+            const norm = x => String(x || '').replace(/\s+/g, ' ').trim();
+            const root = document.querySelector('main,[role="main"]');
+            const main = root || document.body;
+            const actions = Array.from(document.querySelectorAll(
+                'a[href],button,[role="button"],[role="tab"]'
+            )).slice(0,300).filter(visible);
+            let bits = 0;
+            if (root && root.children.length) bits |= 1;
+            if (Array.from(main.querySelectorAll('article')).slice(0,100)
+                    .some(visible)) bits |= 2;
+            if (actions.some(el => /を編集/.test(norm(
+                el.getAttribute('aria-label') || el.textContent)))) bits |= 4;
+            if (actions.some(el => norm(el.textContent) === norm(targetTitle)))
+                bits |= 8;
+            if (actions.some(el => norm(el.textContent) === '下書き'))
+                bits |= 16;
+            if (main.querySelector('[aria-busy="true"],[role="progressbar"],[class*="skeleton"]'))
+                bits |= 32;
+            return bits;
+        }""", title)
+        if isinstance(mask, int) and not isinstance(mask, bool) and 0 <= mask < 64:
+            for bit, code in (
+                (1, "menu_route_main_populated"),
+                (2, "menu_route_article_card_present"),
+                (4, "menu_route_edit_control_present"),
+                (8, "menu_route_title_visible"),
+                (16, "menu_route_draft_filter_visible"),
+                (32, "menu_route_loading"),
+            ):
+                if mask & bit:
+                    evidence.add(code)
+    except Exception:
+        pass
+    return evidence
+
+
 def _probe_official_article_list(
     context: Any,
     article: dict[str, Any],
@@ -977,6 +1131,13 @@ def _probe_official_article_list(
         except Exception:
             return {"account_unverified"}
         codes.add("account_proven")
+        # Compare owner-menu navigation with the already-established direct
+        # list/draft-view probes. Only try this when the account ownership
+        # proof left us on the exact expected settings page.
+        if str(getattr(page, "url", "") or "") == cloud.PROFILE_SETTINGS_URL:
+            codes.update(_safe_owner_articles_menu_route(
+                page, str(article["title"]).strip()
+            ))
 
         # Passive API observation after verified account ownership, while the
         # ordinary official list loads. Never request a guessed/private endpoint.
