@@ -125,6 +125,10 @@ OFFICIAL_LIST_SCAN_CODES = (
     "list_root_scrollable", "list_nested_scrollable",
     "list_main_populated", "list_any_edit_control",
     "list_loading_visible", "list_scroll_overflow_hidden",
+    # Observed authenticated same-origin API GET traffic only; no endpoint guessing.
+    "api_get_observed", "api_json_readable", "api_target_title_seen",
+    "api_json_unreadable", "api_response_oversize", "api_http_non_success",
+    "api_capture_limit",
 )
 
 
@@ -551,6 +555,67 @@ def _safe_visible_screen_signals(page: Any) -> tuple[str, ...]:
     return tuple(code for index, code in enumerate(mapped) if mask & (1 << index))
 
 
+_MAX_NOTE_API_BODY_BYTES = 512_000
+_MAX_NOTE_API_RESPONSES = 12
+
+
+def _safe_note_api_response_signals(response: Any, target_title: str) -> set[str]:
+    """Compare an authenticated first-party API GET with the immutable target title.
+
+    No request is sent by this routine. Response JSON is read only in private
+    VM memory; neither raw URLs, article data, IDs nor API payloads are returned.
+    A title match is a *hint*, never authorization to resolve CREATION_UNKNOWN.
+    """
+    try:
+        parsed = urlsplit(str(response.url or ""))
+        if (parsed.scheme != "https" or
+            parsed.hostname not in {"note.com", "editor.note.com"} or
+            parsed.username or parsed.password or parsed.port is not None or
+            not parsed.path.startswith("/api/") or
+            str(response.request.method).upper() != "GET"):
+            return set()
+    except Exception:
+        return set()
+
+    evidence = {"api_get_observed"}
+    try:
+        status = int(response.status)
+        if not 200 <= status < 300:
+            return evidence | {"api_http_non_success"}
+        headers = dict(response.headers or {})
+        content_type = str(headers.get("content-type") or "").lower().split(";", 1)[0].strip()
+        if content_type != "application/json" and not content_type.endswith("+json"):
+            return evidence
+        length = str(headers.get("content-length") or "")
+        if length.isdecimal() and int(length) > _MAX_NOTE_API_BODY_BYTES:
+            return evidence | {"api_response_oversize"}
+        raw = response.body()
+        if not isinstance(raw, bytes) or len(raw) > _MAX_NOTE_API_BODY_BYTES:
+            return evidence | {"api_response_oversize"}
+        payload = json.loads(raw)
+    except Exception:
+        return evidence | {"api_json_unreadable"}
+    evidence.add("api_json_readable")
+
+    # Bound depth and nodes; do not convert arbitrary fields to strings or
+    # include any payload data in errors, logs or returned evidence.
+    nodes = [(payload, 0)]
+    seen = 0
+    while nodes and seen < 500:
+        node, depth = nodes.pop()
+        seen += 1
+        if isinstance(node, dict):
+            value = node.get("title")
+            if isinstance(value, str) and value.strip() == target_title.strip():
+                evidence.add("api_target_title_seen")
+                break
+            if depth < 6:
+                nodes.extend((v, depth + 1) for v in list(node.values())[:500])
+        elif isinstance(node, list) and depth < 6:
+            nodes.extend((v, depth + 1) for v in node[:500])
+    return evidence
+
+
 def _bounded_official_list_scan(page: Any, title: str) -> set[str]:
     """Bounded observation of an already authenticated note official article list.
 
@@ -703,6 +768,32 @@ def _probe_official_article_list(
         except Exception:
             return {"account_unverified"}
         codes.add("account_proven")
+
+        # Passive API observation after verified account ownership, while the
+        # ordinary official list loads. Never request a guessed/private endpoint.
+        api_seen = [0]
+        def on_api_response(response: Any) -> None:
+            try:
+                signals = _safe_note_api_response_signals(
+                    response, str(article["title"]).strip()
+                )
+                if not signals:
+                    return
+                if api_seen[0] >= _MAX_NOTE_API_RESPONSES:
+                    codes.add("api_capture_limit")
+                    return
+                api_seen[0] += 1
+                codes.update(signals)
+            except Exception:
+                # No browser exception text, response body, URL or ID escapes.
+                return
+
+        try:
+            page.on("response", on_api_response)
+        except Exception:
+            # Legacy fake-page tests have no event listener. In live Playwright
+            # this is passive and optional, never recovery authority.
+            pass
 
         try:
             page.goto(cloud.ARTICLE_LIST_URL, wait_until="domcontentloaded", timeout=60000)
