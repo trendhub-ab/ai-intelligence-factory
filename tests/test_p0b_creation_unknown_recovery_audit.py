@@ -1250,3 +1250,119 @@ def test_official_list_layout_invalid_mask_fails_closed_without_recovery_authori
     source = inspect.getsource(recovery._bounded_official_list_scan)
     for forbidden in (".click(", ".fill(", ".screenshot(", ".content(", "requests.post("):
         assert forbidden not in source
+
+
+
+def test_same_account_note_api_get_response_is_bounded_and_private():
+    import json
+    recovery = _module()
+    class Request:
+        method = "GET"
+    class Response:
+        request = Request()
+        status = 200
+        headers = {"content-type": "application/json", "content-length": "160"}
+        def __init__(self, url, payload):
+            self.url = url
+            self.payload = payload
+            self.body_calls = 0
+        def body(self):
+            self.body_calls += 1
+            return json.dumps(self.payload, ensure_ascii=False).encode("utf-8")
+    response = Response(
+        "https://editor.note.com/api/v3/articles?limit=20&private=opaque",
+        {"data": [{"title": "other", "id": "private-id"},
+                  {"title": "Terra private draft", "id": "target-id", "status": "draft"}]},
+    )
+    flags = recovery._safe_note_api_response_signals(response, "Terra private draft")
+    assert flags == {
+        "api_get_observed", "api_json_readable", "api_target_title_seen",
+    }
+    assert response.body_calls == 1
+    for secret in ("target-id", "private-id", "Terra private draft", "opaque"):
+        assert secret not in str(flags)
+    assert flags.issubset(recovery.OFFICIAL_LIST_SCAN_CODES)
+
+
+def test_note_api_observation_rejects_untrusted_hosts_mutating_requests_and_non_api_routes():
+    import json
+    recovery = _module()
+    class Response:
+        status = 200
+        headers = {"content-type": "application/json"}
+        def __init__(self, url, method):
+            self.url = url
+            self.request = type("Request", (), {"method": method})()
+        def body(self):
+            raise AssertionError("must never inspect a disallowed response")
+    for url, method in (
+        ("https://evil.example/api/v3/notes", "GET"),
+        ("https://note.com.evil.example/api/v3/notes", "GET"),
+        ("http://editor.note.com/api/v3/notes", "GET"),
+        ("https://editor.note.com/api/v3/notes", "POST"),
+        ("https://editor.note.com/api/v3/notes", "DELETE"),
+        ("https://note.com/notes", "GET"),
+        ("https://editor.note.com/private", "GET"),
+        ("https://note.com:8080/api/v3/notes", "GET"),
+    ):
+        assert recovery._safe_note_api_response_signals(
+            Response(url, method), "Terra private draft"
+        ) == set()
+
+
+def test_note_api_observation_caps_payload_and_never_proves_draft_lifecycle():
+    recovery = _module()
+    class Request:
+        method = "GET"
+    class Response:
+        request = Request()
+        status = 200
+        url = "https://editor.note.com/api/v2/notes"
+        def __init__(self, headers, data=b""):
+            self.headers = headers
+            self.data = data
+        def body(self):
+            return self.data
+    oversized = Response(
+        {"content-type": "application/json", "content-length": "10485760"}
+    )
+    assert recovery._safe_note_api_response_signals(
+        oversized, "private"
+    ) == {"api_get_observed", "api_response_oversize"}
+    unreadable = Response(
+        {"content-type": "application/json"}, b"invalid JSON"
+    )
+    assert recovery._safe_note_api_response_signals(
+        unreadable, "private"
+    ) == {"api_get_observed", "api_json_unreadable"}
+    not_json = Response({"content-type": "text/html"})
+    assert recovery._safe_note_api_response_signals(
+        not_json, "private"
+    ) == {"api_get_observed"}
+    source = inspect.getsource(recovery._probe_official_article_list)
+    assert 'page.on("response"' in source
+    assert "api_target_title_seen" not in inspect.getsource(
+        recovery.require_unique_recovery_match
+    )
+    for token in (".click(", ".fill(", ".screenshot(", "requests.post("):
+        assert token not in inspect.getsource(recovery._safe_note_api_response_signals)
+
+
+def test_note_api_evidence_projection_rejects_ids_titles_and_unknown_codes():
+    recovery = _module()
+    safe = recovery.safe_recovery_projection({
+        "official_list_scan_counts": {
+            "api_get_observed": 1,
+            "api_target_title_seen": 1,
+            "private_id": "opaque",
+            "raw_body": "private manuscript",
+            "actual_api_url": "https://editor.note.com/api/secret",
+        }
+    })
+    counts = safe["official_list_scan_counts"]
+    assert counts["api_get_observed"] == 1
+    assert counts["api_target_title_seen"] == 1
+    assert set(counts) == set(recovery.OFFICIAL_LIST_SCAN_CODES)
+    assert "private manuscript" not in str(safe)
+    assert "opaque" not in str(safe)
+    assert "api/secret" not in str(safe)
