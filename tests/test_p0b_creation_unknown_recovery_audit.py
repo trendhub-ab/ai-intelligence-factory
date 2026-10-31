@@ -1270,7 +1270,7 @@ def test_same_account_note_api_get_response_is_bounded_and_private():
             self.body_calls += 1
             return json.dumps(self.payload, ensure_ascii=False).encode("utf-8")
     response = Response(
-        "https://note.com/api/v3/articles?limit=20&private=opaque",
+        "https://editor.note.com/api/v3/articles?limit=20&private=opaque",
         {"data": [{"title": "other", "id": "private-id"},
                   {"title": "Terra private draft", "id": "target-id", "status": "draft"}]},
     )
@@ -1299,8 +1299,8 @@ def test_note_api_observation_rejects_untrusted_hosts_mutating_requests_and_non_
         ("https://evil.example/api/v3/notes", "GET"),
         ("https://note.com.evil.example/api/v3/notes", "GET"),
         ("http://note.com/api/v3/notes", "GET"),
-        ("https://note.com/api/v3/notes", "POST"),
-        ("https://note.com/api/v3/notes", "DELETE"),
+        ("https://editor.note.com/api/v3/notes", "POST"),
+        ("https://editor.note.com/api/v3/notes", "DELETE"),
         ("https://note.com/notes", "GET"),
         ("https://editor.note.com/private", "GET"),
         ("https://note.com:8080/api/v3/notes", "GET"),
@@ -1317,7 +1317,7 @@ def test_note_api_observation_caps_payload_and_never_proves_draft_lifecycle():
     class Response:
         request = Request()
         status = 200
-        url = "https://note.com/api/v2/notes"
+        url = "https://editor.note.com/api/v2/notes"
         def __init__(self, headers, data=b""):
             self.headers = headers
             self.data = data
@@ -1356,7 +1356,7 @@ def test_note_api_evidence_projection_rejects_ids_titles_and_unknown_codes():
             "api_target_title_seen": 1,
             "private_id": "opaque",
             "raw_body": "private manuscript",
-            "actual_api_url": "https://note.com/api/secret",
+            "actual_api_url": "https://editor.note.com/api/secret",
         }
     })
     counts = safe["official_list_scan_counts"]
