@@ -207,6 +207,7 @@ def test_non_unique_readonly_audit_reports_counts_without_authorizing_recovery(m
                 {"surface_not_found_hint": 1, "surface_header_present": 1},
                 {"surface_header_present": 2, "surface_main_present": 2},
                 {"account_proven": 1, "list_open": 1, "title_button_unique": 1},
+                {"list_scroll_attempted": 1},
             ),
         )
         result = recovery.run(
@@ -227,6 +228,7 @@ def test_non_unique_readonly_audit_reports_counts_without_authorizing_recovery(m
         assert result["failed_screen_signal_counts"]["surface_not_found_hint"] == 1
         assert result["control_screen_signal_counts"]["surface_main_present"] == 2
         assert result["official_list_proof_counts"]["title_button_unique"] == 1
+        assert result["official_list_scan_counts"]["list_scroll_attempted"] == 1
         assert result["read_only"] is True
         assert result["draft_mutation"] is False
         assert result["public_release"] is False
