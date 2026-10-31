@@ -63,6 +63,7 @@ def test_safe_projection_excludes_private_identity_and_unpublished_content():
         "editor_route_hash": "abcdef123456",
         "rejection_counts": {bucket: 0 for bucket in recovery.REJECTION_BUCKETS},
         "inspection_stage_counts": {stage: 0 for stage in recovery.INSPECTION_STAGES},
+        "title_failure_counts": {code: 0 for code in recovery.TITLE_FAILURE_CODES},
     }
     for forbidden in ("recovered_draft_id", "sync_id", "draft_url", "title", "manuscript"):
         assert forbidden not in safe
