@@ -907,15 +907,21 @@ def test_official_list_proof_requires_account_and_exact_title_before_edit_naviga
     events = []
     class Button:
         def count(self): return 1
+        def evaluate(self, script):
+            assert "closest('a[href]')" in script
+            events.append("read_explicit_edit_href")
+            return "/notes/prior-verified-draft/edit"
         def click(self, **kwargs):
-            events.append("exact_title_edit_navigation")
-            page.url = "https://editor.note.com/notes/prior-verified-draft/edit"
+            raise AssertionError("no click in ambiguous recovery")
     class Page:
         url = "https://note.com/"
         def set_default_timeout(self, _): pass
         def goto(self, url, **kwargs):
-            assert url == "https://note.com/notes"
-            events.append("list_navigation")
+            if url == "https://note.com/notes":
+                events.append("list_navigation")
+            else:
+                assert url == "https://note.com/notes/prior-verified-draft/edit"
+                events.append("explicit_href_navigation")
             self.url = url
         def wait_for_timeout(self, _): pass
         def get_by_role(self, role, name, exact):
@@ -943,7 +949,10 @@ def test_official_list_proof_requires_account_and_exact_title_before_edit_naviga
         "editor_route_verified", "editor_in_history", "editor_title_equal",
         "body_eyecatch_equal", "canonical_equal",
     }
-    assert events == ["account_verified", "list_navigation", "exact_title_edit_navigation", "close"]
+    assert events == [
+        "account_verified", "list_navigation", "read_explicit_edit_href",
+        "explicit_href_navigation", "close",
+    ]
     assert "PRIVATE TITLE" not in str(signals)
     assert "prior-verified-draft" not in str(signals)
 
@@ -1030,6 +1039,38 @@ def test_official_list_probe_is_diagnostic_and_does_not_authorize_recovery():
     assert "_safe_visible_screen_signals(page)" in code
     assert "matches.append(" in code
     probe = inspect.getsource(recovery._probe_official_article_list)
-    for forbidden in ("_set_title(", "_set_body(", ".fill(", "keyboard.", ".upload(", "mark_draft_created(", "requests.post(", ".screenshot("):
+    for forbidden in ("_set_title(", "_set_body(", ".click(", ".fill(", "keyboard.", ".upload(", "mark_draft_created(", "requests.post(", ".screenshot("):
         assert forbidden not in probe
     assert "No list-only evidence can authorize recovery" in probe
+
+
+def test_official_list_without_explicit_edit_href_does_not_click_or_invent_route(monkeypatch):
+    recovery = _module()
+    events = []
+    class Button:
+        def count(self): return 1
+        def evaluate(self, _):
+            events.append("inspect_href")
+            return ""
+        def click(self, **kwargs):
+            raise AssertionError("no clicking existing title button")
+    class Page:
+        url = ""
+        def set_default_timeout(self, _): pass
+        def goto(self, url, **kwargs):
+            assert url == "https://note.com/notes"
+            events.append("official_list")
+            self.url = url
+        def wait_for_timeout(self, _): pass
+        def get_by_role(self, *_args, **_kwargs): return Button()
+        def close(self): events.append("close")
+    monkeypatch.setattr(recovery.cloud, "_assert_expected_note_account", lambda _: events.append("account"))
+    monkeypatch.setattr(recovery.draft_audit.note_base, "_looks_logged_out", lambda _: False)
+    result = recovery._probe_official_article_list(
+        type("C", (), {"new_page": lambda self: Page()})(),
+        {"title": "private", "manuscript": "private"}, object(), [],
+    )
+    assert result == {
+        "account_proven", "list_open", "title_button_unique", "editor_route_unverified",
+    }
+    assert events == ["account", "official_list", "inspect_href", "close"]
