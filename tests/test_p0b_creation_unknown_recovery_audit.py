@@ -70,6 +70,7 @@ def test_safe_projection_excludes_private_identity_and_unpublished_content():
         "title_atomic_dom_counts": {code: 0 for code in recovery.TITLE_ATOMIC_DOM_CODES},
         "failed_screen_signal_counts": {code: 0 for code in recovery.SCREEN_SIGNAL_CODES},
         "control_screen_signal_counts": {code: 0 for code in recovery.SCREEN_SIGNAL_CODES},
+        "official_list_proof_counts": {code: 0 for code in recovery.OFFICIAL_LIST_CODES},
     }
     for forbidden in ("recovered_draft_id", "sync_id", "draft_url", "title", "manuscript"):
         assert forbidden not in safe
@@ -204,6 +205,7 @@ def test_non_unique_readonly_audit_reports_counts_without_authorizing_recovery(m
                 {"atomic_available": 1, "atomic_ready_complete": 1},
                 {"surface_not_found_hint": 1, "surface_header_present": 1},
                 {"surface_header_present": 2, "surface_main_present": 2},
+                {"account_proven": 1, "list_open": 1, "title_button_unique": 1},
             ),
         )
         result = recovery.run(
@@ -223,6 +225,7 @@ def test_non_unique_readonly_audit_reports_counts_without_authorizing_recovery(m
         assert result["title_atomic_dom_counts"]["atomic_ready_complete"] == 1
         assert result["failed_screen_signal_counts"]["surface_not_found_hint"] == 1
         assert result["control_screen_signal_counts"]["surface_main_present"] == 2
+        assert result["official_list_proof_counts"]["title_button_unique"] == 1
         assert result["read_only"] is True
         assert result["draft_mutation"] is False
         assert result["public_release"] is False
@@ -897,3 +900,177 @@ def test_private_screen_diagnostic_collects_failed_and_control_aggregates_separa
     surface = inspect.getsource(recovery._safe_visible_screen_signals)
     for forbidden in (".click(", ".fill(", ".goto(", ".content(", ".screenshot(", "requests.post(", "print("):
         assert forbidden not in surface
+
+
+def test_official_list_proof_requires_account_and_exact_title_before_edit_navigation(monkeypatch):
+    recovery = _module()
+    events = []
+    class Button:
+        def count(self): return 1
+        def evaluate(self, script):
+            assert "closest('a[href]')" in script
+            events.append("read_explicit_edit_href")
+            return "/notes/prior-verified-draft/edit"
+        def click(self, **kwargs):
+            raise AssertionError("no click in ambiguous recovery")
+    class Page:
+        url = "https://note.com/"
+        def set_default_timeout(self, _): pass
+        def goto(self, url, **kwargs):
+            if url == "https://note.com/notes":
+                events.append("list_navigation")
+            else:
+                assert url == "https://note.com/notes/prior-verified-draft/edit"
+                events.append("explicit_href_navigation")
+            self.url = url
+        def wait_for_timeout(self, _): pass
+        def get_by_role(self, role, name, exact):
+            assert role == "button" and name == "PRIVATE TITLEを編集" and exact
+            return Button()
+        def close(self): events.append("close")
+    page = Page()
+    class Context:
+        def new_page(self): return page
+    def check_account(p):
+        assert p is page
+        events.append("account_verified")
+    monkeypatch.setattr(recovery.cloud, "_assert_expected_note_account", check_account)
+    monkeypatch.setattr(recovery.draft_audit.note_base, "_looks_logged_out", lambda p: False)
+    monkeypatch.setattr(recovery.draft_audit, "_title_value", lambda _: "PRIVATE TITLE")
+    monkeypatch.setattr(recovery.draft_audit, "_audit_current_page", lambda *args: {"title_match": True})
+    monkeypatch.setattr(recovery, "_current_canonical_sha256", lambda _: "c" * 64)
+    record = type("Record", (), {"snapshot": type("S", (), {"canonical_document_sha256": "c" * 64})()})()
+    signals = recovery._probe_official_article_list(
+        Context(), {"title": "PRIVATE TITLE", "manuscript": "hidden"}, record,
+        ["https://note.com/notes/prior-verified-draft/edit"],
+    )
+    assert signals == {
+        "account_proven", "list_open", "title_button_unique",
+        "editor_route_verified", "editor_in_history", "editor_title_equal",
+        "body_eyecatch_equal", "canonical_equal",
+    }
+    assert events == [
+        "account_verified", "list_navigation", "read_explicit_edit_href",
+        "explicit_href_navigation", "close",
+    ]
+    assert "PRIVATE TITLE" not in str(signals)
+    assert "prior-verified-draft" not in str(signals)
+
+
+def test_official_list_proof_zero_title_is_not_draft_absence(monkeypatch):
+    recovery = _module()
+    class Page:
+        url = ""
+        def set_default_timeout(self, _): pass
+        def goto(self, url, **kwargs): self.url = url
+        def wait_for_timeout(self, _): pass
+        def get_by_role(self, *_args, **_kwargs):
+            return type("B", (), {"count": lambda self: 0})()
+        def close(self): pass
+    monkeypatch.setattr(recovery.cloud, "_assert_expected_note_account", lambda p: None)
+    monkeypatch.setattr(recovery.draft_audit.note_base, "_looks_logged_out", lambda p: False)
+    result = recovery._probe_official_article_list(
+        type("C", (), {"new_page": lambda self: Page()})(),
+        {"title": "secret", "manuscript": "secret"}, object(), [],
+    )
+    assert result == {"account_proven", "list_open", "title_button_not_visible"}
+    assert "draft_absent" not in str(result)
+
+
+def test_official_list_probe_fail_closed_when_account_not_proven(monkeypatch):
+    recovery = _module()
+    class Page:
+        def set_default_timeout(self, _): pass
+        def goto(self, *_args, **_kwargs): raise AssertionError("no list navigation without ownership proof")
+        def close(self): pass
+    def unauthorized(_):
+        raise RuntimeError("private auth token and account")
+    monkeypatch.setattr(recovery.cloud, "_assert_expected_note_account", unauthorized)
+    result = recovery._probe_official_article_list(
+        type("C", (), {"new_page": lambda self: Page()})(),
+        {"title": "private", "manuscript": "private"}, object(), [],
+    )
+    assert result == {"account_unverified"}
+    assert "private" not in str(result)
+
+
+def test_official_list_proof_rejects_ambiguous_exact_title_without_click(monkeypatch):
+    recovery = _module()
+    class Button:
+        def count(self): return 2
+        def click(self, **kwargs): raise AssertionError("must not click ambiguous entries")
+    class Page:
+        url = ""
+        def set_default_timeout(self, _): pass
+        def goto(self, url, **kwargs): self.url = url
+        def wait_for_timeout(self, _): pass
+        def get_by_role(self, *_args, **_kwargs): return Button()
+        def close(self): pass
+    monkeypatch.setattr(recovery.cloud, "_assert_expected_note_account", lambda p: None)
+    monkeypatch.setattr(recovery.draft_audit.note_base, "_looks_logged_out", lambda p: False)
+    result = recovery._probe_official_article_list(
+        type("C", (), {"new_page": lambda self: Page()})(),
+        {"title": "secret", "manuscript": "secret"}, object(), [],
+    )
+    assert result == {"account_proven", "list_open", "title_button_ambiguous"}
+
+
+def test_official_list_projection_is_fixed_allowlist_only():
+    recovery = _module()
+    safe = recovery.safe_recovery_projection({
+        "official_list_proof_counts": {
+            "account_proven": 1, "canonical_equal": 1,
+            "draft_id": "secret private ID",
+            "user_email": "private@example.com",
+            "manuscript": "private body",
+        }
+    })
+    assert set(safe["official_list_proof_counts"]) == set(recovery.OFFICIAL_LIST_CODES)
+    assert safe["official_list_proof_counts"]["account_proven"] == 1
+    assert "private" not in str(safe)
+    assert "secret" not in str(safe)
+
+
+def test_official_list_probe_is_diagnostic_and_does_not_authorize_recovery():
+    recovery = _module()
+    code = inspect.getsource(recovery._discover_verified_matches)
+    assert "_probe_official_article_list(context, article, record, candidates)" in code
+    assert "record.snapshot.canonical_document_sha256" in code
+    assert "_safe_visible_screen_signals(page)" in code
+    assert "matches.append(" in code
+    probe = inspect.getsource(recovery._probe_official_article_list)
+    for forbidden in ("_set_title(", "_set_body(", ".click(", ".fill(", "keyboard.", ".upload(", "mark_draft_created(", "requests.post(", ".screenshot("):
+        assert forbidden not in probe
+    assert "No list-only evidence can authorize recovery" in probe
+
+
+def test_official_list_without_explicit_edit_href_does_not_click_or_invent_route(monkeypatch):
+    recovery = _module()
+    events = []
+    class Button:
+        def count(self): return 1
+        def evaluate(self, _):
+            events.append("inspect_href")
+            return ""
+        def click(self, **kwargs):
+            raise AssertionError("no clicking existing title button")
+    class Page:
+        url = ""
+        def set_default_timeout(self, _): pass
+        def goto(self, url, **kwargs):
+            assert url == "https://note.com/notes"
+            events.append("official_list")
+            self.url = url
+        def wait_for_timeout(self, _): pass
+        def get_by_role(self, *_args, **_kwargs): return Button()
+        def close(self): events.append("close")
+    monkeypatch.setattr(recovery.cloud, "_assert_expected_note_account", lambda _: events.append("account"))
+    monkeypatch.setattr(recovery.draft_audit.note_base, "_looks_logged_out", lambda _: False)
+    result = recovery._probe_official_article_list(
+        type("C", (), {"new_page": lambda self: Page()})(),
+        {"title": "private", "manuscript": "private"}, object(), [],
+    )
+    assert result == {
+        "account_proven", "list_open", "title_button_unique", "editor_route_unverified",
+    }
+    assert events == ["account", "official_list", "inspect_href", "close"]

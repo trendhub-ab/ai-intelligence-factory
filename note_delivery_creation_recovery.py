@@ -15,7 +15,7 @@ import hashlib
 import json
 import os
 import re
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlparse, urljoin
 from pathlib import Path
 import sqlite3
 from typing import Any, Iterable
@@ -103,6 +103,18 @@ SCREEN_SIGNAL_CODES = (
     "surface_app_mount_present", "surface_no_indicators",
     "surface_probe_unavailable",
 )
+# Aggregate official-note-list evidence codes. No private title or ID in output.
+OFFICIAL_LIST_CODES = (
+    "account_unverified", "account_proven",
+    "list_unavailable", "list_open",
+    "title_button_uninspectable", "title_button_not_visible",
+    "title_button_ambiguous", "title_button_unique",
+    "edit_navigation_failed", "editor_route_unverified",
+    "editor_route_verified", "editor_in_history", "editor_not_in_history",
+    "editor_title_unreadable", "editor_title_mismatch", "editor_title_equal",
+    "body_eyecatch_unverified", "body_eyecatch_equal",
+    "canonical_unverified", "canonical_mismatch", "canonical_equal",
+)
 
 
 class CreationRecoveryAuditError(RuntimeError):
@@ -173,6 +185,10 @@ def safe_recovery_projection(result: dict[str, Any]) -> dict[str, Any]:
         "control_screen_signal_counts": {
             code: int((result.get("control_screen_signal_counts") or {}).get(code) or 0)
             for code in SCREEN_SIGNAL_CODES
+        },
+        "official_list_proof_counts": {
+            code: int((result.get("official_list_proof_counts") or {}).get(code) or 0)
+            for code in OFFICIAL_LIST_CODES
         },
     }
 
@@ -520,11 +536,128 @@ def _safe_visible_screen_signals(page: Any) -> tuple[str, ...]:
     return tuple(code for index, code in enumerate(mapped) if mask & (1 << index))
 
 
+def _probe_official_article_list(
+    context: Any,
+    article: dict[str, Any],
+    record: DeliveryRecord,
+    history_candidates: list[str],
+) -> set[str]:
+    """Read the authenticated official note list without changing draft content.
+
+    Read-only account settings proof is required before inspecting note.com/notes.
+    Only an exact unique existing-title edit button may be clicked for navigation
+    to an existing article. No list-only evidence can authorize recovery:
+    private/draft lifecycle is not proven by an edit control or matching content.
+    No private URLs, title text, body, IDs, or exceptions leave this probe.
+    """
+    codes: set[str] = set()
+    page = None
+    try:
+        page = context.new_page()
+        page.set_default_timeout(30000)
+        try:
+            cloud._assert_expected_note_account(page)
+        except Exception:
+            return {"account_unverified"}
+        codes.add("account_proven")
+
+        try:
+            page.goto(cloud.ARTICLE_LIST_URL, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(1500)
+            parsed = urlparse(str(page.url or ""))
+            if (parsed.scheme != "https" or (parsed.hostname or "").lower() != "note.com"
+                or parsed.path != "/notes" or draft_audit.note_base._looks_logged_out(page)):
+                return codes | {"list_unavailable"}
+        except Exception:
+            return codes | {"list_unavailable"}
+        codes.add("list_open")
+
+        try:
+            button = page.get_by_role(
+                "button", name=str(article["title"]).strip() + "を編集", exact=True
+            )
+            count = int(button.count())
+        except Exception:
+            return codes | {"title_button_uninspectable"}
+        if count == 0:
+            return codes | {"title_button_not_visible"}
+        if count != 1:
+            return codes | {"title_button_ambiguous"}
+        codes.add("title_button_unique")
+
+        # NEVER click a button in a CREATION_UNKNOWN recovery. Only an
+        # explicitly linked pre-existing edit route may be navigated to.
+        try:
+            raw_href = button.evaluate("""el => {
+                const anchor = el.closest('a[href]') || el.querySelector('a[href]');
+                return anchor ? anchor.getAttribute('href') : '';
+            }""")
+            if not isinstance(raw_href, str) or not raw_href:
+                return codes | {"editor_route_unverified"}
+            direct_url = urljoin("https://note.com", raw_href)
+            linked_id = reconcile.draft_identity_from_url(direct_url)
+        except Exception:
+            return codes | {"editor_route_unverified"}
+        try:
+            page.goto(direct_url, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(1200)
+        except Exception:
+            return codes | {"edit_navigation_failed"}
+        try:
+            if not editor_readiness._is_editor_url(str(page.url or "")):
+                return codes | {"editor_route_unverified"}
+            identity = reconcile.draft_identity_from_url(str(page.url or ""))
+            if identity != linked_id:
+                return codes | {"editor_route_unverified"}
+        except Exception:
+            return codes | {"editor_route_unverified"}
+        codes.add("editor_route_verified")
+
+        known_ids = set()
+        for url in history_candidates:
+            try:
+                known_ids.add(reconcile.draft_identity_from_url(url))
+            except Exception:
+                pass
+        codes.add("editor_in_history" if identity in known_ids else "editor_not_in_history")
+
+        try:
+            title = draft_audit._title_value(page)
+        except Exception:
+            return codes | {"editor_title_unreadable"}
+        if title != str(article["title"]).strip():
+            return codes | {"editor_title_mismatch"}
+        codes.add("editor_title_equal")
+
+        try:
+            draft_audit._audit_current_page(
+                page, str(article["title"]), str(article["manuscript"])
+            )
+        except Exception:
+            return codes | {"body_eyecatch_unverified"}
+        codes.add("body_eyecatch_equal")
+
+        try:
+            actual_hash = _current_canonical_sha256(page)
+        except Exception:
+            return codes | {"canonical_unverified"}
+        if actual_hash != record.snapshot.canonical_document_sha256:
+            return codes | {"canonical_mismatch"}
+        codes.add("canonical_equal")
+        return codes
+    finally:
+        if page is not None:
+            try:
+                page.close()
+            except Exception:
+                pass
+
+
 def _discover_verified_matches(
     article: dict[str, Any],
     record: DeliveryRecord,
-) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int]]:
-    """Inspect history read-only; count only fixed codes, never private identities."""
+ ) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int]]:
+    """Inspect authenticated article list and history without disclosing private IDs."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
@@ -540,10 +673,7 @@ def _discover_verified_matches(
     title_atomic_dom = {code: 0 for code in TITLE_ATOMIC_DOM_CODES}
     failed_screen_signal_counts = {code: 0 for code in SCREEN_SIGNAL_CODES}
     control_screen_signal_counts = {code: 0 for code in SCREEN_SIGNAL_CODES}
-    if not candidates:
-        return ([], 0, counts, stages, title_failures, title_dom_signals,
-                title_context_signals, title_route_shapes, title_atomic_dom,
-                failed_screen_signal_counts, control_screen_signal_counts)
+    official_list_proof_counts = {code: 0 for code in OFFICIAL_LIST_CODES}
 
     matches: list[dict[str, Any]] = []
     legacy_title_finder = draft_audit.note_base._find_title
@@ -560,6 +690,12 @@ def _discover_verified_matches(
             page.set_default_timeout(30000)
             seeded = False
             try:
+                try:
+                    official_evidence = _probe_official_article_list(context, article, record, candidates)
+                except Exception:
+                    official_evidence = {"account_unverified"}
+                for signal in official_evidence:
+                    official_list_proof_counts[signal] += 1
                 for candidate in candidates:
                     stage = "navigation"
                     response = None
@@ -639,7 +775,8 @@ def _discover_verified_matches(
                 context.close()
     return (matches, len(candidates), counts, stages, title_failures,
             title_dom_signals, title_context_signals, title_route_shapes, title_atomic_dom,
-            failed_screen_signal_counts, control_screen_signal_counts)
+            failed_screen_signal_counts, control_screen_signal_counts,
+            official_list_proof_counts)
 
 
 def run(
@@ -684,6 +821,7 @@ def run(
         "title_atomic_dom_counts": {code: 0 for code in TITLE_ATOMIC_DOM_CODES},
         "failed_screen_signal_counts": {code: 0 for code in SCREEN_SIGNAL_CODES},
         "control_screen_signal_counts": {code: 0 for code in SCREEN_SIGNAL_CODES},
+        "official_list_proof_counts": {code: 0 for code in OFFICIAL_LIST_CODES},
     }
     if prepare_only:
         return base_result
@@ -693,6 +831,7 @@ def run(
         title_failure_counts, title_dom_signal_counts, title_context_signal_counts,
         title_route_shape_counts, title_atomic_dom_counts,
         failed_screen_signal_counts, control_screen_signal_counts,
+        official_list_proof_counts,
     ) = _discover_verified_matches(article, record)
     base_result["history_candidate_count"] = candidate_count
     base_result["match_count"] = len(matches)
@@ -722,6 +861,9 @@ def run(
     }
     base_result["control_screen_signal_counts"] = {
         code: int(control_screen_signal_counts.get(code, 0)) for code in SCREEN_SIGNAL_CODES
+    }
+    base_result["official_list_proof_counts"] = {
+        code: int(official_list_proof_counts.get(code, 0)) for code in OFFICIAL_LIST_CODES
     }
     # Preserve the exact safe counts even on an ambiguous/missing match.
     # Never grant recovery authority or infer permission to create a new draft.
