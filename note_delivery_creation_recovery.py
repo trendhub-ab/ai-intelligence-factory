@@ -136,6 +136,13 @@ OFFICIAL_LIST_SCAN_CODES = (
     "api_root_object", "api_root_array", "api_title_field_seen",
     "api_nested_collection_seen", "api_empty_collection_seen",
     "api_pagination_hint",
+    # Read-only owner-draft view; no proof of draft absence from incomplete UI.
+    "list_draft_view_open", "list_draft_route_unverified",
+    "list_draft_view_unavailable", "list_draft_structure_unavailable",
+    "list_draft_title_unique", "list_draft_title_ambiguous",
+    "list_draft_title_not_visible", "list_self_articles_nav_visible",
+    "list_draft_filter_nav_visible", "list_draft_filter_selected",
+    "list_draft_any_edit_control",
 )
 
 
@@ -784,6 +791,82 @@ def _bounded_official_list_scan(page: Any, title: str) -> set[str]:
     return evidence | {"list_scan_limit_reached"}
 
 
+_EXACT_READONLY_DRAFT_LIST_URL = "https://note.com/notes?kind=draft"
+
+
+def _bounded_draft_view_probe(page: Any, title: str) -> set[str]:
+    """Inspect one fixed browser draft-view GET after exact account ownership proof.
+
+    /notes?kind=draft is a documented user-facing browser view in a public
+    Playwright walkthrough, NOT a documented API. It is provisional until the
+    live URL is verified. The probe never clicks, types, mutates, publishes or
+    turns a missing title into proof that a private draft does not exist.
+    """
+    evidence: set[str] = set()
+    try:
+        page.goto(
+            _EXACT_READONLY_DRAFT_LIST_URL,
+            wait_until="domcontentloaded", timeout=60000,
+        )
+        page.wait_for_timeout(1200)
+        parsed = urlsplit(str(page.url or ""))
+        if (parsed.scheme != "https" or parsed.hostname != "note.com" or
+            parsed.path != "/notes" or parsed.query != "kind=draft" or
+            parsed.fragment or parsed.username or parsed.password or
+            parsed.port is not None or draft_audit.note_base._looks_logged_out(page)):
+            return {"list_draft_route_unverified"}
+        evidence.add("list_draft_view_open")
+    except Exception:
+        return {"list_draft_view_unavailable"}
+
+    # Private browser UI never leaves the VM: only a fixed 4-bit integer.
+    try:
+        mask = page.evaluate(r"""() => {
+            const candidates = Array.from(document.querySelectorAll(
+                'a,button,[role="tab"],[role="menuitem"]'
+            )).slice(0,300);
+            const label = el => String(
+                el.getAttribute('aria-label') || el.textContent || ''
+            ).trim().slice(0,80);
+            let bits = 0;
+            if (candidates.some(el => label(el) === '自分の記事')) bits |= 1;
+            if (candidates.some(el => label(el) === '下書き')) bits |= 2;
+            if (candidates.some(el => label(el) === '下書き' &&
+                (el.getAttribute('aria-selected') === 'true' ||
+                 el.getAttribute('aria-current') === 'page' ||
+                 el.getAttribute('aria-pressed') === 'true'))) bits |= 4;
+            if (candidates.some(el => /を編集/.test(label(el)))) bits |= 8;
+            return bits;
+        }""")
+        if not isinstance(mask, int) or isinstance(mask, bool) or not 0 <= mask < 16:
+            evidence.add("list_draft_structure_unavailable")
+        else:
+            for bit, code in (
+                (1, "list_self_articles_nav_visible"),
+                (2, "list_draft_filter_nav_visible"),
+                (4, "list_draft_filter_selected"),
+                (8, "list_draft_any_edit_control"),
+            ):
+                if mask & bit:
+                    evidence.add(code)
+    except Exception:
+        evidence.add("list_draft_structure_unavailable")
+
+    try:
+        count = int(page.get_by_role(
+            "button", name=title + "を編集", exact=True
+        ).count())
+    except Exception:
+        return evidence | {"list_draft_structure_unavailable"}
+    if count == 1:
+        evidence.add("list_draft_title_unique")
+    elif count > 1:
+        evidence.add("list_draft_title_ambiguous")
+    else:
+        evidence.add("list_draft_title_not_visible")
+    return evidence
+
+
 def _probe_official_article_list(
     context: Any,
     article: dict[str, Any],
@@ -865,7 +948,24 @@ def _probe_official_article_list(
             except Exception:
                 return codes | {"title_button_uninspectable"}
             if count == 0:
-                return codes | {"title_button_not_visible"}
+                # Owner-only: inspect exactly one read-only browser draft view.
+                # No API endpoint or article edit route is inferred or clicked.
+                draft_codes = _bounded_draft_view_probe(
+                    page, str(article["title"]).strip()
+                )
+                codes.update(draft_codes)
+                if "list_draft_view_open" not in draft_codes:
+                    return codes | {"title_button_not_visible"}
+                try:
+                    button = page.get_by_role(
+                        "button", name=str(article["title"]).strip() + "を編集",
+                        exact=True,
+                    )
+                    count = int(button.count())
+                except Exception:
+                    return codes | {"title_button_uninspectable"}
+                if count == 0:
+                    return codes | {"title_button_not_visible"}
         if count != 1:
             return codes | {"title_button_ambiguous"}
         codes.add("title_button_unique")
