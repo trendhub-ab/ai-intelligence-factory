@@ -159,6 +159,22 @@ OFFICIAL_LIST_SCAN_CODES = (
     "menu_route_main_populated", "menu_route_article_card_present",
     "menu_route_edit_control_present", "menu_route_title_visible",
     "menu_route_draft_filter_visible", "menu_route_loading",
+    # Verified note home, private fixed-bit DOM signature and observed own-articles link.
+    "home_open", "home_route_unverified", "home_unavailable",
+    "home_dom_uninspectable", "home_main_populated",
+    "home_creator_profile_link_visible", "home_avatar_button_visible",
+    "home_profile_menu_trigger_visible", "home_owner_article_link_visible",
+    "home_owner_article_link_hidden", "home_draft_link_visible",
+    "home_article_card_visible", "home_loading_visible",
+    "home_profile_label_visible", "home_header_visible",
+    "home_avatar_image_visible", "home_avatar_svg_button_visible",
+    "home_post_dropdown_visible", "home_owner_link_missing",
+    "home_owner_link_uninspectable", "home_owner_link_ambiguous",
+    "home_owner_link_rejected", "home_owner_link_exact",
+    "home_owner_route_open", "home_owner_route_unverified",
+    "home_owner_route_unavailable", "home_owner_route_main_populated",
+    "home_owner_route_article_card_present",
+    "home_owner_route_edit_control_present",
 )
 
 
@@ -1107,6 +1123,183 @@ def _safe_owner_articles_menu_route(page: Any, title: str) -> set[str]:
     return evidence
 
 
+_EXACT_READONLY_NOTE_HOME_URL = "https://note.com/"
+
+
+def _safe_note_home_profile_probe(page: Any) -> set[str]:
+    """Inspect the authenticated note homepage, never edit or create anything.
+
+    Official note help directs browser users through the top-right profile
+    icon to "自分の記事". The verified settings page is not that entry.
+    This bounded probe follows only an exact, visible, uniquely observed
+    same-origin article-list link. No menu or article button is clicked.
+    Private labels, URLs, HTML and IDs never enter the result.
+    """
+    evidence: set[str] = set()
+    try:
+        page.goto(
+            _EXACT_READONLY_NOTE_HOME_URL,
+            wait_until="domcontentloaded", timeout=60000,
+        )
+        page.wait_for_timeout(1200)
+        parsed = urlsplit(str(page.url or ""))
+        if (parsed.scheme != "https" or parsed.hostname != "note.com" or
+            parsed.path != "/" or parsed.query or parsed.fragment or
+            parsed.username or parsed.password or parsed.port is not None or
+            draft_audit.note_base._looks_logged_out(page)):
+            return {"home_route_unverified"}
+        evidence.add("home_open")
+    except Exception:
+        return {"home_unavailable"}
+
+    # Every private DOM decision stays in the owner VM; export fixed bits only.
+    try:
+        mask = page.evaluate(r"""() => {
+            const controls = Array.from(document.querySelectorAll(
+                'a[href],button,[role="button"],[role="menuitem"],[role="tab"]'
+            )).slice(0,400);
+            const text = el => String(el.getAttribute('aria-label') ||
+                el.textContent || '').replace(/\s+/g,' ').trim().slice(0,90);
+            const visible = el => {
+                const rect = el.getBoundingClientRect();
+                const style = getComputedStyle(el);
+                return rect.width > 0 && rect.height > 0 &&
+                    style.visibility !== 'hidden' && style.display !== 'none';
+            };
+            const profileHref = el => {
+                try {
+                    const href = el.getAttribute('href');
+                    if (!href) return false;
+                    const u = new URL(href, location.origin);
+                    return u.protocol === 'https:' &&
+                        u.hostname === 'note.com' && u.port === '' &&
+                        u.pathname === '/trendhub_biz' && !u.search && !u.hash;
+                } catch (_) { return false; }
+            };
+            const isOwner = el => text(el) === '自分の記事';
+            let bits = 0;
+            const main = document.querySelector('main,[role="main"]');
+            const header = document.querySelector('header,[role="banner"]');
+            if (main && main.children.length > 0) bits |= 1;
+            if (controls.some(el => el.tagName === 'A' &&
+                visible(el) && profileHref(el))) bits |= 2;
+            if (controls.some(el => el.tagName === 'BUTTON' &&
+                visible(el) && el.querySelector('img'))) bits |= 4;
+            if (controls.some(el => el.tagName === 'BUTTON' && visible(el) &&
+                el.getAttribute('aria-haspopup') === 'menu')) bits |= 8;
+            if (controls.some(el => el.tagName === 'A' && visible(el) &&
+                isOwner(el))) bits |= 16;
+            if (controls.some(el => el.tagName === 'A' && !visible(el) &&
+                isOwner(el))) bits |= 32;
+            if (controls.some(el => el.tagName === 'A' && visible(el) &&
+                text(el) === '下書き')) bits |= 64;
+            if (main && Array.from(main.querySelectorAll('article')).slice(0,100)
+                .some(visible)) bits |= 128;
+            if (document.querySelector(
+                '[aria-busy="true"],[role="progressbar"],[class*="skeleton"]'
+            )) bits |= 256;
+            if (controls.some(el => visible(el) &&
+                /^(プロフィール|アカウント|マイページ|メニュー)$/.test(text(el))))
+                bits |= 512;
+            if (header && visible(header)) bits |= 1024;
+            if (header && Array.from(header.querySelectorAll('img')).slice(0,50)
+                .some(visible)) bits |= 2048;
+            if (controls.some(el => el.tagName === 'BUTTON' && visible(el) &&
+                el.querySelector('svg'))) bits |= 4096;
+            if (controls.some(el => el.tagName === 'BUTTON' && visible(el) &&
+                /(投稿|書く)/.test(text(el)) &&
+                el.getAttribute('aria-haspopup'))) bits |= 8192;
+            return bits;
+        }""")
+        if not isinstance(mask, int) or isinstance(mask, bool) or not 0 <= mask < (1 << 14):
+            evidence.add("home_dom_uninspectable")
+        else:
+            for bit, code in (
+                (1, "home_main_populated"),
+                (2, "home_creator_profile_link_visible"),
+                (4, "home_avatar_button_visible"),
+                (8, "home_profile_menu_trigger_visible"),
+                (16, "home_owner_article_link_visible"),
+                (32, "home_owner_article_link_hidden"),
+                (64, "home_draft_link_visible"),
+                (128, "home_article_card_visible"),
+                (256, "home_loading_visible"),
+                (512, "home_profile_label_visible"),
+                (1024, "home_header_visible"),
+                (2048, "home_avatar_image_visible"),
+                (4096, "home_avatar_svg_button_visible"),
+                (8192, "home_post_dropdown_visible"),
+            ):
+                if mask & bit:
+                    evidence.add(code)
+    except Exception:
+        evidence.add("home_dom_uninspectable")
+
+    try:
+        link = page.get_by_role("link", name="自分の記事", exact=True)
+        count = int(link.count())
+        if count > 1:
+            return evidence | {"home_owner_link_ambiguous"}
+        if count != 1 or not link.is_visible():
+            return evidence | {"home_owner_link_missing"}
+        raw = str(link.get_attribute("href") or "")
+    except Exception:
+        return evidence | {"home_owner_link_uninspectable"}
+    try:
+        dest = urlsplit(urljoin(_EXACT_READONLY_NOTE_HOME_URL, raw))
+        if (dest.scheme != "https" or dest.hostname != "note.com" or
+            dest.username or dest.password or dest.port is not None or
+            dest.path != "/notes" or
+            dest.query not in ("", "kind=draft") or dest.fragment):
+            return evidence | {"home_owner_link_rejected"}
+    except Exception:
+        return evidence | {"home_owner_link_rejected"}
+    evidence.add("home_owner_link_exact")
+
+    # A fixed HTTPS GET of an observed navigation link, never an article URL.
+    try:
+        page.goto(dest.geturl(), wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(1200)
+        if urlsplit(str(page.url or "")) != dest or draft_audit.note_base._looks_logged_out(page):
+            return evidence | {"home_owner_route_unverified"}
+        evidence.add("home_owner_route_open")
+    except Exception:
+        return evidence | {"home_owner_route_unavailable"}
+
+    try:
+        mask = page.evaluate(r"""() => {
+            const root = document.querySelector('main,[role="main"]');
+            const main = root || document.body;
+            const visible = el => {
+                const r = el.getBoundingClientRect();
+                const s = getComputedStyle(el);
+                return r.width > 0 && r.height > 0 &&
+                    s.visibility !== 'hidden' && s.display !== 'none';
+            };
+            let bits = 0;
+            if (root && root.children.length) bits |= 1;
+            if (Array.from(main.querySelectorAll('article')).slice(0,100)
+                    .some(visible)) bits |= 2;
+            if (Array.from(main.querySelectorAll(
+                'a,button,[role="button"]'
+            )).slice(0,300).some(el => visible(el) &&
+                /を編集/.test(String(el.getAttribute('aria-label') ||
+                    el.textContent || '')))) bits |= 4;
+            return bits;
+        }""")
+        if isinstance(mask, int) and not isinstance(mask, bool) and 0 <= mask < 8:
+            for bit, code in (
+                (1, "home_owner_route_main_populated"),
+                (2, "home_owner_route_article_card_present"),
+                (4, "home_owner_route_edit_control_present"),
+            ):
+                if mask & bit:
+                    evidence.add(code)
+    except Exception:
+        pass
+    return evidence
+
+
 def _probe_official_article_list(
     context: Any,
     article: dict[str, Any],
@@ -1138,6 +1331,9 @@ def _probe_official_article_list(
             codes.update(_safe_owner_articles_menu_route(
                 page, str(article["title"]).strip()
             ))
+            # Owner-authenticated homepage is the documented entry for the
+            # top-right profile icon. Inspect it without any button click.
+            codes.update(_safe_note_home_profile_probe(page))
 
         # Passive API observation after verified account ownership, while the
         # ordinary official list loads. Never request a guessed/private endpoint.
