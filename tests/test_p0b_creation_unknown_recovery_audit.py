@@ -724,7 +724,7 @@ def test_atomic_dom_snapshot_one_read_does_not_return_private_browser_content():
         def __init__(self): self.evaluate_calls = 0
         def evaluate(self, code):
             self.evaluate_calls += 1
-            assert "document.readyState" in code
+            assert "d.readyState" in code
             assert "querySelector" in code
             assert "textContent" not in code
             assert "innerHTML" not in code
