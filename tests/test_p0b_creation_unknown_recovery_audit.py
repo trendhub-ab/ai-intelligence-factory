@@ -1298,7 +1298,7 @@ def test_note_api_observation_rejects_untrusted_hosts_mutating_requests_and_non_
     for url, method in (
         ("https://evil.example/api/v3/notes", "GET"),
         ("https://note.com.evil.example/api/v3/notes", "GET"),
-        ("http://note.com/api/v3/notes", "GET"),
+        ("http://editor.note.com/api/v3/notes", "GET"),
         ("https://editor.note.com/api/v3/notes", "POST"),
         ("https://editor.note.com/api/v3/notes", "DELETE"),
         ("https://note.com/notes", "GET"),
