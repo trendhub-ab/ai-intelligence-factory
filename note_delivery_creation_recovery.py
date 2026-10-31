@@ -644,8 +644,8 @@ def _probe_official_article_list(
 def _discover_verified_matches(
     article: dict[str, Any],
     record: DeliveryRecord,
-) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int]]:
-    """Inspect history read-only; count only fixed codes, never private identities."""
+ ) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int], dict[str, int]]:
+    """Inspect authenticated article list and history without disclosing private IDs."""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
@@ -661,10 +661,7 @@ def _discover_verified_matches(
     title_atomic_dom = {code: 0 for code in TITLE_ATOMIC_DOM_CODES}
     failed_screen_signal_counts = {code: 0 for code in SCREEN_SIGNAL_CODES}
     control_screen_signal_counts = {code: 0 for code in SCREEN_SIGNAL_CODES}
-    if not candidates:
-        return ([], 0, counts, stages, title_failures, title_dom_signals,
-                title_context_signals, title_route_shapes, title_atomic_dom,
-                failed_screen_signal_counts, control_screen_signal_counts)
+    official_list_proof_counts = {code: 0 for code in OFFICIAL_LIST_CODES}
 
     matches: list[dict[str, Any]] = []
     legacy_title_finder = draft_audit.note_base._find_title
@@ -681,6 +678,12 @@ def _discover_verified_matches(
             page.set_default_timeout(30000)
             seeded = False
             try:
+                try:
+                    official_evidence = _probe_official_article_list(context, article, record, candidates)
+                except Exception:
+                    official_evidence = {"account_unverified"}
+                for signal in official_evidence:
+                    official_list_proof_counts[signal] += 1
                 for candidate in candidates:
                     stage = "navigation"
                     response = None
@@ -760,7 +763,8 @@ def _discover_verified_matches(
                 context.close()
     return (matches, len(candidates), counts, stages, title_failures,
             title_dom_signals, title_context_signals, title_route_shapes, title_atomic_dom,
-            failed_screen_signal_counts, control_screen_signal_counts)
+            failed_screen_signal_counts, control_screen_signal_counts,
+            official_list_proof_counts)
 
 
 def run(
@@ -805,6 +809,7 @@ def run(
         "title_atomic_dom_counts": {code: 0 for code in TITLE_ATOMIC_DOM_CODES},
         "failed_screen_signal_counts": {code: 0 for code in SCREEN_SIGNAL_CODES},
         "control_screen_signal_counts": {code: 0 for code in SCREEN_SIGNAL_CODES},
+        "official_list_proof_counts": {code: 0 for code in OFFICIAL_LIST_CODES},
     }
     if prepare_only:
         return base_result
@@ -814,6 +819,7 @@ def run(
         title_failure_counts, title_dom_signal_counts, title_context_signal_counts,
         title_route_shape_counts, title_atomic_dom_counts,
         failed_screen_signal_counts, control_screen_signal_counts,
+        official_list_proof_counts,
     ) = _discover_verified_matches(article, record)
     base_result["history_candidate_count"] = candidate_count
     base_result["match_count"] = len(matches)
@@ -843,6 +849,9 @@ def run(
     }
     base_result["control_screen_signal_counts"] = {
         code: int(control_screen_signal_counts.get(code, 0)) for code in SCREEN_SIGNAL_CODES
+    }
+    base_result["official_list_proof_counts"] = {
+        code: int(official_list_proof_counts.get(code, 0)) for code in OFFICIAL_LIST_CODES
     }
     # Preserve the exact safe counts even on an ambiguous/missing match.
     # Never grant recovery authority or infer permission to create a new draft.
