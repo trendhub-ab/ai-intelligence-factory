@@ -266,6 +266,13 @@ def run(
     matches, candidate_count = _discover_verified_matches(article, record)
     base_result["history_candidate_count"] = candidate_count
     base_result["match_count"] = len(matches)
+    # Preserve the exact safe counts even on an ambiguous/missing match.
+    # Never grant recovery authority or infer permission to create a new draft.
+    if len(matches) != 1:
+        base_result["status"] = (
+            "recovery_no_verified_match" if not matches else "recovery_multiple_verified_matches"
+        )
+        return base_result
     match = require_unique_recovery_match(matches)
     base_result.update(
         {
@@ -306,6 +313,12 @@ def main() -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(safe_recovery_projection(result), ensure_ascii=False))
+    # Save sanitized diagnostics before failing closed; the workflow summary then
+    # distinguishes zero/multiple matches without exposing a private draft ID.
+    if result.get("status") in {
+        "recovery_no_verified_match", "recovery_multiple_verified_matches"
+    }:
+        raise CreationRecoveryAuditError("private draft recovery remains blocked: no unique verified match")
 
 
 if __name__ == "__main__":
