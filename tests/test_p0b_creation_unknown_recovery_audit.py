@@ -165,3 +165,58 @@ def test_recovery_requires_immutable_snapshot_and_lossless_canonical_dom_evidenc
     assert "NOTE_BLOCKQUOTE_FIGURE_WRAPPER" in source
     assert "canonical_document_sha256(" in source
     assert "record.snapshot.canonical_document_sha256" in source
+
+
+def test_non_unique_readonly_audit_reports_counts_without_authorizing_recovery(monkeypatch):
+    import types
+    recovery = _module()
+    monkeypatch.setattr(recovery, "SQLiteDeliveryLedger", lambda _: object())
+    monkeypatch.setattr(recovery, "require_creation_unknown_record", lambda *a, **kw: object())
+    monkeypatch.setattr(
+        recovery, "_expected_prepared_delivery",
+        lambda _: types.SimpleNamespace(article={"title": "private", "manuscript": "body"}),
+    )
+
+    for matches, expected in (
+        ([], "recovery_no_verified_match"),
+        ([{"draft_id": "opaque-one"}, {"draft_id": "opaque-two"}],
+         "recovery_multiple_verified_matches"),
+    ):
+        monkeypatch.setattr(
+            recovery, "_discover_verified_matches",
+            lambda article, record, matches=matches: (matches, 6),
+        )
+        result = recovery.run(
+            confirm=recovery.CONFIRM_TOKEN, sync_id="a" * 32,
+            note_target="trendhub_biz", ledger_path="/unused/read-only/ledger",
+        )
+        assert result["status"] == expected
+        assert result["match_count"] == len(matches)
+        assert result["history_candidate_count"] == 6
+        assert result["read_only"] is True
+        assert result["draft_mutation"] is False
+        assert result["public_release"] is False
+        assert "recovered_draft_id" not in result
+
+
+def test_cli_writes_safe_blocked_result_then_returns_failure(tmp_path, monkeypatch, capsys):
+    import json
+    import sys
+    recovery = _module()
+    blocked = {
+        "status": "recovery_no_verified_match",
+        "read_only": True, "zero_gemini_calls": True,
+        "draft_mutation": False, "public_release": False,
+        "match_count": 0, "history_candidate_count": 9,
+        "editor_route_hash": "",
+    }
+    monkeypatch.setattr(recovery, "run", lambda **kwargs: dict(blocked))
+    target = tmp_path / "read-only-result.json"
+    monkeypatch.setattr(sys, "argv", ["audit", "--result-file", str(target)])
+    with pytest.raises(recovery.CreationRecoveryAuditError):
+        recovery.main()
+    assert json.loads(target.read_text(encoding="utf-8")) == blocked
+    output = capsys.readouterr().out
+    assert '"match_count": 0' in output
+    assert '"history_candidate_count": 9' in output
+    assert "draft_id" not in output
