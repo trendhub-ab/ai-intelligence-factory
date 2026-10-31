@@ -1277,6 +1277,8 @@ def test_same_account_note_api_get_response_is_bounded_and_private():
     flags = recovery._safe_note_api_response_signals(response, "Terra private draft")
     assert flags == {
         "api_get_observed", "api_json_readable", "api_target_title_seen",
+        "api_path_article_hint", "api_root_object", "api_title_field_seen",
+        "api_nested_collection_seen",
     }
     assert response.body_calls == 1
     for secret in ("target-id", "private-id", "Terra private draft", "opaque"):
@@ -1328,17 +1330,17 @@ def test_note_api_observation_caps_payload_and_never_proves_draft_lifecycle():
     )
     assert recovery._safe_note_api_response_signals(
         oversized, "private"
-    ) == {"api_get_observed", "api_response_oversize"}
+    ) == {"api_get_observed", "api_path_article_hint", "api_response_oversize"}
     unreadable = Response(
         {"content-type": "application/json"}, b"invalid JSON"
     )
     assert recovery._safe_note_api_response_signals(
         unreadable, "private"
-    ) == {"api_get_observed", "api_json_unreadable"}
+    ) == {"api_get_observed", "api_path_article_hint", "api_json_unreadable"}
     not_json = Response({"content-type": "text/html"})
     assert recovery._safe_note_api_response_signals(
         not_json, "private"
-    ) == {"api_get_observed"}
+    ) == {"api_get_observed", "api_path_article_hint"}
     source = inspect.getsource(recovery._probe_official_article_list)
     assert 'page.on("response"' in source
     assert "api_target_title_seen" not in inspect.getsource(
@@ -1366,3 +1368,96 @@ def test_note_api_evidence_projection_rejects_ids_titles_and_unknown_codes():
     assert "private manuscript" not in str(safe)
     assert "opaque" not in str(safe)
     assert "api/secret" not in str(safe)
+
+
+def test_api_response_codes_classify_http_failure_without_reading_private_bodies():
+    recovery = _module()
+    class R:
+        request = type("Req", (), {"method": "GET"})()
+        url = "https://editor.note.com/api/v3/articles"
+        headers = {"content-type": "application/json"}
+        def __init__(self, status): self.status = status
+        def body(self): raise AssertionError("non-success body must not be read")
+    expectations = {
+        401: "api_http_auth_denied",
+        403: "api_http_auth_denied",
+        404: "api_http_not_found",
+        429: "api_http_rate_limited",
+        503: "api_http_server_error",
+        302: "api_http_other_non_success",
+    }
+    for status, reason in expectations.items():
+        flags = recovery._safe_note_api_response_signals(R(status), "secret")
+        assert flags == {
+            "api_get_observed", "api_path_article_hint",
+            "api_http_non_success", reason,
+        }
+        assert "secret" not in str(flags)
+
+
+def test_api_response_classifies_structure_without_private_values():
+    import json
+    recovery = _module()
+    class R:
+        request = type("Req", (), {"method": "GET"})()
+        status = 200
+        headers = {"content-type": "application/json"}
+        def __init__(self, url, payload):
+            self.url = url
+            self.payload = payload
+        def body(self): return json.dumps(self.payload).encode("utf-8")
+    examples = (
+        ("https://editor.note.com/api/v3/profile",
+         {"profile": {"display_name": "secret"}}, {
+            "api_get_observed", "api_path_account_hint",
+            "api_json_readable", "api_root_object",
+         }),
+        ("https://editor.note.com/api/v3/articles",
+         {"data": [], "pagination": {"has_next": False}}, {
+            "api_get_observed", "api_path_article_hint",
+            "api_json_readable", "api_root_object",
+            "api_empty_collection_seen", "api_pagination_hint",
+         }),
+        ("https://editor.note.com/api/v3/anything",
+         [{"title": "other draft", "id": "private-1"}], {
+            "api_get_observed", "api_path_other",
+            "api_json_readable", "api_root_array",
+            "api_title_field_seen", "api_nested_collection_seen",
+         }),
+    )
+    for url, payload, expected in examples:
+        flags = recovery._safe_note_api_response_signals(R(url, payload), "Terra")
+        assert flags == expected
+        for raw in ("secret", "other draft", "private-1"):
+            assert raw not in str(flags)
+
+
+def test_api_response_observation_checks_capture_limit_before_body_decode():
+    recovery = _module()
+    source = inspect.getsource(recovery._probe_official_article_list)
+    assert 'if api_seen[0] >= _MAX_NOTE_API_RESPONSES:' in source
+    assert source.index('if api_seen[0] >= _MAX_NOTE_API_RESPONSES:') < source.index(
+        'signals = _safe_note_api_response_signals('
+    )
+    assert "api_target_title_seen" not in inspect.getsource(recovery.require_unique_recovery_match)
+    assert "api_target_title_seen" not in inspect.getsource(recovery.run)
+
+
+def test_api_diagnostics_projection_remains_opaque_and_allowlisted():
+    recovery = _module()
+    safe = recovery.safe_recovery_projection({
+        "official_list_scan_counts": {
+            "api_http_auth_denied": 1,
+            "api_json_readable": 1,
+            "api_pagination_hint": 1,
+            "private_draft_id": "secret-uuid",
+            "api_path": "/api/v3/articles/private-uuid",
+            "body": "confidential text",
+        },
+    })
+    counts = safe["official_list_scan_counts"]
+    assert counts["api_http_auth_denied"] == 1
+    assert counts["api_pagination_hint"] == 1
+    assert set(counts) == set(recovery.OFFICIAL_LIST_SCAN_CODES)
+    for raw in ("secret-uuid", "private-uuid", "confidential text"):
+        assert raw not in str(safe)

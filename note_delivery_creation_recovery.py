@@ -129,6 +129,13 @@ OFFICIAL_LIST_SCAN_CODES = (
     "api_get_observed", "api_json_readable", "api_target_title_seen",
     "api_json_unreadable", "api_response_oversize", "api_http_non_success",
     "api_capture_limit",
+    # Fixed-code response diagnostics. Names and IDs are never emitted.
+    "api_path_article_hint", "api_path_account_hint", "api_path_other",
+    "api_http_auth_denied", "api_http_not_found", "api_http_rate_limited",
+    "api_http_server_error", "api_http_other_non_success",
+    "api_root_object", "api_root_array", "api_title_field_seen",
+    "api_nested_collection_seen", "api_empty_collection_seen",
+    "api_pagination_hint",
 )
 
 
@@ -560,11 +567,10 @@ _MAX_NOTE_API_RESPONSES = 12
 
 
 def _safe_note_api_response_signals(response: Any, target_title: str) -> set[str]:
-    """Compare an authenticated first-party API GET with the immutable target title.
+    """Classify a first-party GET response already observed in the owner VM.
 
-    No request is sent by this routine. Response JSON is read only in private
-    VM memory; neither raw URLs, article data, IDs nor API payloads are returned.
-    A title match is a *hint*, never authorization to resolve CREATION_UNKNOWN.
+    This helper sends no request and returns only fixed codes. It cannot prove
+    that an existing private draft is present or absent, nor authorize writes.
     """
     try:
         parsed = urlsplit(str(response.url or ""))
@@ -574,14 +580,32 @@ def _safe_note_api_response_signals(response: Any, target_title: str) -> set[str
             not parsed.path.startswith("/api/") or
             str(response.request.method).upper() != "GET"):
             return set()
+        segments = {part.lower() for part in parsed.path.split("/")[2:]}
+        if segments.intersection({"articles", "article", "notes", "note", "drafts", "draft"}):
+            path_hint = "api_path_article_hint"
+        elif segments.intersection({"users", "user", "profile", "profiles",
+                                    "account", "accounts", "settings", "session", "auth"}):
+            path_hint = "api_path_account_hint"
+        else:
+            path_hint = "api_path_other"
     except Exception:
         return set()
 
-    evidence = {"api_get_observed"}
+    evidence = {"api_get_observed", path_hint}
     try:
         status = int(response.status)
         if not 200 <= status < 300:
-            return evidence | {"api_http_non_success"}
+            if status in (401, 403):
+                reason = "api_http_auth_denied"
+            elif status == 404:
+                reason = "api_http_not_found"
+            elif status == 429:
+                reason = "api_http_rate_limited"
+            elif 500 <= status < 600:
+                reason = "api_http_server_error"
+            else:
+                reason = "api_http_other_non_success"
+            return evidence | {"api_http_non_success", reason}
         headers = dict(response.headers or {})
         content_type = str(headers.get("content-type") or "").lower().split(";", 1)[0].strip()
         if content_type != "application/json" and not content_type.endswith("+json"):
@@ -597,24 +621,40 @@ def _safe_note_api_response_signals(response: Any, target_title: str) -> set[str
         return evidence | {"api_json_unreadable"}
     evidence.add("api_json_readable")
 
-    # Bound depth and nodes; do not convert arbitrary fields to strings or
-    # include any payload data in errors, logs or returned evidence.
+    if isinstance(payload, dict):
+        evidence.add("api_root_object")
+    elif isinstance(payload, list):
+        evidence.add("api_root_array")
+
+    # A bounded structural traversal, not an arbitrary dump, network crawl, or
+    # identifier extractor. An empty list may belong to unrelated API data.
     nodes = [(payload, 0)]
     seen = 0
     while nodes and seen < 500:
         node, depth = nodes.pop()
         seen += 1
         if isinstance(node, dict):
+            if any(key in node for key in (
+                "pagination", "next_page", "next", "has_next",
+                "hasNext", "total_pages", "next_cursor",
+            )):
+                evidence.add("api_pagination_hint")
             value = node.get("title")
-            if isinstance(value, str) and value.strip() == target_title.strip():
-                evidence.add("api_target_title_seen")
-                break
+            if isinstance(value, str):
+                evidence.add("api_title_field_seen")
+                if value.strip() == target_title.strip():
+                    evidence.add("api_target_title_seen")
+                    break
             if depth < 6:
                 nodes.extend((v, depth + 1) for v in list(node.values())[:500])
-        elif isinstance(node, list) and depth < 6:
-            nodes.extend((v, depth + 1) for v in node[:500])
+        elif isinstance(node, list):
+            if len(node) == 0:
+                evidence.add("api_empty_collection_seen")
+            if any(isinstance(item, dict) for item in node[:500]):
+                evidence.add("api_nested_collection_seen")
+            if depth < 6:
+                nodes.extend((v, depth + 1) for v in node[:500])
     return evidence
-
 
 def _bounded_official_list_scan(page: Any, title: str) -> set[str]:
     """Bounded observation of an already authenticated note official article list.
@@ -774,13 +814,14 @@ def _probe_official_article_list(
         api_seen = [0]
         def on_api_response(response: Any) -> None:
             try:
+                # Never decode additional private API response bodies after cap.
+                if api_seen[0] >= _MAX_NOTE_API_RESPONSES:
+                    codes.add("api_capture_limit")
+                    return
                 signals = _safe_note_api_response_signals(
                     response, str(article["title"]).strip()
                 )
                 if not signals:
-                    return
-                if api_seen[0] >= _MAX_NOTE_API_RESPONSES:
-                    codes.add("api_capture_limit")
                     return
                 api_seen[0] += 1
                 codes.update(signals)
