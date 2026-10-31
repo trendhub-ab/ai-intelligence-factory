@@ -1826,6 +1826,8 @@ def test_home_profile_probe_classifies_visible_home_controls_without_private_dom
             assert "querySelectorAll" in script
             assert "getBoundingClientRect" in script
             assert args == ()
+            if "SVG_CONTEXT_FIXED_BITS" in script:
+                return 0  # Independent secondary probe, not the original mask.
             return self.mask
         def get_by_role(self, role, name, exact):
             assert (role,name,exact) == ("link", "自分の記事", True)
@@ -2072,3 +2074,148 @@ def test_note_home_loading_redirect_during_wait_fails_closed(monkeypatch):
         "home_open", "home_route_unverified"
     }
     assert page.waits == 2
+
+
+def test_svg_context_classifies_only_fixed_allowlisted_dom_signals(monkeypatch):
+    recovery = _module()
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: False)
+    mapping = {
+        1: "home_svg_header_unique",
+        2: "home_svg_header_multiple",
+        4: "home_svg_outside_header",
+        8: "home_svg_header_account_name_hint",
+        16: "home_svg_header_search_name_hint",
+        32: "home_svg_header_notification_name_hint",
+        64: "home_svg_header_compose_name_hint",
+        128: "home_svg_header_menu_semantics",
+        256: "home_svg_header_unlabeled",
+        512: "home_svg_header_image_child",
+        1024: "home_svg_guest_login_visible",
+        2048: "home_svg_guest_signup_visible",
+        4096: "home_svg_header_icon_link_visible",
+        8192: "home_svg_header_profile_link_visible",
+    }
+
+    class Page:
+        url = "https://note.com/"
+        def __init__(self, mask): self.mask = mask
+        def evaluate(self, script):
+            assert "SVG_CONTEXT_FIXED_BITS" in script
+            assert "getBoundingClientRect" in script
+            assert "aria-haspopup" in script
+            assert "trendhub_biz" in script
+            return self.mask
+
+    for bit, code in mapping.items():
+        assert recovery._safe_note_home_svg_context_probe(Page(bit)) == {code}
+        assert code in recovery.OFFICIAL_LIST_SCAN_CODES
+    all_codes = recovery._safe_note_home_svg_context_probe(Page((1 << 14) - 1))
+    assert all_codes == set(mapping.values())
+    safe = recovery.safe_recovery_projection({
+        "official_list_scan_counts": {
+            **{code: 1 for code in mapping.values()},
+            "private_text": "DO_NOT_EXPORT_MANUSCRIPT",
+            "raw_href": "https://note.com/notes/secret",
+            "cookie": "VERY_PRIVATE",
+        }
+    })
+    assert set(safe["official_list_scan_counts"]) == set(recovery.OFFICIAL_LIST_SCAN_CODES)
+    assert "DO_NOT_EXPORT" not in str(safe)
+    assert "VERY_PRIVATE" not in str(safe)
+    assert "secret" not in str(safe)
+
+
+def test_svg_context_wrong_account_malformed_mask_and_eval_error_fail_closed(monkeypatch):
+    recovery = _module()
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: False)
+
+    class Page:
+        def __init__(self, url="https://note.com/", mask=0, bad=False):
+            self.url, self.mask, self.bad = url, mask, bad
+            self.evals = 0
+        def evaluate(self, script):
+            self.evals += 1
+            if self.bad: raise RuntimeError("Private DOM content must not escape")
+            return self.mask
+
+    for url in ("https://other.example/", "https://note.com/notes",
+                "http://note.com/", "https://note.com/?q=private"):
+        page = Page(url=url)
+        assert recovery._safe_note_home_svg_context_probe(page) == {
+            "home_svg_context_uninspectable"
+        }
+        assert page.evals == 0
+    for mask in (True, None, -1, 1 << 14, "raw-private-html", 1.5):
+        assert recovery._safe_note_home_svg_context_probe(Page(mask=mask)) == {
+            "home_svg_context_uninspectable"
+        }
+    assert recovery._safe_note_home_svg_context_probe(Page(bad=True)) == {
+        "home_svg_context_uninspectable"
+    }
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: True)
+    assert recovery._safe_note_home_svg_context_probe(Page(mask=8)) == {
+        "home_svg_context_uninspectable"
+    }
+
+
+def test_home_svg_context_integration_never_clicks_or_grants_identity(monkeypatch):
+    recovery = _module()
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: False)
+    calls = []
+
+    class Link:
+        def count(self): return 0
+
+    class Page:
+        url = "https://note.com/settings/profile"
+        def goto(self, url, **kwargs):
+            assert url == "https://note.com/"
+            self.url = url
+            calls.append("navigate_verified_home")
+        def wait_for_timeout(self, delay):
+            assert delay == 1200
+        def evaluate(self, script, *args):
+            assert not args
+            if "SVG_CONTEXT_FIXED_BITS" in script:
+                calls.append("svg_context_probe")
+                return 1 | 8 | 128  # Hint only; never a verified owner link.
+            calls.append("ordinary_home_probe")
+            return 1024 | 4096
+        def get_by_role(self, role, name, exact):
+            assert (role, name, exact) == ("link", "自分の記事", True)
+            return Link()
+
+    evidence = recovery._safe_note_home_profile_probe(Page())
+    assert evidence == {
+        "home_open", "home_header_visible", "home_avatar_svg_button_visible",
+        "home_svg_header_unique", "home_svg_header_account_name_hint",
+        "home_svg_header_menu_semantics", "home_owner_link_missing",
+    }
+    assert calls == ["navigate_verified_home", "ordinary_home_probe",
+                     "svg_context_probe"]
+    src = inspect.getsource(recovery._safe_note_home_svg_context_probe)
+    for forbidden in (
+        ".click(", ".fill(", ".screenshot(", "page.content(",
+        "requests.post(", ".set_input_files(", "create_draft(",
+        "mark_draft_created(", "page.goto(", "page.wait_for_timeout(",
+    ):
+        assert forbidden not in src
+
+
+def test_home_svg_context_is_not_recovery_authority():
+    recovery = _module()
+    src = inspect.getsource(recovery._probe_official_article_list)
+    home = inspect.getsource(recovery._safe_note_home_profile_probe)
+    assert src.index('codes.add("account_proven")') < src.index(
+        "_safe_note_home_profile_probe("
+    )
+    assert 'record.snapshot.canonical_document_sha256' in src
+    assert "_safe_note_home_svg_context_probe(page)" in home
+    assert home.index("_safe_note_home_svg_context_probe(page)") < home.index(
+        'get_by_role("link", name="自分の記事", exact=True)'
+    )
+    assert '"home_owner_link_missing"' in home

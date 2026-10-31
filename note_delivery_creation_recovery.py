@@ -175,6 +175,15 @@ OFFICIAL_LIST_SCAN_CODES = (
     "home_owner_route_unavailable", "home_owner_route_main_populated",
     "home_owner_route_article_card_present",
     "home_owner_route_edit_control_present",
+    # One-way, allowlisted diagnostics for SVG buttons on verified note home.
+    "home_svg_context_uninspectable", "home_svg_header_unique",
+    "home_svg_header_multiple", "home_svg_outside_header",
+    "home_svg_header_account_name_hint", "home_svg_header_search_name_hint",
+    "home_svg_header_notification_name_hint", "home_svg_header_compose_name_hint",
+    "home_svg_header_menu_semantics", "home_svg_header_unlabeled",
+    "home_svg_header_image_child", "home_svg_guest_login_visible",
+    "home_svg_guest_signup_visible", "home_svg_header_icon_link_visible",
+    "home_svg_header_profile_link_visible",
 )
 
 
@@ -1126,6 +1135,106 @@ def _safe_owner_articles_menu_route(page: Any, title: str) -> set[str]:
 _EXACT_READONLY_NOTE_HOME_URL = "https://note.com/"
 
 
+def _safe_note_home_svg_context_probe(page: Any) -> set[str]:
+    """Classify visible SVG-button context on verified note home, no interaction.
+
+    A generic SVG is *not* evidence of a profile trigger. This is a diagnostic
+    only and never authorizes article recovery, navigation, menu clicks or
+    creation. Only a fixed 14-bit mask leaves the private page; no labels,
+    element text, raw DOM, URLs, IDs or numerical counts are returned.
+    """
+    if (str(getattr(page, "url", "") or "") != _EXACT_READONLY_NOTE_HOME_URL or
+        draft_audit.note_base._looks_logged_out(page)):
+        return {"home_svg_context_uninspectable"}
+    try:
+        mask = page.evaluate(r"""() => {
+            // SVG_CONTEXT_FIXED_BITS: never export private DOM or attributes.
+            const header = document.querySelector('header,[role="banner"]');
+            const vis = el => {
+                const b = el.getBoundingClientRect();
+                const s = getComputedStyle(el);
+                return b.width > 0 && b.height > 0 &&
+                    s.visibility !== 'hidden' && s.display !== 'none';
+            };
+            const all = Array.from(document.querySelectorAll(
+                'button,[role="button"]'
+            )).slice(0,250).filter(vis);
+            const svgButtons = all.filter(el => el.querySelector('svg'));
+            const headerButtons = svgButtons.filter(el =>
+                header && header.contains(el));
+            const accessible = el => String(
+                el.getAttribute('aria-label') ||
+                el.getAttribute('title') ||
+                el.getAttribute('data-tooltip') ||
+                el.querySelector('svg title')?.textContent || ''
+            ).replace(/\s+/g,' ').trim().slice(0,100);
+            const isNamed = (el, pattern) => pattern.test(accessible(el));
+            const profile = /^(プロフィール|アカウント|マイページ|ユーザーメニュー|プロフィールメニュー|profile|account|user menu|my account)$/i;
+            const search = /^(検索|検索する|search|search notes)$/i;
+            const alerts = /^(通知|お知らせ|notifications?|alerts?)$/i;
+            const compose = /^(投稿|記事を書く|書く|新規投稿|create|write|post)$/i;
+            const visibleControls = Array.from(document.querySelectorAll(
+                'a,button,[role="link"],[role="button"]'
+            )).slice(0,350).filter(vis);
+            const ownProfile = el => {
+                try {
+                    const href = el.getAttribute('href');
+                    if (!href) return false;
+                    const u = new URL(href,location.origin);
+                    return u.protocol === 'https:' && u.hostname === 'note.com' &&
+                        u.port === '' && u.pathname === '/trendhub_biz' &&
+                        !u.search && !u.hash;
+                } catch (_) { return false; }
+            };
+            const label = el => String(el.getAttribute('aria-label') ||
+                el.textContent || '').replace(/\s+/g,' ').trim().slice(0,80);
+            let bits = 0;
+            if (headerButtons.length === 1) bits |= 1;
+            if (headerButtons.length > 1) bits |= 2;
+            if (svgButtons.some(el => !header || !header.contains(el))) bits |= 4;
+            if (headerButtons.some(el => isNamed(el,profile))) bits |= 8;
+            if (headerButtons.some(el => isNamed(el,search))) bits |= 16;
+            if (headerButtons.some(el => isNamed(el,alerts))) bits |= 32;
+            if (headerButtons.some(el => isNamed(el,compose))) bits |= 64;
+            if (headerButtons.some(el => ['menu','true'].includes(
+                el.getAttribute('aria-haspopup')))) bits |= 128;
+            if (headerButtons.some(el => !accessible(el))) bits |= 256;
+            if (headerButtons.some(el => el.querySelector('img'))) bits |= 512;
+            if (visibleControls.some(el =>
+                /^(ログイン|ログインする|sign in|log in)$/i.test(label(el)))) bits |= 1024;
+            if (visibleControls.some(el =>
+                /^(新規登録|会員登録|アカウント登録|sign up|register)$/i.test(label(el)))) bits |= 2048;
+            if (header && Array.from(header.querySelectorAll('a[href]')).slice(0,80)
+                    .some(el => vis(el) && !!el.querySelector('svg'))) bits |= 4096;
+            if (header && Array.from(header.querySelectorAll('a[href]')).slice(0,80)
+                    .some(el => vis(el) && ownProfile(el))) bits |= 8192;
+            return bits;
+        }""")
+        if (not isinstance(mask, int) or isinstance(mask, bool) or
+            not 0 <= mask < (1 << 14)):
+            return {"home_svg_context_uninspectable"}
+        return {
+            code for bit, code in (
+                (1, "home_svg_header_unique"),
+                (2, "home_svg_header_multiple"),
+                (4, "home_svg_outside_header"),
+                (8, "home_svg_header_account_name_hint"),
+                (16, "home_svg_header_search_name_hint"),
+                (32, "home_svg_header_notification_name_hint"),
+                (64, "home_svg_header_compose_name_hint"),
+                (128, "home_svg_header_menu_semantics"),
+                (256, "home_svg_header_unlabeled"),
+                (512, "home_svg_header_image_child"),
+                (1024, "home_svg_guest_login_visible"),
+                (2048, "home_svg_guest_signup_visible"),
+                (4096, "home_svg_header_icon_link_visible"),
+                (8192, "home_svg_header_profile_link_visible"),
+            ) if mask & bit
+        }
+    except Exception:
+        return {"home_svg_context_uninspectable"}
+
+
 def _safe_note_home_profile_probe(page: Any) -> set[str]:
     """Inspect the authenticated note homepage, never edit or create anything.
 
@@ -1255,6 +1364,13 @@ def _safe_note_home_profile_probe(page: Any) -> set[str]:
                     evidence.add(code)
     except Exception:
         evidence.add("home_dom_uninspectable")
+
+    # A generic SVG button does not prove an account menu. Observe only
+    # the fixed-code structural context, without clicking or exporting DOM.
+    if ("home_avatar_svg_button_visible" in evidence and
+        "home_owner_article_link_visible" not in evidence and
+        "home_loading_visible" not in evidence):
+        evidence.update(_safe_note_home_svg_context_probe(page))
 
     try:
         link = page.get_by_role("link", name="自分の記事", exact=True)
