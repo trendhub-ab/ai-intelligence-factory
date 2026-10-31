@@ -1644,3 +1644,140 @@ def test_owner_draft_view_mask_invalid_and_oversize_fail_closed(monkeypatch):
     assert "api/" not in source
     for forbidden in (".click(", ".fill(", ".screenshot(", ".content(", "requests.post(", "console.log("):
         assert forbidden not in source
+
+
+
+def test_owner_menu_navigation_follows_only_exact_verified_link_after_account_proof(monkeypatch):
+    recovery = _module()
+    events = []
+    class Link:
+        def count(self): return 1
+        def get_attribute(self, key): assert key=="href";return "/notes"
+        def is_visible(self): return True
+    class Page:
+        url = "https://note.com/settings/profile"
+        def get_by_role(self, role, name, exact):
+            assert (role,name,exact)==("link","自分の記事",True)
+            return Link()
+        def goto(self, url, **kwargs):
+            assert url=="https://note.com/notes"
+            assert kwargs["wait_until"]=="domcontentloaded"
+            events.append("navigate_verified_link")
+            self.url=url
+        def wait_for_timeout(self, ms):assert ms<=1500
+        def evaluate(self, script, *args):
+            assert len(args)==1 and args[0]=="private title"
+            return 1|2|4|8
+    monkeypatch.setattr(recovery.draft_audit.note_base,"_looks_logged_out",lambda _: False)
+    evidence = recovery._safe_owner_articles_menu_route(Page(),"private title")
+    assert evidence == {
+        "menu_link_exact", "menu_route_open", "menu_route_main_populated",
+        "menu_route_article_card_present", "menu_route_edit_control_present",
+        "menu_route_title_visible",
+    }
+    assert events==["navigate_verified_link"]
+    assert "private title" not in str(evidence)
+
+
+def test_owner_menu_navigation_opens_only_unique_semantic_menu_trigger(monkeypatch):
+    recovery = _module()
+    events=[]
+    class Link:
+        def __init__(self, page):self.page=page
+        def count(self):return 1 if self.page.menu_open else 0
+        def is_visible(self):return self.page.menu_open
+        def get_attribute(self, name):assert name=="href";return "/notes?kind=draft"
+    class Trigger:
+        def get_attribute(self, key):assert key=="aria-label";return "アカウントメニュー"
+        def is_visible(self):return True
+        def click(self, **kwargs):
+            events.append("open_pure_menu")
+            self.page.menu_open=True
+    class Triggers:
+        def __init__(self,page):self.page=page
+        def count(self):return 1
+        def nth(self,i):
+            assert i==0
+            t=Trigger();t.page=self.page;return t
+    class Page:
+        url="https://note.com/settings/profile"
+        menu_open=False
+        def get_by_role(self, *_args,**_kwargs):return Link(self)
+        def locator(self, sel):
+            assert sel=='button[aria-haspopup="menu"]:visible'
+            return Triggers(self)
+        def goto(self,url,**kwargs):
+            assert url=="https://note.com/notes?kind=draft"
+            events.append("navigate_verified_link")
+            self.url=url
+        def wait_for_timeout(self,_):pass
+        def evaluate(self, script, *args):return 0
+    monkeypatch.setattr(recovery.draft_audit.note_base,"_looks_logged_out",lambda _: False)
+    evidence=recovery._safe_owner_articles_menu_route(Page(),"secret")
+    assert evidence=={
+        "menu_trigger_unique","menu_opened","menu_link_exact","menu_route_open",
+    }
+    assert events==["open_pure_menu","navigate_verified_link"]
+
+
+def test_owner_menu_navigation_rejects_bad_routes_and_ambiguous_link(monkeypatch):
+    recovery=_module()
+    monkeypatch.setattr(recovery.draft_audit.note_base,"_looks_logged_out",lambda _: False)
+    class Link:
+        def __init__(self, href, count=1):self.href=href;self.number=count
+        def count(self):return self.number
+        def is_visible(self):return True
+        def get_attribute(self, name):return self.href
+    class Page:
+        url="https://note.com/settings/profile"
+        def __init__(self, href, count=1):self.href=href;self.number=count
+        def get_by_role(self,*_args,**_kwargs):return Link(self.href,self.number)
+        def goto(self,*_args,**_kwargs):raise AssertionError("must not navigate")
+        def evaluate(self,*_args):raise AssertionError("must not inspect")
+    for href in (
+        "https://evil.example/notes", "//evil.example/notes",
+        "https://note.com.evil.example/notes", "http://note.com/notes",
+        "https://note.com/notes/new", "/notes?status=draft",
+        "/notes?kind=draft&private=secret", "/notes#secret",
+        "javascript:alert('bad')",
+    ):
+        assert recovery._safe_owner_articles_menu_route(Page(href),"secret")=={
+            "menu_link_rejected"
+        }
+    assert recovery._safe_owner_articles_menu_route(Page("/notes",count=2),"secret")=={
+        "menu_link_ambiguous"
+    }
+
+
+def test_owner_menu_navigation_fails_closed_without_valid_account_setting_route(monkeypatch):
+    recovery=_module()
+    class Page:
+        url="https://evil.example/settings/profile"
+        def get_by_role(self,*_args,**_kwargs):raise AssertionError("no link scan")
+    assert recovery._safe_owner_articles_menu_route(Page(),"private")=={
+        "menu_origin_unverified"
+    }
+
+
+def test_owner_menu_navigation_never_mutates_editor_or_leaks_private_fields():
+    import inspect
+    recovery=_module()
+    source=inspect.getsource(recovery._safe_owner_articles_menu_route)
+    assert "cloud.PROFILE_SETTINGS_URL" in source
+    assert "get_by_role" in source
+    assert "aria-haspopup" in source
+    for forbidden in (
+        "requests.post(", ".fill(", ".upload(", ".screenshot(", 
+        "mark_draft_created(", "create_draft(", ".set_input_files(", "page.content(",
+    ):
+        assert forbidden not in source
+    safe=recovery.safe_recovery_projection({"official_list_scan_counts":{
+        "menu_route_open":1,"menu_link_rejected":1,
+        "real_article_id":"nprivate","article_body":"confidential"
+    }})
+    assert safe["official_list_scan_counts"]["menu_route_open"]==1
+    assert safe["official_list_scan_counts"]["menu_link_rejected"]==1
+    assert "nprivate" not in str(safe)
+    assert "confidential" not in str(safe)
+    probe=inspect.getsource(recovery._probe_official_article_list)
+    assert probe.index('codes.add("account_proven")')<probe.index("_safe_owner_articles_menu_route(")
