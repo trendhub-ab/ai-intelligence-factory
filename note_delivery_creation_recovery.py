@@ -15,7 +15,7 @@ import hashlib
 import json
 import os
 import re
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlparse
 from pathlib import Path
 import sqlite3
 from typing import Any, Iterable
@@ -103,6 +103,18 @@ SCREEN_SIGNAL_CODES = (
     "surface_app_mount_present", "surface_no_indicators",
     "surface_probe_unavailable",
 )
+# Aggregate official-note-list evidence codes. No private title or ID in output.
+OFFICIAL_LIST_CODES = (
+    "account_unverified", "account_proven",
+    "list_unavailable", "list_open",
+    "title_button_uninspectable", "title_button_not_visible",
+    "title_button_ambiguous", "title_button_unique",
+    "edit_navigation_failed", "editor_route_unverified",
+    "editor_route_verified", "editor_in_history", "editor_not_in_history",
+    "editor_title_unreadable", "editor_title_mismatch", "editor_title_equal",
+    "body_eyecatch_unverified", "body_eyecatch_equal",
+    "canonical_unverified", "canonical_mismatch", "canonical_equal",
+)
 
 
 class CreationRecoveryAuditError(RuntimeError):
@@ -173,6 +185,10 @@ def safe_recovery_projection(result: dict[str, Any]) -> dict[str, Any]:
         "control_screen_signal_counts": {
             code: int((result.get("control_screen_signal_counts") or {}).get(code) or 0)
             for code in SCREEN_SIGNAL_CODES
+        },
+        "official_list_proof_counts": {
+            code: int((result.get("official_list_proof_counts") or {}).get(code) or 0)
+            for code in OFFICIAL_LIST_CODES
         },
     }
 
@@ -518,6 +534,111 @@ def _safe_visible_screen_signals(page: Any) -> tuple[str, ...]:
         "surface_app_mount_present",
     )
     return tuple(code for index, code in enumerate(mapped) if mask & (1 << index))
+
+
+def _probe_official_article_list(
+    context: Any,
+    article: dict[str, Any],
+    record: DeliveryRecord,
+    history_candidates: list[str],
+) -> set[str]:
+    """Read the authenticated official note list without changing draft content.
+
+    Read-only account settings proof is required before inspecting note.com/notes.
+    Only an exact unique existing-title edit button may be clicked for navigation
+    to an existing article. No list-only evidence can authorize recovery:
+    private/draft lifecycle is not proven by an edit control or matching content.
+    No private URLs, title text, body, IDs, or exceptions leave this probe.
+    """
+    codes: set[str] = set()
+    page = None
+    try:
+        page = context.new_page()
+        page.set_default_timeout(30000)
+        try:
+            cloud._assert_expected_note_account(page)
+        except Exception:
+            return {"account_unverified"}
+        codes.add("account_proven")
+
+        try:
+            page.goto(cloud.ARTICLE_LIST_URL, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(1500)
+            parsed = urlparse(str(page.url or ""))
+            if (parsed.scheme != "https" or (parsed.hostname or "").lower() != "note.com"
+                or parsed.path != "/notes" or draft_audit.note_base._looks_logged_out(page)):
+                return codes | {"list_unavailable"}
+        except Exception:
+            return codes | {"list_unavailable"}
+        codes.add("list_open")
+
+        try:
+            button = page.get_by_role(
+                "button", name=str(article["title"]).strip() + "を編集", exact=True
+            )
+            count = int(button.count())
+        except Exception:
+            return codes | {"title_button_uninspectable"}
+        if count == 0:
+            return codes | {"title_button_not_visible"}
+        if count != 1:
+            return codes | {"title_button_ambiguous"}
+        codes.add("title_button_unique")
+
+        try:
+            button.click(timeout=10000)
+            for _ in range(10):
+                if editor_readiness._is_editor_url(str(page.url or "")):
+                    break
+                page.wait_for_timeout(500)
+        except Exception:
+            return codes | {"edit_navigation_failed"}
+        try:
+            if not editor_readiness._is_editor_url(str(page.url or "")):
+                return codes | {"editor_route_unverified"}
+            identity = reconcile.draft_identity_from_url(str(page.url or ""))
+        except Exception:
+            return codes | {"editor_route_unverified"}
+        codes.add("editor_route_verified")
+
+        known_ids = set()
+        for url in history_candidates:
+            try:
+                known_ids.add(reconcile.draft_identity_from_url(url))
+            except Exception:
+                pass
+        codes.add("editor_in_history" if identity in known_ids else "editor_not_in_history")
+
+        try:
+            title = draft_audit._title_value(page)
+        except Exception:
+            return codes | {"editor_title_unreadable"}
+        if title != str(article["title"]).strip():
+            return codes | {"editor_title_mismatch"}
+        codes.add("editor_title_equal")
+
+        try:
+            draft_audit._audit_current_page(
+                page, str(article["title"]), str(article["manuscript"])
+            )
+        except Exception:
+            return codes | {"body_eyecatch_unverified"}
+        codes.add("body_eyecatch_equal")
+
+        try:
+            actual_hash = _current_canonical_sha256(page)
+        except Exception:
+            return codes | {"canonical_unverified"}
+        if actual_hash != record.snapshot.canonical_document_sha256:
+            return codes | {"canonical_mismatch"}
+        codes.add("canonical_equal")
+        return codes
+    finally:
+        if page is not None:
+            try:
+                page.close()
+            except Exception:
+                pass
 
 
 def _discover_verified_matches(
