@@ -15,7 +15,7 @@ import hashlib
 import json
 import os
 import re
-from urllib.parse import urlsplit, urlparse
+from urllib.parse import urlsplit, urlparse, urljoin
 from pathlib import Path
 import sqlite3
 from typing import Any, Iterable
@@ -585,18 +585,30 @@ def _probe_official_article_list(
             return codes | {"title_button_ambiguous"}
         codes.add("title_button_unique")
 
+        # NEVER click a button in a CREATION_UNKNOWN recovery. Only an
+        # explicitly linked pre-existing edit route may be navigated to.
         try:
-            button.click(timeout=10000)
-            for _ in range(10):
-                if editor_readiness._is_editor_url(str(page.url or "")):
-                    break
-                page.wait_for_timeout(500)
+            raw_href = button.evaluate("""el => {
+                const anchor = el.closest('a[href]') || el.querySelector('a[href]');
+                return anchor ? anchor.getAttribute('href') : '';
+            }""")
+            if not isinstance(raw_href, str) or not raw_href:
+                return codes | {"editor_route_unverified"}
+            direct_url = urljoin("https://note.com", raw_href)
+            linked_id = reconcile.draft_identity_from_url(direct_url)
+        except Exception:
+            return codes | {"editor_route_unverified"}
+        try:
+            page.goto(direct_url, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(1200)
         except Exception:
             return codes | {"edit_navigation_failed"}
         try:
             if not editor_readiness._is_editor_url(str(page.url or "")):
                 return codes | {"editor_route_unverified"}
             identity = reconcile.draft_identity_from_url(str(page.url or ""))
+            if identity != linked_id:
+                return codes | {"editor_route_unverified"}
         except Exception:
             return codes | {"editor_route_unverified"}
         codes.add("editor_route_verified")
