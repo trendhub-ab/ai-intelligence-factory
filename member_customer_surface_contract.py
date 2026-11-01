@@ -228,6 +228,7 @@ NON_MEMBER_MODULES = frozenset((
     "note_delivery_creation_recovery.py",  # P0-B read-only ambiguous-delivery recovery audit, not reader/customer copy
     "note_delivery_runtime.py",  # P0-B delivery orchestration, not reader/customer copy
     "note_draft_automation.py",
+    "note_editor_title_surface.py",  # operator-only read-only note audit diagnostic; no customer surface
     "note_eyecatch_persistence.py",
     "note_publication_reconcile.py",
     "note_ready_sync.py",
