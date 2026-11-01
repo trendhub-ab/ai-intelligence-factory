@@ -193,6 +193,17 @@ OFFICIAL_LIST_SCAN_CODES = (
     "home_menu_svg_unique_last_header_button", "home_menu_svg_unique_inside_nav",
     "home_menu_svg_unique_circle", "home_menu_svg_unique_image_child",
     "home_menu_non_svg_trigger_visible",
+    # Read-only observed image-button vs popup-SVG structural intersection.
+    "home_avatar_overlap_uninspectable", "home_avatar_overlap_no_popup_svg",
+    "home_avatar_overlap_multiple_popup_svg", "home_avatar_overlap_no_image_button",
+    "home_avatar_overlap_multiple_image_buttons",
+    "home_avatar_overlap_same_unique_button", "home_avatar_overlap_distinct_unique_buttons",
+    "home_avatar_overlap_popup_svg_contains_visible_img",
+    "home_avatar_overlap_img_button_has_popup",
+    "home_avatar_overlap_img_button_has_svg",
+    "home_avatar_overlap_img_button_inside_nav",
+    "home_avatar_overlap_img_button_last_in_header",
+    "home_avatar_overlap_unique_same_parent",
 )
 
 
@@ -1324,6 +1335,85 @@ def _safe_note_home_menu_svg_intersection_probe(page: Any) -> set[str]:
         return {"home_menu_svg_probe_uninspectable"}
 
 
+def _safe_note_home_avatar_menu_overlap_probe(page: Any) -> set[str]:
+    """Check SAME/DIFFERENT element for visible header image and SVG-popup buttons.
+
+    Strictly bounded, authenticated, no user interaction. A <button> with <img>
+    may be branding, not a personal avatar. Even a unique same-element match
+    must not grant account identity, draft existence or navigation authority.
+    Only a fixed 12-bit projection leaves the owner VM.
+    """
+    if (str(getattr(page, "url", "") or "") != _EXACT_READONLY_NOTE_HOME_URL or
+        draft_audit.note_base._looks_logged_out(page)):
+        return {"home_avatar_overlap_uninspectable"}
+    try:
+        mask = page.evaluate(r"""() => {
+            // AVATAR_MENU_OVERLAP_FIXED_BITS: no raw DOM, attributes, IDs, text or URLs.
+            const header = document.querySelector('header,[role="banner"]');
+            if (!header) return 0;
+            const visible = el => {
+                const r = el.getBoundingClientRect();
+                const s = getComputedStyle(el);
+                return r.width > 0 && r.height > 0 &&
+                    s.visibility !== 'hidden' && s.display !== 'none';
+            };
+            const controls = Array.from(header.querySelectorAll(
+                'button,[role="button"]'
+            )).slice(0,150).filter(visible);
+            const popup = el => ['menu','true'].includes(
+                String(el.getAttribute('aria-haspopup') || '').toLowerCase());
+            const image = el => Array.from(el.querySelectorAll('img')).slice(0,5)
+                .some(visible);
+            const svgPopup = controls.filter(el =>
+                popup(el) && !!el.querySelector('svg'));
+            const imgButtons = controls.filter(image);
+            let bits = 0;
+            if (!svgPopup.length) bits |= 1;
+            if (svgPopup.length > 1) bits |= 2;
+            if (!imgButtons.length) bits |= 4;
+            if (imgButtons.length > 1) bits |= 8;
+            if (svgPopup.length === 1 && image(svgPopup[0])) bits |= 64;
+            if (imgButtons.length === 1) {
+                const im = imgButtons[0];
+                if (popup(im)) bits |= 128;
+                if (im.querySelector('svg')) bits |= 256;
+                if (im.closest('nav,[role="navigation"]')) bits |= 512;
+                if (controls[controls.length - 1] === im) bits |= 1024;
+            }
+            // Only exact one-to-one comparisons are reported; if ambiguous
+            // never guess which of multiple image buttons is the avatar.
+            if (svgPopup.length === 1 && imgButtons.length === 1) {
+                const svg = svgPopup[0], img = imgButtons[0];
+                if (svg === img) bits |= 16;
+                else bits |= 32;
+                if (svg !== img && svg.parentElement &&
+                    svg.parentElement === img.parentElement) bits |= 2048;
+            }
+            return bits;
+        }""")
+        if (not isinstance(mask, int) or isinstance(mask, bool) or
+            not 0 <= mask < (1 << 12)):
+            return {"home_avatar_overlap_uninspectable"}
+        return {
+            code for bit, code in (
+                (1, "home_avatar_overlap_no_popup_svg"),
+                (2, "home_avatar_overlap_multiple_popup_svg"),
+                (4, "home_avatar_overlap_no_image_button"),
+                (8, "home_avatar_overlap_multiple_image_buttons"),
+                (16, "home_avatar_overlap_same_unique_button"),
+                (32, "home_avatar_overlap_distinct_unique_buttons"),
+                (64, "home_avatar_overlap_popup_svg_contains_visible_img"),
+                (128, "home_avatar_overlap_img_button_has_popup"),
+                (256, "home_avatar_overlap_img_button_has_svg"),
+                (512, "home_avatar_overlap_img_button_inside_nav"),
+                (1024, "home_avatar_overlap_img_button_last_in_header"),
+                (2048, "home_avatar_overlap_unique_same_parent"),
+            ) if mask & bit
+        }
+    except Exception:
+        return {"home_avatar_overlap_uninspectable"}
+
+
 def _safe_note_home_profile_probe(page: Any) -> set[str]:
     """Inspect the authenticated note homepage, never edit or create anything.
 
@@ -1464,6 +1554,11 @@ def _safe_note_home_profile_probe(page: Any) -> set[str]:
         # Diagnostics are not identity evidence and never trigger a click.
         if "home_svg_header_menu_semantics" in evidence:
             evidence.update(_safe_note_home_menu_svg_intersection_probe(page))
+            # Inspect the same-element overlap only when both families were
+            # actually observed, never as a trigger to navigate or click.
+            if ("home_menu_svg_unique" in evidence and
+                "home_avatar_button_visible" in evidence):
+                evidence.update(_safe_note_home_avatar_menu_overlap_probe(page))
 
     try:
         link = page.get_by_role("link", name="自分の記事", exact=True)
