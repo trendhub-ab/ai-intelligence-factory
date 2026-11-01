@@ -2440,6 +2440,9 @@ def test_avatar_menu_overlap_readonly_integration_never_claims_owner_identity(mo
             assert amount == 1200
         def evaluate(self, script, *args):
             assert not args
+            if "IMAGE_MENU_CONTROLS_FIXED_BITS" in script:
+                calls.append("controlled_menu")
+                return 16 | 64 | 256  # unique image popup, unmounted target
             if "AVATAR_MENU_OVERLAP_FIXED_BITS" in script:
                 calls.append("overlap")
                 return 32 | 128 | 512  # distinct unique elements, still no authority
@@ -2460,11 +2463,14 @@ def test_avatar_menu_overlap_readonly_integration_never_claims_owner_identity(mo
     assert {"home_avatar_overlap_distinct_unique_buttons",
             "home_avatar_overlap_img_button_has_popup",
             "home_avatar_overlap_img_button_inside_nav",
+            "home_image_menu_unique_popup",
+            "home_image_menu_controls_present",
+            "home_image_menu_target_missing",
             "home_owner_link_missing"} <= observed
     assert "home_owner_link_exact" not in observed
     assert "home_owner_route_open" not in observed
     assert calls == ["verified_home_get", "home", "svg", "menu", "overlap",
-                     "owner_link_check"]
+                     "controlled_menu", "owner_link_check"]
 
 
 def test_avatar_menu_overlap_cannot_click_write_or_change_recovery_authority():
@@ -2486,3 +2492,143 @@ def test_avatar_menu_overlap_cannot_click_write_or_change_recovery_authority():
         "localStorage", "sessionStorage", "document.cookie",
     ):
         assert forbidden not in fn
+
+
+def test_image_menu_controls_export_allowlisted_fixed_bits_only(monkeypatch):
+    recovery = _module()
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: False)
+    mapping = {
+        1: "home_image_menu_no_image_button",
+        2: "home_image_menu_multiple_image_buttons",
+        4: "home_image_menu_no_popup_button",
+        8: "home_image_menu_multiple_popup_buttons",
+        16: "home_image_menu_unique_popup",
+        32: "home_image_menu_controls_missing",
+        64: "home_image_menu_controls_present",
+        128: "home_image_menu_controls_ambiguous",
+        256: "home_image_menu_target_missing",
+        512: "home_image_menu_target_visible",
+        1024: "home_image_menu_target_hidden",
+        2048: "home_image_menu_target_menu_role",
+        4096: "home_image_menu_target_owner_label",
+        8192: "home_image_menu_target_safe_link",
+        16384: "home_image_menu_target_safe_link_visible",
+    }
+    class Page:
+        url = "https://note.com/"
+        def __init__(self, value): self.value = value
+        def evaluate(self, script):
+            assert "IMAGE_MENU_CONTROLS_FIXED_BITS" in script
+            assert "document.getElementById" in script
+            assert "svgPopup" not in script
+            assert "aria-controls" in script
+            assert "u.pathname === '/notes'" in script
+            return self.value
+    for bit, code in mapping.items():
+        assert recovery._safe_note_home_image_menu_controls_probe(Page(bit)) == {
+            code
+        }
+        assert code in recovery.OFFICIAL_LIST_SCAN_CODES
+    assert recovery._safe_note_home_image_menu_controls_probe(
+        Page((1 << 15) - 1)
+    ) == set(mapping.values())
+    projected = recovery.safe_recovery_projection({
+        "official_list_scan_counts": {
+            **{code: 1 for code in mapping.values()},
+            "actual_dom": "<menu>SECRET_PRIVATE_NOTE</menu>",
+            "secret_href": "https://note.com/notes/private",
+        }
+    })
+    assert set(projected["official_list_scan_counts"]) == set(
+        recovery.OFFICIAL_LIST_SCAN_CODES
+    )
+    assert "SECRET_PRIVATE_NOTE" not in str(projected)
+    assert "notes/private" not in str(projected)
+
+
+def test_image_menu_controls_wrong_route_logout_dom_error_fail_closed(monkeypatch):
+    recovery = _module()
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: False)
+    class Page:
+        def __init__(self, url="https://note.com/", value=0, bad=False):
+            self.url,self.value,self.bad = url,value,bad
+            self.calls = 0
+        def evaluate(self, script):
+            self.calls += 1
+            if self.bad:
+                raise ValueError("PRIVATE_DOM_MUST_NOT_ESCAPE")
+            return self.value
+    for url in ("http://note.com/", "https://note.com/notes",
+                "https://other.example/", "https://note.com/?secret=1"):
+        p = Page(url=url,value=8192)
+        assert recovery._safe_note_home_image_menu_controls_probe(p) == {
+            "home_image_menu_probe_uninspectable"
+        }
+        assert p.calls == 0
+    for value in (True,None,-1,1 << 15,"PRIVATE",0.1):
+        assert recovery._safe_note_home_image_menu_controls_probe(
+            Page(value=value)
+        ) == {"home_image_menu_probe_uninspectable"}
+    assert recovery._safe_note_home_image_menu_controls_probe(
+        Page(bad=True)
+    ) == {"home_image_menu_probe_uninspectable"}
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: True)
+    assert recovery._safe_note_home_image_menu_controls_probe(
+        Page(value=8192)
+    ) == {"home_image_menu_probe_uninspectable"}
+
+
+def test_image_menu_control_link_hints_are_not_navigation_authority(monkeypatch):
+    recovery = _module()
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: False)
+    events = []
+    class Missing:
+        def count(self): return 0
+    class Page:
+        url = "https://note.com/settings/profile"
+        def goto(self, url, **_kwargs):
+            assert url == "https://note.com/"
+            self.url = url
+            events.append("home")
+        def wait_for_timeout(self, delay): assert delay == 1200
+        def evaluate(self, script, *args):
+            assert not args
+            if "IMAGE_MENU_CONTROLS_FIXED_BITS" in script:
+                events.append("target_dom")
+                # Hidden menu contains an exact safe link; still not clickable.
+                return 16 | 64 | 1024 | 2048 | 4096 | 8192
+            if "AVATAR_MENU_OVERLAP_FIXED_BITS" in script:
+                events.append("overlap")
+                return 32 | 128
+            if "MENU_SVG_INTERSECTION_FIXED_BITS" in script:
+                events.append("svg_menu")
+                return 1 | 128
+            if "SVG_CONTEXT_FIXED_BITS" in script:
+                events.append("svg_context")
+                return 2 | 128
+            events.append("home_dom")
+            return 4 | 1024 | 4096
+        def get_by_role(self, role, name, exact):
+            assert (role,name,exact) == ("link","自分の記事",True)
+            events.append("check_link")
+            return Missing()
+    evidence = recovery._safe_note_home_profile_probe(Page())
+    assert "home_image_menu_target_safe_link" in evidence
+    assert "home_image_menu_target_hidden" in evidence
+    assert "home_owner_link_exact" not in evidence
+    assert "home_owner_link_missing" in evidence
+    assert "home_owner_route_open" not in evidence
+    assert events == ["home","home_dom","svg_context","svg_menu",
+                      "overlap","target_dom","check_link"]
+    src=inspect.getsource(recovery._safe_note_home_image_menu_controls_probe)
+    for forbidden in (".click(", ".fill(", ".screenshot(", ".set_input_files(",
+                      "requests.post(", "create_draft(", "mark_draft_created(",
+                      "page.goto(", "page.wait_for_timeout(", "page.content(",
+                      "localStorage", "sessionStorage", "document.cookie"):
+        assert forbidden not in src
+    audit=inspect.getsource(recovery._probe_official_article_list)
+    assert 'record.snapshot.canonical_document_sha256' in audit
