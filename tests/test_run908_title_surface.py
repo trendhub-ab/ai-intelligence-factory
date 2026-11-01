@@ -142,9 +142,9 @@ class Run908TitleSurfaceTests(unittest.TestCase):
         run = inspect.getsource(audit._browser_audit)
         self.assertIn('page, str(article["title"]), navigation_response=editor_response', run)
         self.assertLess(run.index("run190._assert_expected_note_account(page)"),
-                        run.index("_read_title_with_diagnostics(page"))
+                        run.index("persisted_title = _read_title_with_diagnostics("))
         self.assertLess(run.index("run190._verify_draft_in_article_list(page, private_url"),
-                        run.index("_read_title_with_diagnostics(page"))
+                        run.index("persisted_title = _read_title_with_diagnostics("))
         for forbidden in (
             ".click(", ".fill(", "set_input_files(", ".screenshot(",
             "requests.post(", ".innerHTML", ".outerHTML", ".currentSrc",
