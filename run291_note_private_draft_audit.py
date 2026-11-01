@@ -152,9 +152,25 @@ def _read_title_with_diagnostics(
     try:
         return _title_value(page)
     except note_base.NoteDraftError:
+        # A verified editor route can be an unhydrated SPA shell at t=1.2s.
+        # Observe a fixed 0/+2/+5s window on the SAME page, without navigation
+        # or data writes. This is evidence only, not an alternate title matcher.
+        hydration = title_surface.observe_editor_hydration(page)
+        if not run187._is_editor_url(str(page.url or "")):
+            raise PrivateDraftAuditError(
+                "Stable private draft did not resolve to a confirmed editor route",
+                safe_metrics=title_surface._validated_hydration_metrics(hydration),
+            ) from None
+        try:
+            strict_title = _title_value(page)
+        except note_base.NoteDraftError:
+            pass
+        else:
+            return strict_title
         metrics = title_surface.collect_title_surface_metrics(
             page, expected_title, navigation_response=navigation_response
         )
+        metrics.update(title_surface._validated_hydration_metrics(hydration))
         if runtime_probe is not None:
             # Only fixed counters can cross this boundary; unknown keys are discarded.
             observed = runtime_probe.safe_metrics()
