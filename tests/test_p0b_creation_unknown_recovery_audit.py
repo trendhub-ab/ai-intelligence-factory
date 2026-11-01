@@ -2183,6 +2183,9 @@ def test_home_svg_context_integration_never_clicks_or_grants_identity(monkeypatc
             if "SVG_CONTEXT_FIXED_BITS" in script:
                 calls.append("svg_context_probe")
                 return 1 | 8 | 128  # Hint only; never a verified owner link.
+            if "MENU_SVG_INTERSECTION_FIXED_BITS" in script:
+                calls.append("svg_menu_intersection_probe")
+                return 1 | 8 | 128  # One unlabeled, collapsed menu SVG (still not identity).
             calls.append("ordinary_home_probe")
             return 1024 | 4096
         def get_by_role(self, role, name, exact):
@@ -2194,9 +2197,11 @@ def test_home_svg_context_integration_never_clicks_or_grants_identity(monkeypatc
         "home_open", "home_header_visible", "home_avatar_svg_button_visible",
         "home_svg_header_unique", "home_svg_header_account_name_hint",
         "home_svg_header_menu_semantics", "home_owner_link_missing",
+        "home_menu_svg_unique", "home_menu_svg_unique_unlabeled",
+        "home_menu_svg_unique_expanded_false",
     }
     assert calls == ["navigate_verified_home", "ordinary_home_probe",
-                     "svg_context_probe"]
+                     "svg_context_probe", "svg_menu_intersection_probe"]
     src = inspect.getsource(recovery._safe_note_home_svg_context_probe)
     for forbidden in (
         ".click(", ".fill(", ".screenshot(", "page.content(",
@@ -2219,3 +2224,111 @@ def test_home_svg_context_is_not_recovery_authority():
         'get_by_role("link", name="自分の記事", exact=True)'
     )
     assert '"home_owner_link_missing"' in home
+
+
+def test_home_menu_svg_intersection_uses_strict_bounded_bitmask(monkeypatch):
+    recovery = _module()
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: False)
+    mapping = {
+        1: "home_menu_svg_unique",
+        2: "home_menu_svg_multiple",
+        4: "home_menu_svg_absent",
+        8: "home_menu_svg_unique_unlabeled",
+        16: "home_menu_svg_unique_account_named",
+        32: "home_menu_svg_unique_other_named",
+        64: "home_menu_svg_unique_controls",
+        128: "home_menu_svg_unique_expanded_false",
+        256: "home_menu_svg_unique_expanded_true",
+        512: "home_menu_svg_unique_last_header_button",
+        1024: "home_menu_svg_unique_inside_nav",
+        2048: "home_menu_svg_unique_circle",
+        4096: "home_menu_svg_unique_image_child",
+        8192: "home_menu_non_svg_trigger_visible",
+    }
+
+    class Page:
+        url = "https://note.com/"
+        def __init__(self, mask): self.mask = mask
+        def evaluate(self, script):
+            assert "MENU_SVG_INTERSECTION_FIXED_BITS" in script
+            assert "aria-haspopup" in script
+            assert "getBoundingClientRect" in script
+            return self.mask
+
+    for bit, code in mapping.items():
+        assert recovery._safe_note_home_menu_svg_intersection_probe(Page(bit)) == {code}
+        assert code in recovery.OFFICIAL_LIST_SCAN_CODES
+    assert recovery._safe_note_home_menu_svg_intersection_probe(
+        Page((1 << 14) - 1)
+    ) == set(mapping.values())
+    safe = recovery.safe_recovery_projection({
+        "official_list_scan_counts": {
+            **{v: 1 for v in mapping.values()},
+            "private_label": "SECRET_NOTE_ACCOUNT_NAME",
+            "private_dom": "<button>private</button>",
+            "private_cookie": "token=PRIVATE",
+        }
+    })
+    assert set(safe["official_list_scan_counts"]) == set(recovery.OFFICIAL_LIST_SCAN_CODES)
+    assert "SECRET_NOTE_ACCOUNT_NAME" not in str(safe)
+    assert "private</button>" not in str(safe)
+    assert "token=PRIVATE" not in str(safe)
+
+
+def test_home_menu_svg_intersection_wrong_origin_and_private_values_fail_closed(monkeypatch):
+    recovery = _module()
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: False)
+
+    class Page:
+        def __init__(self, mask=0, url="https://note.com/", raise_error=False):
+            self.mask, self.url, self.raise_error = mask, url, raise_error
+            self.calls = 0
+        def evaluate(self, script):
+            self.calls += 1
+            if self.raise_error:
+                raise RuntimeError("Private DOM details must not escape")
+            return self.mask
+
+    for url in ("https://evil.example/", "https://note.com/notes",
+                "http://note.com/", "https://note.com/?token=PRIVATE"):
+        page = Page(url=url)
+        assert recovery._safe_note_home_menu_svg_intersection_probe(page) == {
+            "home_menu_svg_probe_uninspectable"
+        }
+        assert page.calls == 0
+    for val in (True, None, -1, (1 << 14), "secret text", 0.01):
+        assert recovery._safe_note_home_menu_svg_intersection_probe(
+            Page(mask=val)
+        ) == {"home_menu_svg_probe_uninspectable"}
+    assert recovery._safe_note_home_menu_svg_intersection_probe(
+        Page(raise_error=True)
+    ) == {"home_menu_svg_probe_uninspectable"}
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: True)
+    assert recovery._safe_note_home_menu_svg_intersection_probe(
+        Page(mask=1)
+    ) == {"home_menu_svg_probe_uninspectable"}
+
+
+def test_home_menu_svg_intersection_cannot_authorize_navigation_or_creation():
+    recovery = _module()
+    src = inspect.getsource(recovery._safe_note_home_menu_svg_intersection_probe)
+    home = inspect.getsource(recovery._safe_note_home_profile_probe)
+    assert "MENU_SVG_INTERSECTION_FIXED_BITS" in src
+    assert "_safe_note_home_menu_svg_intersection_probe(page)" in home
+    assert home.index("_safe_note_home_menu_svg_intersection_probe(page)") < home.index(
+        'get_by_role("link", name="自分の記事", exact=True)'
+    )
+    for forbidden in (
+        ".click(", ".fill(", ".screenshot(", ".set_input_files(",
+        "requests.post(", "create_draft(", "mark_draft_created(",
+        "page.goto(", "page.wait_for_timeout(", "page.content(",
+        "localStorage", "sessionStorage", "document.cookie",
+    ):
+        assert forbidden not in src
+    # No change to unique exact visible-link and canonical equality requirements.
+    assert "home_owner_link_missing" in home
+    audit = inspect.getsource(recovery._probe_official_article_list)
+    assert 'record.snapshot.canonical_document_sha256' in audit
