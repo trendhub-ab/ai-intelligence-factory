@@ -291,6 +291,7 @@ _NON_BODY_GUARD_CODES: dict[str, str] = {
     "Current Ready source has no eyecatch": "current_ready_eyecatch_missing",
     "Prepared note presentation is unexpectedly short": "prepared_presentation_too_short",
     "Could not read the private draft title": "title_read_failed",
+    "Private draft title field unavailable": "editor_title_field_unavailable",
     "Expected note account ownership could not be proven": "expected_account_unproven",
     "Stable private draft is not present in official article list": "draft_not_in_official_list",
     "note authentication is not active": "note_auth_inactive",
