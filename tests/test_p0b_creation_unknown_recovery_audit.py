@@ -2818,3 +2818,127 @@ def test_avatar_menu_writes_forbidden_and_account_proof_order_unchanged():
         "localStorage", "sessionStorage", "document.cookie",
     ):
         assert forbidden not in fn
+
+
+def test_article_list_surface_fixed_bits_are_allowlisted_for_both_views(monkeypatch):
+    recovery = _module()
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: False)
+    names = recovery.LIST_SURFACE_SIGNAL_NAMES[:-1]
+    assert len(names) == 16
+    assert len(set(names)) == len(names)
+
+    class Page:
+        def __init__(self, mask, url): self.mask, self.url = mask, url
+        def evaluate(self, script, *args):
+            assert "OWNER_LIST_SURFACE_FIXED_BITS" in script
+            assert args == ("PRIVATE_TERRA_TITLE",)
+            assert "getBoundingClientRect" in script
+            assert "scrollTop+scroll.clientHeight" in script
+            assert "target+'を編集'" in script
+            return self.mask
+
+    for surface, url in (
+        ("owner", "https://note.com/notes"),
+        ("owner", "https://note.com/notes?kind=draft"),
+        ("draft", "https://note.com/notes?kind=draft"),
+    ):
+        for bit, name in enumerate(names):
+            code = f"list_surface_{surface}_{name}"
+            assert code in recovery.OFFICIAL_LIST_SCAN_CODES
+            assert recovery._safe_note_list_surface_probe(
+                Page(1 << bit, url), "PRIVATE_TERRA_TITLE", surface=surface
+            ) == {code}
+        assert recovery._safe_note_list_surface_probe(
+            Page((1 << 16) - 1, url),
+            "PRIVATE_TERRA_TITLE", surface=surface
+        ) == {f"list_surface_{surface}_{name}" for name in names}
+
+    projection = recovery.safe_recovery_projection({
+        "official_list_scan_counts": {
+            **{f"list_surface_{surface}_{name}": 1
+               for surface in ("owner", "draft")
+               for name in recovery.LIST_SURFACE_SIGNAL_NAMES},
+            "private_dom": "<article>PRIVATE_TERRA_TITLE</article>",
+            "private_url": "https://note.com/notes/nSECRETVALUE/edit",
+        }
+    })
+    assert set(projection["official_list_scan_counts"]) == set(
+        recovery.OFFICIAL_LIST_SCAN_CODES
+    )
+    assert "PRIVATE_TERRA_TITLE" not in str(projection)
+    assert "nSECRETVALUE" not in str(projection)
+
+
+def test_article_list_surface_rejects_unverified_routes_errors_and_private_masks(monkeypatch):
+    recovery = _module()
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: False)
+
+    class Page:
+        def __init__(self, url, result=0, broken=False):
+            self.url, self.result, self.broken = url, result, broken
+            self.calls = 0
+        def evaluate(self, script, *args):
+            self.calls += 1
+            if self.broken:
+                raise RuntimeError("PRIVATE_ACCOUNT_DOM_MUST_NOT_LEAK")
+            return self.result
+
+    for bad in (
+        "https://evil.example/notes", "http://note.com/notes",
+        "https://note.com/notes?kind=private",
+        "https://note.com/notes?kind=draft&session=PRIVATE",
+        "https://note.com/notes#SECRET",
+        "https://note.com/",
+    ):
+        for surface in ("owner", "draft"):
+            page = Page(bad, result=16)
+            assert recovery._safe_note_list_surface_probe(
+                page, "SECRET_TITLE", surface=surface
+            ) == {f"list_surface_{surface}_uninspectable"}
+            assert page.calls == 0
+    for invalid in (None, True, -1, 1 << 16, "PRIVATE_BODY", 1.5):
+        assert recovery._safe_note_list_surface_probe(
+            Page("https://note.com/notes", invalid),
+            "SECRET_TITLE", surface="owner"
+        ) == {"list_surface_owner_uninspectable"}
+    assert recovery._safe_note_list_surface_probe(
+        Page("https://note.com/notes?kind=draft", broken=True),
+        "PRIVATE_TITLE", surface="draft"
+    ) == {"list_surface_draft_uninspectable"}
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: True)
+    page = Page("https://note.com/notes", result=16)
+    assert recovery._safe_note_list_surface_probe(
+        page, "PRIVATE_TITLE", surface="owner"
+    ) == {"list_surface_owner_uninspectable"}
+    assert page.calls == 0
+    assert recovery._safe_note_list_surface_probe(
+        page, "PRIVATE_TITLE", surface="arbitrary"
+    ) == set()
+
+
+def test_article_list_surface_is_passive_and_cannot_authorize_draft_recovery():
+    recovery = _module()
+    fn = inspect.getsource(recovery._safe_note_list_surface_probe)
+    official = inspect.getsource(recovery._probe_official_article_list)
+    assert "OWNER_LIST_SURFACE_FIXED_BITS" in fn
+    assert '"home_owner_route_open" in codes' in official
+    assert '"list_draft_view_open" in draft_codes' in official
+    assert '_safe_note_list_surface_probe(' in official
+    assert official.index('codes.add("account_proven")') < official.index(
+        'surface="owner"'
+    )
+    assert official.index('surface="draft"') < official.index(
+        'return codes | {"title_button_not_visible"}'
+    )
+    assert "record.snapshot.canonical_document_sha256" in official
+    assert inspect.getsource(recovery.require_unique_recovery_match)
+    for forbidden in (
+        ".click(", ".fill(", ".screenshot(", ".set_input_files(",
+        "page.goto(", "page.wait_for_timeout(", "page.content(",
+        "requests.post(", "create_draft(", "mark_draft_created(",
+        "localStorage", "sessionStorage", "document.cookie",
+    ):
+        assert forbidden not in fn
