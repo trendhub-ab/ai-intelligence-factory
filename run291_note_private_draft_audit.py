@@ -141,7 +141,8 @@ def _title_value(page: Any) -> str:
 
 
 def _read_title_with_diagnostics(
-    page: Any, expected_title: str, *, navigation_response: Any = None
+    page: Any, expected_title: str, *, navigation_response: Any = None,
+    runtime_probe: Any = None,
 ) -> str:
     """Preserve the original strict title gate; classify only its missing-field failure.
 
@@ -154,6 +155,16 @@ def _read_title_with_diagnostics(
         metrics = title_surface.collect_title_surface_metrics(
             page, expected_title, navigation_response=navigation_response
         )
+        if runtime_probe is not None:
+            # Only fixed counters can cross this boundary; unknown keys are discarded.
+            observed = runtime_probe.safe_metrics()
+            allowed = {"runtime_probe_status", *title_surface._RUNTIME_COUNTERS}
+            for key, value in observed.items():
+                if key in allowed and (
+                    (key == "runtime_probe_status" and value in {"observed", "unavailable"})
+                    or (key != "runtime_probe_status" and type(value) is int and 0 <= value <= 20)
+                ):
+                    metrics[key] = value
         raise PrivateDraftAuditError(
             "Private draft title field unavailable", safe_metrics=metrics
         ) from None
@@ -308,6 +319,7 @@ def _browser_audit(article: dict[str, Any], *, page_auditor: Any | None = None) 
         context = run190._launch_persistent_context(playwright)
         page = context.new_page()
         page.set_default_timeout(30000)
+        runtime_probe = title_surface.EditorRuntimeObservation()
         try:
             try:
                 page.goto("https://note.com/", wait_until="domcontentloaded", timeout=60000)
@@ -335,6 +347,7 @@ def _browser_audit(article: dict[str, Any], *, page_auditor: Any | None = None) 
             except note_base.NoteDraftError as exc:
                 raise PrivateDraftAuditError("Stable private draft is not present in official article list") from exc
 
+            runtime_probe.attach(page)
             try:
                 editor_response = page.goto(private_url, wait_until="domcontentloaded", timeout=60000)
                 page.wait_for_timeout(1200)
@@ -346,12 +359,14 @@ def _browser_audit(article: dict[str, Any], *, page_auditor: Any | None = None) 
             if not run187._is_editor_url(str(page.url or "")):
                 raise PrivateDraftAuditError("Stable private draft did not resolve to a confirmed editor route")
             persisted_title = _read_title_with_diagnostics(
-                page, str(article["title"]), navigation_response=editor_response
+                page, str(article["title"]), navigation_response=editor_response,
+                runtime_probe=runtime_probe,
             )
             if persisted_title != str(article["title"]).strip():
                 raise PrivateDraftAuditError("Stable private draft title does not match the requested article")
             return audit_page(page, str(article["title"]), str(article["manuscript"]))
         finally:
+            runtime_probe.detach()
             context.close()
 
 
