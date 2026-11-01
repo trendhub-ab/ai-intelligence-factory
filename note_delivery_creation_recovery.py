@@ -1027,7 +1027,10 @@ def _bounded_draft_view_probe(page: Any, title: str) -> set[str]:
     return evidence
 
 
-def _safe_owner_articles_menu_route(page: Any, title: str) -> set[str]:
+def _safe_owner_articles_menu_route(
+    page: Any, title: str, *, ui_only_semantic: Any | None = None,
+    verified_home_owner: bool = False,
+) -> set[str]:
     """Navigate only an observed "自分の記事" link on verified owner settings.
 
     The sole optional click opens a uniquely identified *profile menu* button
@@ -1036,14 +1039,16 @@ def _safe_owner_articles_menu_route(page: Any, title: str) -> set[str]:
     exact accessible link to one of two known HTTPS note.com article-list
     browser routes. All DOM/text stays on the private VM.
     """
+    ui_only = ui_only_semantic is not None
     try:
         settings = urlsplit(str(page.url or ""))
-        expected = urlsplit(cloud.PROFILE_SETTINGS_URL)
-        if (settings.scheme != expected.scheme or
-            settings.hostname != expected.hostname or
-            settings.path != expected.path or settings.query or
-            settings.fragment or settings.username or settings.password or
-            settings.port is not None):
+        expected = urlsplit(
+            _EXACT_READONLY_NOTE_HOME_URL if ui_only
+            else cloud.PROFILE_SETTINGS_URL
+        )
+        if (settings != expected or
+            (ui_only and
+             (not verified_home_owner or draft_audit.note_base._looks_logged_out(page)))):
             return {"menu_origin_unverified"}
     except Exception:
         return {"menu_origin_unverified"}
@@ -1062,26 +1067,31 @@ def _safe_owner_articles_menu_route(page: Any, title: str) -> set[str]:
         except Exception:
             return ("uninspectable", None)
 
-    status, link = exact_link()
+    status, link = ("missing", None) if ui_only else exact_link()
     if status == "ambiguous":
         return {"menu_link_ambiguous"}
     if status == "uninspectable":
         return {"menu_link_uninspectable"}
     if status == "missing":
-        try:
-            candidates = page.locator('button[aria-haspopup="menu"]:visible')
-            count = min(int(candidates.count()), 25)
-            semantic = []
-            for index in range(count):
-                trigger = candidates.nth(index)
-                label = str(trigger.get_attribute("aria-label") or "").strip()
-                if label in {
-                    "プロフィール", "プロフィールメニュー",
-                    "アカウント", "アカウントメニュー",
-                } and trigger.is_visible():
-                    semantic.append(trigger)
-        except Exception:
-            return {"menu_trigger_missing", "menu_link_missing"}
+        if ui_only:
+            # Already identified and rechecked by the owner-proven home
+            # preflight; never search or click a speculative candidate.
+            semantic = [ui_only_semantic]
+        else:
+            try:
+                candidates = page.locator('button[aria-haspopup="menu"]:visible')
+                count = min(int(candidates.count()), 25)
+                semantic = []
+                for index in range(count):
+                    trigger = candidates.nth(index)
+                    label = str(trigger.get_attribute("aria-label") or "").strip()
+                    if label in {
+                        "プロフィール", "プロフィールメニュー",
+                        "アカウント", "アカウントメニュー",
+                    } and trigger.is_visible():
+                        semantic.append(trigger)
+            except Exception:
+                return {"menu_trigger_missing", "menu_link_missing"}
         if len(semantic) != 1:
             return {
                 "menu_trigger_ambiguous" if semantic else "menu_trigger_missing",
@@ -1096,6 +1106,11 @@ def _safe_owner_articles_menu_route(page: Any, title: str) -> set[str]:
         except Exception:
             return evidence | {"menu_open_failed"}
         evidence.add("menu_opened")
+        if ui_only:
+            # The only UI state change was opening this validated menu.
+            # Leave article-link observation and navigation to the existing
+            # home probe's exact-visible-link authority rules.
+            return evidence
         status, link = exact_link()
         if status == "ambiguous":
             return evidence | {"menu_link_ambiguous"}
@@ -1638,8 +1653,15 @@ def _safe_note_home_verified_avatar_menu_open_probe(
             return {"home_avatar_open_uninspectable"}
         if target.locator("xpath=ancestor::form").count():
             return {"home_avatar_open_inside_form"}
-        target.click(timeout=3000)
-        page.wait_for_timeout(350)
+        menu_codes = _safe_owner_articles_menu_route(
+            page, "", ui_only_semantic=target,
+            verified_home_owner=verified_account,
+        )
+        if "menu_opened" not in menu_codes:
+            if str(getattr(page, "url", "") or "") != _EXACT_READONLY_NOTE_HOME_URL:
+                return {"home_avatar_open_preflight_ready",
+                        "home_avatar_open_route_changed"}
+            return {"home_avatar_open_click_failed"}
         if (str(getattr(page, "url", "") or "") != _EXACT_READONLY_NOTE_HOME_URL or
             draft_audit.note_base._looks_logged_out(page)):
             return {"home_avatar_open_preflight_ready",
