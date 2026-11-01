@@ -511,6 +511,78 @@ class SQLiteDeliveryLedger:
 
         return self._transaction(work)
 
+    def authorize_terra_owner_assumed_absent_once(
+        self, snapshot: DeliverySnapshot, *,
+        confirmation: str, run_correlation_id: str,
+    ) -> DeliveryRecord:
+        """One audited owner-approved reattempt of the EXACT Terra unknown.
+
+        The prior failed creation may have succeeded externally. The owner
+        explicitly accepts that duplicate risk. This is NOT general retry
+        authority: a matching immutable snapshot, existing unbound UNKNOWN,
+        unchanged logical binding, and an unused event token are all required.
+        The old operation and every audit event remain durable.
+        """
+        if (confirmation != "ASSUME_ABSENT_TERRA_ONCE" or
+            snapshot.sync_id != "40a479ffdca981efb47bc5fe5fee1da9" or
+            snapshot.note_target != "trendhub_biz"):
+            raise InvalidStateTransition("terra_manual_recreate_not_authorized")
+        op_key = operation_key(snapshot)
+        logical_key = logical_delivery_key(snapshot)
+
+        def work(conn: sqlite3.Connection) -> DeliveryRecord:
+            record = self._load_operation(conn, op_key)
+            if (record is None or record.state != DeliveryState.CREATION_UNKNOWN or
+                record.snapshot != snapshot or record.logical_key != logical_key or
+                record.draft_id or record.note_host):
+                raise InvalidStateTransition("terra_manual_recreate_requires_exact_unknown")
+            binding = conn.execute(
+                "SELECT operation_key, draft_id FROM logical_bindings WHERE logical_key=?",
+                (logical_key,),
+            ).fetchone()
+            if (binding is None or binding["operation_key"] != op_key or
+                binding["draft_id"]):
+                raise InvalidStateTransition("terra_manual_recreate_binding_mismatch")
+            prior = conn.execute(
+                "SELECT 1 FROM delivery_events "
+                "WHERE record_id=? AND category='owner_assumed_absent_once' LIMIT 1",
+                (record.record_id,),
+            ).fetchone()
+            if prior is not None:
+                raise InvalidStateTransition("terra_manual_recreate_already_consumed")
+            now = _utc_now()
+            version = record.state_version + 1
+            updated = conn.execute(
+                "UPDATE deliveries SET state=?, state_version=?, updated_at=?, "
+                "conflict_category=?, owner_correlation_id=? "
+                "WHERE operation_key=? AND state=? AND state_version=?",
+                (
+                    DeliveryState.CREATE_INTENT_RECORDED.value, version, now,
+                    "owner_assumed_absent_once",
+                    _normalized_text(run_correlation_id), op_key,
+                    DeliveryState.CREATION_UNKNOWN.value, record.state_version,
+                ),
+            )
+            if updated.rowcount != 1:
+                raise ConcurrentStateChange("terra_manual_recreate_version_changed")
+            conn.execute(
+                "INSERT INTO delivery_events "
+                "(record_id,prior_state,new_state,category,run_correlation_id,"
+                "state_version,created_at) VALUES (?,?,?,?,?,?,?)",
+                (
+                    record.record_id, DeliveryState.CREATION_UNKNOWN.value,
+                    DeliveryState.CREATE_INTENT_RECORDED.value,
+                    "owner_assumed_absent_once",
+                    _normalized_text(run_correlation_id), version, now,
+                ),
+            )
+            reopened = self._load_operation(conn, op_key)
+            if reopened is None:
+                raise LedgerUnavailableError("terra_manual_recreate_commit_missing")
+            return reopened
+
+        return self._transaction(work)
+
     def _transition(
         self,
         op_key: str,
