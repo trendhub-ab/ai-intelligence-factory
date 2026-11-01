@@ -349,6 +349,66 @@ def _validated_hydration_metrics(payload: Any) -> dict[str, Any]:
     return dict(payload)
 
 
+def _hydration_snapshot(page: Any) -> dict[str, Any] | None:
+    """DOM structure only; unlike title matching, never reads any text/value."""
+    try:
+        raw = page.evaluate(
+            """() => {
+                const limit = n => Math.min(20, Math.max(0, n));
+                const visible = el => {
+                    const style = window.getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    return style.display !== 'none' &&
+                           style.visibility !== 'hidden' &&
+                           style.opacity !== '0' &&
+                           rect.width > 1 && rect.height > 1;
+                };
+                const count = selector => limit(
+                    Array.from(document.querySelectorAll(selector)).filter(visible).length
+                );
+                const elements = document.querySelectorAll('body *').length;
+                const size = elements === 0 ? 'empty' :
+                             elements <= 20 ? 'small' :
+                             elements <= 200 ? 'medium' : 'large';
+                return {
+                    ready: String(document.readyState || 'unknown'),
+                    editables: count('input,textarea,[contenteditable="true"],[role="textbox"]'),
+                    main: count('main,[role="main"]'),
+                    roots: limit(document.querySelectorAll('#__next,#app,#root').length),
+                    alerts: count('[role="alert"],[aria-invalid="true"]'),
+                    loaders: count('[aria-busy="true"],[role="progressbar"]'),
+                    size
+                };
+            }"""
+        )
+    except Exception:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    ready, size = raw.get("ready"), raw.get("size")
+    if type(ready) is not str or ready not in _READY_STATES:
+        return None
+    if type(size) is not str or size not in {"empty", "small", "medium", "large"}:
+        return None
+    for key in ("editables", "main", "roots", "alerts", "loaders"):
+        value = raw.get(key)
+        if type(value) is not int or not 0 <= value <= _MAX_OUTPUT_COUNT:
+            return None
+    return {
+        "title_probe_status": "observed",
+        "title_probe_ready_state": ready,
+        "title_probe_body_size_class": size,
+        "title_probe_editable_visible": raw["editables"],
+        "title_probe_shell_class": _shell_classification({
+            "title_probe_alert_visible": raw["alerts"],
+            "title_probe_loading_visible": raw["loaders"],
+            "title_probe_editable_visible": raw["editables"],
+            "title_probe_app_root_count": raw["roots"],
+            "title_probe_main_visible": raw["main"],
+        }),
+    }
+
+
 def observe_editor_hydration(page: Any) -> dict[str, Any]:
     """Sample t=0,+2,+5 seconds; never navigate, reload, click or set data.
 
@@ -360,8 +420,8 @@ def observe_editor_hydration(page: Any) -> dict[str, Any]:
         for delay_ms in HYDRATION_SNAPSHOT_DELAYS_MS:
             if delay_ms:
                 page.wait_for_timeout(delay_ms)
-            sample = collect_title_surface_metrics(page, expected_title="")
-            if sample.get("title_probe_status") != "observed":
+            sample = _hydration_snapshot(page)
+            if sample is None:
                 return {"hydration_probe_status": "unavailable"}
             observations.append(sample)
     except Exception:
