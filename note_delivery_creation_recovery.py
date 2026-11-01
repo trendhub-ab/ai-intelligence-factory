@@ -214,6 +214,16 @@ OFFICIAL_LIST_SCAN_CODES = (
     "home_image_menu_target_hidden", "home_image_menu_target_menu_role",
     "home_image_menu_target_owner_label", "home_image_menu_target_safe_link",
     "home_image_menu_target_safe_link_visible",
+    # Owner-proven profile-avatar menu expansion; UI-only, no article writes.
+    "home_avatar_open_uninspectable", "home_avatar_open_no_trigger",
+    "home_avatar_open_ambiguous_trigger", "home_avatar_open_identity_missing",
+    "home_avatar_open_not_collapsed", "home_avatar_open_controls_missing",
+    "home_avatar_open_inside_form", "home_avatar_open_preflight_ready",
+    "home_avatar_open_click_failed", "home_avatar_open_route_changed",
+    "home_avatar_open_menu_clicked", "home_avatar_open_target_missing",
+    "home_avatar_open_target_visible", "home_avatar_open_target_hidden",
+    "home_avatar_open_owner_link_visible", "home_avatar_open_owner_link_ambiguous",
+    "home_avatar_open_owner_link_missing", "home_avatar_open_post_uninspectable",
 )
 
 
@@ -1017,7 +1027,10 @@ def _bounded_draft_view_probe(page: Any, title: str) -> set[str]:
     return evidence
 
 
-def _safe_owner_articles_menu_route(page: Any, title: str) -> set[str]:
+def _safe_owner_articles_menu_route(
+    page: Any, title: str, *, ui_only_semantic: Any | None = None,
+    verified_home_owner: bool = False,
+) -> set[str]:
     """Navigate only an observed "自分の記事" link on verified owner settings.
 
     The sole optional click opens a uniquely identified *profile menu* button
@@ -1026,14 +1039,16 @@ def _safe_owner_articles_menu_route(page: Any, title: str) -> set[str]:
     exact accessible link to one of two known HTTPS note.com article-list
     browser routes. All DOM/text stays on the private VM.
     """
+    ui_only = ui_only_semantic is not None
     try:
         settings = urlsplit(str(page.url or ""))
-        expected = urlsplit(cloud.PROFILE_SETTINGS_URL)
-        if (settings.scheme != expected.scheme or
-            settings.hostname != expected.hostname or
-            settings.path != expected.path or settings.query or
-            settings.fragment or settings.username or settings.password or
-            settings.port is not None):
+        expected = urlsplit(
+            _EXACT_READONLY_NOTE_HOME_URL if ui_only
+            else cloud.PROFILE_SETTINGS_URL
+        )
+        if (settings != expected or
+            (ui_only and
+             (not verified_home_owner or draft_audit.note_base._looks_logged_out(page)))):
             return {"menu_origin_unverified"}
     except Exception:
         return {"menu_origin_unverified"}
@@ -1052,26 +1067,31 @@ def _safe_owner_articles_menu_route(page: Any, title: str) -> set[str]:
         except Exception:
             return ("uninspectable", None)
 
-    status, link = exact_link()
+    status, link = ("missing", None) if ui_only else exact_link()
     if status == "ambiguous":
         return {"menu_link_ambiguous"}
     if status == "uninspectable":
         return {"menu_link_uninspectable"}
     if status == "missing":
-        try:
-            candidates = page.locator('button[aria-haspopup="menu"]:visible')
-            count = min(int(candidates.count()), 25)
-            semantic = []
-            for index in range(count):
-                trigger = candidates.nth(index)
-                label = str(trigger.get_attribute("aria-label") or "").strip()
-                if label in {
-                    "プロフィール", "プロフィールメニュー",
-                    "アカウント", "アカウントメニュー",
-                } and trigger.is_visible():
-                    semantic.append(trigger)
-        except Exception:
-            return {"menu_trigger_missing", "menu_link_missing"}
+        if ui_only:
+            # Already identified and rechecked by the owner-proven home
+            # preflight; never search or click a speculative candidate.
+            semantic = [ui_only_semantic]
+        else:
+            try:
+                candidates = page.locator('button[aria-haspopup="menu"]:visible')
+                count = min(int(candidates.count()), 25)
+                semantic = []
+                for index in range(count):
+                    trigger = candidates.nth(index)
+                    label = str(trigger.get_attribute("aria-label") or "").strip()
+                    if label in {
+                        "プロフィール", "プロフィールメニュー",
+                        "アカウント", "アカウントメニュー",
+                    } and trigger.is_visible():
+                        semantic.append(trigger)
+            except Exception:
+                return {"menu_trigger_missing", "menu_link_missing"}
         if len(semantic) != 1:
             return {
                 "menu_trigger_ambiguous" if semantic else "menu_trigger_missing",
@@ -1086,6 +1106,11 @@ def _safe_owner_articles_menu_route(page: Any, title: str) -> set[str]:
         except Exception:
             return evidence | {"menu_open_failed"}
         evidence.add("menu_opened")
+        if ui_only:
+            # The only UI state change was opening this validated menu.
+            # Leave article-link observation and navigation to the existing
+            # home probe's exact-visible-link authority rules.
+            return evidence
         status, link = exact_link()
         if status == "ambiguous":
             return evidence | {"menu_link_ambiguous"}
@@ -1528,7 +1553,182 @@ def _safe_note_home_image_menu_controls_probe(page: Any) -> set[str]:
         return {"home_image_menu_probe_uninspectable"}
 
 
-def _safe_note_home_profile_probe(page: Any) -> set[str]:
+def _safe_note_home_verified_avatar_menu_open_probe(
+    page: Any, *, verified_account: bool = False,
+) -> set[str]:
+    """Expand only a uniquely proven profile image menu, then inspect DOM.
+
+    This modifies transient menu visibility, NOT note content. Identity is
+    proven by the prior settings owner check AND an exact same-element
+    profile/account label or creator-name image alt. No guessy clicks.
+    Never navigate the revealed links or treat their presence as draft proof.
+    No private values or exceptions leave the owner VM.
+    """
+    if (not verified_account or
+        str(getattr(page, "url", "") or "") != _EXACT_READONLY_NOTE_HOME_URL or
+        draft_audit.note_base._looks_logged_out(page)):
+        return {"home_avatar_open_uninspectable"}
+    semantic = {
+        "プロフィール", "プロフィールメニュー", "プロフィール画像",
+        "アカウント", "アカウントメニュー", "ユーザーメニュー",
+        "ユーザーアイコン", "profile", "account", "my account",
+        cloud.EXPECTED_CREATOR_NAME,
+    }
+    try:
+        mask = page.evaluate(r"""(creator) => {
+            // VERIFIED_AVATAR_OPEN_PREFLIGHT_FIXED_BITS
+            const header = document.querySelector('header,[role="banner"]');
+            if (!header) return 0;
+            const visible = el => {
+                const r = el.getBoundingClientRect(), s = getComputedStyle(el);
+                return r.width > 0 && r.height > 0 &&
+                    s.display !== 'none' && s.visibility !== 'hidden';
+            };
+            const image = el => Array.from(el.querySelectorAll('img'))
+                .slice(0,5).some(visible);
+            const popup = el => String(el.getAttribute('aria-haspopup') || '') === 'menu';
+            const controls = Array.from(header.querySelectorAll('button'))
+                .slice(0,150).filter(visible);
+            const matches = controls.filter(el => popup(el) && image(el));
+            if (matches.length === 0) return 1;
+            if (matches.length !== 1) return 2;
+            const one = matches[0];
+            const names = [
+                one.getAttribute('aria-label'),one.getAttribute('title'),
+                ...Array.from(one.querySelectorAll('img')).slice(0,5)
+                    .filter(visible).map(el => el.getAttribute('alt'))
+            ].map(x => String(x || '').replace(/\s+/g,' ').trim());
+            const accepted = [
+                'プロフィール','プロフィールメニュー','プロフィール画像',
+                'アカウント','アカウントメニュー','ユーザーメニュー',
+                'ユーザーアイコン','profile','account','my account',creator,
+            ];
+            if (!names.some(x => accepted.some(y => x && y &&
+                x.toLowerCase() === String(y).toLowerCase()))) return 4;
+            if (one.getAttribute('aria-expanded') !== 'false') return 8;
+            const raw = one.getAttribute('aria-controls');
+            if (!raw || raw.trim().split(/\s+/).length !== 1) return 16;
+            if (one.closest('form')) return 32;
+            return 64;
+        }""", cloud.EXPECTED_CREATOR_NAME)
+        if not isinstance(mask, int) or isinstance(mask, bool) or not 0 <= mask < 128:
+            return {"home_avatar_open_uninspectable"}
+        preflight = {
+            1: "home_avatar_open_no_trigger",
+            2: "home_avatar_open_ambiguous_trigger",
+            4: "home_avatar_open_identity_missing",
+            8: "home_avatar_open_not_collapsed",
+            16: "home_avatar_open_controls_missing",
+            32: "home_avatar_open_inside_form",
+            64: "home_avatar_open_preflight_ready",
+        }.get(mask)
+        if preflight is None:
+            return {"home_avatar_open_uninspectable"}
+        if mask != 64:
+            return {preflight}
+        # Revalidate the exact element just before the sole UI-only click.
+        selector = ('header button[aria-haspopup]:has(img),'
+                    '[role="banner"] button[aria-haspopup]:has(img)')
+        target = page.locator(selector)
+        if target.count() != 1 or not target.is_visible():
+            return {"home_avatar_open_ambiguous_trigger"}
+        label = str(target.get_attribute("aria-label") or "").strip()
+        title = str(target.get_attribute("title") or "").strip()
+        image_alts = target.locator("img").evaluate_all(
+            "els => els.slice(0,5).filter(el => { const r=el.getBoundingClientRect();"
+            " const s=getComputedStyle(el); return r.width>0 && r.height>0 &&"
+            " s.display!=='none' && s.visibility!=='hidden';"
+            " }).map(el=>el.getAttribute('alt')||'')"
+        )
+        names = [label, title] + (image_alts if isinstance(image_alts, list) else [])
+        if not any(str(value).strip().lower() in {
+            name.lower() for name in semantic
+        } for value in names if str(value).strip()):
+            return {"home_avatar_open_identity_missing"}
+        if (str(target.get_attribute("aria-haspopup") or "") != "menu" or
+            target.get_attribute("aria-expanded") != "false" or
+            not str(target.get_attribute("aria-controls") or "").strip()):
+            return {"home_avatar_open_uninspectable"}
+        if target.locator("xpath=ancestor::form").count():
+            return {"home_avatar_open_inside_form"}
+        menu_codes = _safe_owner_articles_menu_route(
+            page, "", ui_only_semantic=target,
+            verified_home_owner=verified_account,
+        )
+        if "menu_opened" not in menu_codes:
+            if str(getattr(page, "url", "") or "") != _EXACT_READONLY_NOTE_HOME_URL:
+                return {"home_avatar_open_preflight_ready",
+                        "home_avatar_open_route_changed"}
+            return {"home_avatar_open_click_failed"}
+        if (str(getattr(page, "url", "") or "") != _EXACT_READONLY_NOTE_HOME_URL or
+            draft_audit.note_base._looks_logged_out(page)):
+            return {"home_avatar_open_preflight_ready",
+                    "home_avatar_open_route_changed"}
+        post = page.evaluate(r"""() => {
+            // VERIFIED_AVATAR_OPEN_POST_FIXED_BITS
+            const header = document.querySelector('header,[role="banner"]');
+            if (!header) return 0;
+            const visible = el => {
+                const r=el.getBoundingClientRect(),s=getComputedStyle(el);
+                return r.width>0 && r.height>0 &&
+                    s.display!=='none' && s.visibility!=='hidden';
+            };
+            const popup = el => String(el.getAttribute('aria-haspopup')||'') === 'menu';
+            const img = el => Array.from(el.querySelectorAll('img'))
+                .slice(0,5).some(visible);
+            const list = Array.from(header.querySelectorAll('button'))
+                .slice(0,150).filter(el => visible(el)&&popup(el)&&img(el));
+            if (list.length !== 1) return 0;
+            const id = list[0].getAttribute('aria-controls') || '';
+            if (!id || id.trim().split(/\s+/).length !== 1) return 0;
+            const menu = document.getElementById(id);
+            if (!menu) return 1;
+            let bits = visible(menu) ? 2 : 4;
+            const links = Array.from(menu.querySelectorAll('a[href]'))
+                .slice(0,100).filter(el => {
+                    const label=String(el.getAttribute('aria-label')||
+                        el.textContent||'').replace(/\s+/g,' ').trim();
+                    if (label!=='自分の記事') return false;
+                    try {
+                        const href=el.getAttribute('href');
+                        if (!href) return false;
+                        const url=new URL(href,location.origin);
+                        return url.protocol==='https:' &&
+                            url.hostname==='note.com' && !url.port &&
+                            !url.username && !url.password &&
+                            url.pathname==='/notes' &&
+                            (url.search===''||url.search==='?kind=draft') &&
+                            !url.hash;
+                    } catch (_) { return false; }
+                });
+            if (links.length===1 && visible(menu) && visible(links[0]))
+                bits |= 8;
+            else if (links.length>1) bits |= 16;
+            else bits |= 32;
+            return bits;
+        }""")
+        codes = {"home_avatar_open_preflight_ready", "home_avatar_open_menu_clicked"}
+        if not isinstance(post, int) or isinstance(post, bool) or not 1 <= post < 64:
+            return codes | {"home_avatar_open_post_uninspectable"}
+        for bit, code in (
+            (1, "home_avatar_open_target_missing"),
+            (2, "home_avatar_open_target_visible"),
+            (4, "home_avatar_open_target_hidden"),
+            (8, "home_avatar_open_owner_link_visible"),
+            (16, "home_avatar_open_owner_link_ambiguous"),
+            (32, "home_avatar_open_owner_link_missing"),
+        ):
+            if post & bit:
+                codes.add(code)
+        return codes
+    except Exception:
+        # Deliberately avoid dumping exceptions or raw private DOM.
+        return {"home_avatar_open_click_failed"}
+
+
+def _safe_note_home_profile_probe(
+    page: Any, *, verified_account: bool = False,
+) -> set[str]:
     """Inspect the authenticated note homepage, never edit or create anything.
 
     Official note help directs browser users through the top-right profile
@@ -1678,6 +1878,16 @@ def _safe_note_home_profile_probe(page: Any) -> set[str]:
                 if ("home_avatar_overlap_distinct_unique_buttons" in evidence and
                     "home_avatar_overlap_img_button_has_popup" in evidence):
                     evidence.update(_safe_note_home_image_menu_controls_probe(page))
+                    # Content remains read-only. Allow a menu visibility click
+                    # only with settings-based owner proof and same-element
+                    # explicit profile/creator label; otherwise fail closed.
+                    if ("home_image_menu_unique_popup" in evidence and
+                        "home_image_menu_target_missing" in evidence and
+                        "home_profile_label_visible" in evidence and
+                        verified_account):
+                        evidence.update(_safe_note_home_verified_avatar_menu_open_probe(
+                            page, verified_account=verified_account
+                        ))
 
     try:
         link = page.get_by_role("link", name="自分の記事", exact=True)
@@ -1777,7 +1987,7 @@ def _probe_official_article_list(
             ))
             # Owner-authenticated homepage is the documented entry for the
             # top-right profile icon. Inspect it without any button click.
-            codes.update(_safe_note_home_profile_probe(page))
+            codes.update(_safe_note_home_profile_probe(page, verified_account=True))
 
         # Passive API observation after verified account ownership, while the
         # ordinary official list loads. Never request a guessed/private endpoint.
