@@ -54,6 +54,13 @@ ledger_raw = str(os.environ.get("NOTE_DELIVERY_LEDGER_PATH", "")).strip()
 sync_id = normalized(os.environ.get("NOTE_TARGET_SYNC_ID", "")).lower()
 note_target = normalized(os.environ.get("NOTE_TARGET_IDENTITY", ""))
 result_file = str(os.environ.get("NOTE_DRAFT_RESULT_FILE", "")).strip()
+manual_token = str(os.environ.get("NOTE_TERRA_MANUAL_RECREATE_TOKEN", "") or "")
+if manual_token and (
+    manual_token != "ASSUME_ABSENT_TERRA_ONCE"
+    or sync_id != "40a479ffdca981efb47bc5fe5fee1da9"
+    or note_target != "trendhub_biz"
+):
+    raise LedgerUnavailableError("terra_manual_preflight_not_authorized")
 
 if not ledger_raw:
     raise LedgerUnavailableError("ledger_gate_path_missing")
@@ -86,14 +93,18 @@ try:
 
     logical_key = logical_key_for_identity(sync_id, note_target)
     row = conn.execute(
-        "SELECT d.schema_version, d.state "
+        "SELECT d.schema_version, d.state, d.record_id, d.stable_draft_id, "
+        "d.note_host, d.operation_key, b.draft_id AS bound_draft_id "
         "FROM logical_bindings b JOIN deliveries d ON d.operation_key=b.operation_key "
         "WHERE b.logical_key=?",
         (logical_key,),
     ).fetchone()
 
     if row is None:
-        result = safe_result("ledger_clean_new", True)
+        # A one-off exception MUST have an existing ambiguous intent.
+        result = safe_result(
+            "ledger_blocked_ambiguous", False
+        ) if manual_token else safe_result("ledger_clean_new", True)
     else:
         if str(row["schema_version"] or "") != DELIVERY_RECORD_SCHEMA_VERSION:
             raise LedgerSchemaError("unsupported_delivery_record_schema")
@@ -102,7 +113,22 @@ try:
         except ValueError as exc:
             raise LedgerSchemaError("unknown_delivery_state") from exc
 
-        if state in {
+        if manual_token:
+            prior = conn.execute(
+                "SELECT 1 FROM delivery_events "
+                "WHERE record_id=? AND category='owner_assumed_absent_once' LIMIT 1",
+                (row["record_id"],),
+            ).fetchone()
+            authorized_once = (
+                state == DeliveryState.CREATION_UNKNOWN and prior is None and
+                not row["stable_draft_id"] and not row["note_host"] and
+                not row["bound_draft_id"]
+            )
+            result = safe_result(
+                "terra_owner_manual_intent_eligible" if authorized_once
+                else "ledger_blocked_ambiguous", authorized_once,
+            )
+        elif state in {
             DeliveryState.DRAFT_VERIFIED,
             DeliveryState.QUEUE_CONFIRMATION_PENDING,
             DeliveryState.QUEUE_CONFIRMED,
