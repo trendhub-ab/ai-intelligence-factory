@@ -204,6 +204,16 @@ OFFICIAL_LIST_SCAN_CODES = (
     "home_avatar_overlap_img_button_inside_nav",
     "home_avatar_overlap_img_button_last_in_header",
     "home_avatar_overlap_unique_same_parent",
+    # Image-bearing popup button -> observed aria-controls target; never click.
+    "home_image_menu_probe_uninspectable",
+    "home_image_menu_no_image_button", "home_image_menu_multiple_image_buttons",
+    "home_image_menu_no_popup_button", "home_image_menu_multiple_popup_buttons",
+    "home_image_menu_unique_popup", "home_image_menu_controls_missing",
+    "home_image_menu_controls_present", "home_image_menu_controls_ambiguous",
+    "home_image_menu_target_missing", "home_image_menu_target_visible",
+    "home_image_menu_target_hidden", "home_image_menu_target_menu_role",
+    "home_image_menu_target_owner_label", "home_image_menu_target_safe_link",
+    "home_image_menu_target_safe_link_visible",
 )
 
 
@@ -1414,6 +1424,110 @@ def _safe_note_home_avatar_menu_overlap_probe(page: Any) -> set[str]:
         return {"home_avatar_overlap_uninspectable"}
 
 
+def _safe_note_home_image_menu_controls_probe(page: Any) -> set[str]:
+    """Read only the observed image popup's controlled-menu DOM relationship.
+
+    A visible image in a button might be branding rather than a user avatar.
+    Never interact, infer profile identity, infer draft absence or authorize
+    recovery. Only allowlisted fixed bits are returned, never private IDs,
+    attributes, text, URLs or raw HTML.
+    """
+    if (str(getattr(page, "url", "") or "") != _EXACT_READONLY_NOTE_HOME_URL or
+        draft_audit.note_base._looks_logged_out(page)):
+        return {"home_image_menu_probe_uninspectable"}
+    try:
+        mask = page.evaluate(r"""() => {
+            // IMAGE_MENU_CONTROLS_FIXED_BITS: private identifiers stay in DOM.
+            const header = document.querySelector('header,[role="banner"]');
+            if (!header) return 0;
+            const visible = el => {
+                const r = el.getBoundingClientRect();
+                const s = getComputedStyle(el);
+                return r.width > 0 && r.height > 0 &&
+                    s.visibility !== 'hidden' && s.display !== 'none';
+            };
+            const buttons = Array.from(header.querySelectorAll(
+                'button,[role="button"]'
+            )).slice(0,150).filter(visible);
+            const hasImage = el => Array.from(el.querySelectorAll('img'))
+                .slice(0,5).some(visible);
+            const popup = el => ['menu','true'].includes(
+                String(el.getAttribute('aria-haspopup') || '').toLowerCase());
+            const imgButtons = buttons.filter(hasImage);
+            const popupButtons = imgButtons.filter(popup);
+            let bits = 0;
+            if (imgButtons.length === 0) bits |= 1;
+            if (imgButtons.length > 1) bits |= 2;
+            if (popupButtons.length === 0) bits |= 4;
+            if (popupButtons.length > 1) bits |= 8;
+            if (imgButtons.length !== 1 || popupButtons.length !== 1)
+                return bits;
+            bits |= 16;
+            const raw = popupButtons[0].getAttribute('aria-controls');
+            if (!raw) { bits |= 32; return bits; }
+            bits |= 64;
+            const tokens = raw.trim().split(/\s+/);
+            if (tokens.length !== 1 || !tokens[0] ||
+                tokens[0].length > 128) { bits |= 128; return bits; }
+            // Reads a specifically observed DOM id; never export it.
+            const target = document.getElementById(tokens[0]);
+            if (!target) { bits |= 256; return bits; }
+            if (visible(target)) bits |= 512;
+            else bits |= 1024;
+            if (target.getAttribute('role') === 'menu') bits |= 2048;
+            const menuNodes = Array.from(target.querySelectorAll(
+                'a[href],[role="menuitem"]'
+            )).slice(0,100);
+            const label = el => String(el.getAttribute('aria-label') ||
+                el.textContent || '').replace(/\s+/g,' ').trim().slice(0,80);
+            if (menuNodes.some(el => label(el) === '自分の記事')) bits |= 4096;
+            const safeOwnerLink = el => {
+                if (el.tagName !== 'A' || label(el) !== '自分の記事')
+                    return false;
+                try {
+                    const href = el.getAttribute('href');
+                    if (!href) return false;
+                    const u = new URL(href,location.origin);
+                    return u.protocol === 'https:' &&
+                        u.hostname === 'note.com' && !u.port &&
+                        u.username === '' && u.password === '' &&
+                        u.pathname === '/notes' &&
+                        (u.search === '' || u.search === '?kind=draft') &&
+                        !u.hash;
+                } catch (_) { return false; }
+            };
+            const links = menuNodes.filter(safeOwnerLink);
+            if (links.length === 1) bits |= 8192;
+            if (links.length === 1 && visible(links[0]) && visible(target))
+                bits |= 16384;
+            return bits;
+        }""")
+        if (not isinstance(mask, int) or isinstance(mask, bool) or
+            not 0 <= mask < (1 << 15)):
+            return {"home_image_menu_probe_uninspectable"}
+        return {
+            code for bit, code in (
+                (1, "home_image_menu_no_image_button"),
+                (2, "home_image_menu_multiple_image_buttons"),
+                (4, "home_image_menu_no_popup_button"),
+                (8, "home_image_menu_multiple_popup_buttons"),
+                (16, "home_image_menu_unique_popup"),
+                (32, "home_image_menu_controls_missing"),
+                (64, "home_image_menu_controls_present"),
+                (128, "home_image_menu_controls_ambiguous"),
+                (256, "home_image_menu_target_missing"),
+                (512, "home_image_menu_target_visible"),
+                (1024, "home_image_menu_target_hidden"),
+                (2048, "home_image_menu_target_menu_role"),
+                (4096, "home_image_menu_target_owner_label"),
+                (8192, "home_image_menu_target_safe_link"),
+                (16384, "home_image_menu_target_safe_link_visible"),
+            ) if mask & bit
+        }
+    except Exception:
+        return {"home_image_menu_probe_uninspectable"}
+
+
 def _safe_note_home_profile_probe(page: Any) -> set[str]:
     """Inspect the authenticated note homepage, never edit or create anything.
 
@@ -1559,6 +1673,11 @@ def _safe_note_home_profile_probe(page: Any) -> set[str]:
             if ("home_menu_svg_unique" in evidence and
                 "home_avatar_button_visible" in evidence):
                 evidence.update(_safe_note_home_avatar_menu_overlap_probe(page))
+                # The real audit observed a DISTINCT image-bearing popup.
+                # Inspect only its declared DOM target; no menu open or click.
+                if ("home_avatar_overlap_distinct_unique_buttons" in evidence and
+                    "home_avatar_overlap_img_button_has_popup" in evidence):
+                    evidence.update(_safe_note_home_image_menu_controls_probe(page))
 
     try:
         link = page.get_by_role("link", name="自分の記事", exact=True)
