@@ -24,6 +24,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import note_draft_automation as note_base
+import note_editor_title_surface as title_surface
 import note_publication_reconcile as note_lifecycle
 import note_ready_sync as ready_sync
 import run187_note_editor_readiness as run187
@@ -137,6 +138,21 @@ def _title_value(page: Any) -> str:
         return str(field.inner_text() or "").strip()
     except Exception as exc:
         raise PrivateDraftAuditError("Could not read the private draft title") from exc
+
+
+def _read_title_with_diagnostics(page: Any, expected_title: str) -> str:
+    """Preserve the original strict title gate; classify only its missing-field failure.
+
+    This never accepts another title selector and never treats an exact text
+    match in the diagnostic probe as sufficient proof of a saved note draft.
+    """
+    try:
+        return _title_value(page)
+    except note_base.NoteDraftError:
+        metrics = title_surface.collect_title_surface_metrics(page, expected_title)
+        raise PrivateDraftAuditError(
+            "Private draft title field unavailable", safe_metrics=metrics
+        ) from None
 
 
 def _normalized_visible(value: str) -> str:
@@ -325,7 +341,7 @@ def _browser_audit(article: dict[str, Any], *, page_auditor: Any | None = None) 
                 raise PrivateDraftAuditError("note authentication is not active")
             if not run187._is_editor_url(str(page.url or "")):
                 raise PrivateDraftAuditError("Stable private draft did not resolve to a confirmed editor route")
-            persisted_title = _title_value(page)
+            persisted_title = _read_title_with_diagnostics(page, str(article["title"]))
             if persisted_title != str(article["title"]).strip():
                 raise PrivateDraftAuditError("Stable private draft title does not match the requested article")
             return audit_page(page, str(article["title"]), str(article["manuscript"]))
