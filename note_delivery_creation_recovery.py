@@ -115,6 +115,26 @@ OFFICIAL_LIST_CODES = (
     "body_eyecatch_unverified", "body_eyecatch_equal",
     "canonical_unverified", "canonical_mismatch", "canonical_equal",
 )
+LIST_SURFACE_SIGNAL_NAMES = (
+    "main_populated",
+    "article_card_visible",
+    "edit_control_visible",
+    "edit_control_hidden",
+    "target_title_leaf_visible",
+    "target_title_in_dom",
+    "target_edit_visible",
+    "draft_control_visible",
+    "draft_control_selected",
+    "empty_notice_visible",
+    "loading_visible",
+    "root_scrollable",
+    "root_at_bottom",
+    "nested_scrollable",
+    "nested_at_bottom",
+    "existing_edit_link_visible",
+    "uninspectable",
+)
+
 OFFICIAL_LIST_SCAN_CODES = (
     "list_draft_filter_visible", "list_draft_filter_active",
     "list_more_control_visible", "list_pagination_visible",
@@ -224,6 +244,10 @@ OFFICIAL_LIST_SCAN_CODES = (
     "home_avatar_open_target_visible", "home_avatar_open_target_hidden",
     "home_avatar_open_owner_link_visible", "home_avatar_open_owner_link_ambiguous",
     "home_avatar_open_owner_link_missing", "home_avatar_open_post_uninspectable",
+) + tuple(
+    f"list_surface_{surface}_{signal}"
+    for surface in ("owner", "draft")
+    for signal in LIST_SURFACE_SIGNAL_NAMES
 )
 
 
@@ -1025,6 +1049,109 @@ def _bounded_draft_view_probe(page: Any, title: str) -> set[str]:
     else:
         evidence.add("list_draft_title_not_visible")
     return evidence
+
+
+def _safe_note_list_surface_probe(
+    page: Any, target_title: str, *, surface: str,
+) -> set[str]:
+    """Read only fixed surface hints on already authenticated article lists.
+
+    No additional navigation, interaction, private text/URL/ID export, or
+    draft existence conclusions. An absent target is NOT proof of deletion.
+    """
+    if surface not in ("owner", "draft"):
+        return set()
+    failure = {f"list_surface_{surface}_uninspectable"}
+    approved = (
+        {"https://note.com/notes", "https://note.com/notes?kind=draft"}
+        if surface == "owner" else {"https://note.com/notes?kind=draft"}
+    )
+    if (str(getattr(page, "url", "") or "") not in approved or
+        draft_audit.note_base._looks_logged_out(page)):
+        return failure
+    try:
+        mask = page.evaluate(r"""(targetTitle) => {
+            // OWNER_LIST_SURFACE_FIXED_BITS (never exports raw DOM or labels).
+            const main = document.querySelector('main,[role="main"]');
+            const root = main || document.body;
+            if (!root) return 0;
+            const visible = el => {
+                const r=el.getBoundingClientRect(),s=getComputedStyle(el);
+                return r.width>0 && r.height>0 &&
+                    s.visibility!=='hidden' && s.display!=='none';
+            };
+            const norm = val => String(val||'').replace(/\s+/g,' ').trim();
+            const target=norm(targetTitle);
+            const controls=Array.from(root.querySelectorAll(
+                'button,[role="button"],[role="tab"],a[href]'
+            )).slice(0,500);
+            const label=el=>norm(el.getAttribute('aria-label')||
+                el.textContent||'').slice(0,200);
+            const edits=controls.filter(el=>/を編集/.test(label(el)));
+            const nodes=Array.from(root.querySelectorAll(
+                'h1,h2,h3,h4,p,span,div,a,button'
+            )).slice(0,700);
+            const draft=controls.filter(el=>label(el)==='下書き');
+            let bits=0;
+            if (main && main.children.length) bits |= 1;
+            if (Array.from(root.querySelectorAll(
+                'article,[role="listitem"],[data-testid*="article"]'
+            )).slice(0,120).some(visible)) bits |= 2;
+            if (edits.some(visible)) bits |= 4;
+            if (edits.some(el=>!visible(el))) bits |= 8;
+            if (target && nodes.some(el=>visible(el) &&
+                norm(el.textContent)===target &&
+                el.children.length<=1)) bits |= 16;
+            if (target && norm(root.textContent).includes(target)) bits |= 32;
+            if (target && edits.some(el=>visible(el) &&
+                label(el)===target+'を編集')) bits |= 64;
+            if (draft.some(visible)) bits |= 128;
+            if (draft.some(el=>visible(el) &&
+                (el.getAttribute('aria-selected')==='true' ||
+                 el.getAttribute('aria-pressed')==='true' ||
+                 el.getAttribute('aria-current')==='page'))) bits |= 256;
+            if (/(記事がありません|記事はありません|記事が見つかりません|表示できません|読み込みに失敗|エラーが発生)/.test(
+                norm(root.textContent).slice(0,10000))) bits |= 512;
+            if (root.querySelector('[aria-busy="true"],[role="progressbar"],[class*="skeleton"]'))
+                bits |= 1024;
+            const scroll=document.scrollingElement||document.documentElement;
+            if (scroll && scroll.scrollHeight>scroll.clientHeight+8) {
+                bits |= 2048;
+                if (scroll.scrollTop+scroll.clientHeight >=
+                    scroll.scrollHeight-12) bits |= 4096;
+            }
+            const nested=Array.from(root.querySelectorAll('*'))
+                .slice(0,400).filter(el=>{
+                    const overflow=getComputedStyle(el).overflowY;
+                    return (overflow==='auto'||overflow==='scroll') &&
+                        el.scrollHeight>el.clientHeight+8;
+                });
+            if (nested.length) bits |= 8192;
+            if (nested.some(el=>el.scrollTop+el.clientHeight>=
+                el.scrollHeight-12)) bits |= 16384;
+            if (controls.some(el=>el.tagName==='A' && visible(el) &&
+                (()=>{try {
+                    const raw=el.getAttribute('href');
+                    if (!raw) return false;
+                    const u=new URL(raw,location.origin);
+                    return u.protocol==='https:' &&
+                        (u.hostname==='note.com' ||
+                         u.hostname==='editor.note.com') &&
+                        !u.username && !u.password && !u.port &&
+                        /^\/notes\/n[a-z0-9]+\/edit\/?$/.test(u.pathname);
+                } catch (_) {return false;}})())) bits |= 32768;
+            return bits;
+        }""", str(target_title))
+        if (not isinstance(mask, int) or isinstance(mask, bool) or
+            not 0 <= mask < (1 << 16)):
+            return failure
+        return {
+            f"list_surface_{surface}_{name}"
+            for bit, name in enumerate(LIST_SURFACE_SIGNAL_NAMES[:-1])
+            if mask & (1 << bit)
+        }
+    except Exception:
+        return failure
 
 
 def _safe_owner_articles_menu_route(
@@ -1988,6 +2115,11 @@ def _probe_official_article_list(
             # Owner-authenticated homepage is the documented entry for the
             # top-right profile icon. Inspect it without any button click.
             codes.update(_safe_note_home_profile_probe(page, verified_account=True))
+            # Compare real owner-verified list before the next list navigation.
+            if "home_owner_route_open" in codes:
+                codes.update(_safe_note_list_surface_probe(
+                    page, str(article["title"]).strip(), surface="owner",
+                ))
 
         # Passive API observation after verified account ownership, while the
         # ordinary official list loads. Never request a guessed/private endpoint.
@@ -2051,6 +2183,12 @@ def _probe_official_article_list(
                     page, str(article["title"]).strip()
                 )
                 codes.update(draft_codes)
+                # Same account and title, independent draft list surface.
+                if ("list_draft_view_open" in draft_codes and
+                    "home_owner_route_open" in codes):
+                    codes.update(_safe_note_list_surface_probe(
+                        page, str(article["title"]).strip(), surface="draft",
+                    ))
                 if "list_draft_view_open" not in draft_codes:
                     return codes | {"title_button_not_visible"}
                 try:
