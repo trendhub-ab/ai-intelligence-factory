@@ -2632,3 +2632,183 @@ def test_image_menu_control_link_hints_are_not_navigation_authority(monkeypatch)
         assert forbidden not in src
     audit=inspect.getsource(recovery._probe_official_article_list)
     assert 'record.snapshot.canonical_document_sha256' in audit
+
+
+def test_verified_avatar_menu_ui_only_click_requires_strong_identity(monkeypatch):
+    recovery = _module()
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: False)
+    events = []
+
+    class Image:
+        def evaluate_all(self, script):
+            assert "getBoundingClientRect" in script
+            return [recovery.cloud.EXPECTED_CREATOR_NAME]
+    class NoForm:
+        def count(self): return 0
+    class Trigger:
+        def count(self): return 1
+        def is_visible(self): return True
+        def get_attribute(self, name):
+            return {
+                "aria-label": "",
+                "title": "",
+                "aria-haspopup": "menu",
+                "aria-expanded": "false",
+                "aria-controls": "PRIVATE_CONTROL_ID",
+            }.get(name)
+        def locator(self, sel):
+            if sel == "img": return Image()
+            assert sel == "xpath=ancestor::form"
+            return NoForm()
+        def click(self, timeout):
+            assert timeout == 3000
+            events.append("open_menu_only")
+    class Page:
+        url = "https://note.com/"
+        def evaluate(self, script, *args):
+            if "VERIFIED_AVATAR_OPEN_PREFLIGHT_FIXED_BITS" in script:
+                assert args == (recovery.cloud.EXPECTED_CREATOR_NAME,)
+                events.append("preflight")
+                return 64
+            assert "VERIFIED_AVATAR_OPEN_POST_FIXED_BITS" in script
+            assert args == ()
+            events.append("read_menu_dom")
+            return 2 | 8
+        def locator(self, selector):
+            assert "header button[aria-haspopup]:has(img)" in selector
+            events.append("unique_trigger")
+            return Trigger()
+        def wait_for_timeout(self, delay):
+            assert delay == 350
+            events.append("settle")
+    page=Page()
+    assert recovery._safe_note_home_verified_avatar_menu_open_probe(
+        page, verified_account=True
+    ) == {
+        "home_avatar_open_preflight_ready",
+        "home_avatar_open_menu_clicked",
+        "home_avatar_open_target_visible",
+        "home_avatar_open_owner_link_visible",
+    }
+    assert events == [
+        "preflight", "unique_trigger", "open_menu_only", "settle", "read_menu_dom"
+    ]
+    assert page.url == "https://note.com/"
+
+
+def test_verified_avatar_menu_preflight_fail_closed_never_clicks(monkeypatch):
+    recovery = _module()
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: False)
+    cases = {
+        1: "home_avatar_open_no_trigger",
+        2: "home_avatar_open_ambiguous_trigger",
+        4: "home_avatar_open_identity_missing",
+        8: "home_avatar_open_not_collapsed",
+        16: "home_avatar_open_controls_missing",
+        32: "home_avatar_open_inside_form",
+    }
+
+    class Page:
+        url = "https://note.com/"
+        def __init__(self, mask):
+            self.mask, self.evals = mask, 0
+        def evaluate(self, script, *args):
+            assert "VERIFIED_AVATAR_OPEN_PREFLIGHT_FIXED_BITS" in script
+            self.evals += 1
+            return self.mask
+        def locator(self, *args):
+            raise AssertionError("no selector evaluation after failed identity proof")
+    for mask, code in cases.items():
+        assert recovery._safe_note_home_verified_avatar_menu_open_probe(
+            Page(mask), verified_account=True
+        ) == {code}
+    for mask in (0, True, None, 128, "PRIVATE_VALUE", -1):
+        assert recovery._safe_note_home_verified_avatar_menu_open_probe(
+            Page(mask), verified_account=True
+        ) == {"home_avatar_open_uninspectable"}
+
+    missing = Page(64)
+    assert recovery._safe_note_home_verified_avatar_menu_open_probe(
+        missing, verified_account=False
+    ) == {"home_avatar_open_uninspectable"}
+    assert missing.evals == 0
+    for url in ("https://note.com/?secret=1", "https://note.com/notes",
+                "http://note.com/", "https://evil.example/"):
+        page = Page(64)
+        page.url = url
+        assert recovery._safe_note_home_verified_avatar_menu_open_probe(
+            page, verified_account=True
+        ) == {"home_avatar_open_uninspectable"}
+        assert page.evals == 0
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: True)
+    page = Page(64)
+    assert recovery._safe_note_home_verified_avatar_menu_open_probe(
+        page, verified_account=True
+    ) == {"home_avatar_open_uninspectable"}
+    assert page.evals == 0
+
+
+def test_verified_avatar_menu_post_click_route_change_fails_closed(monkeypatch):
+    recovery = _module()
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: False)
+    class Image:
+        def evaluate_all(self, script): return ["プロフィール"]
+    class EmptyForm:
+        def count(self): return 0
+    class Trigger:
+        def __init__(self, page): self.page = page
+        def count(self): return 1
+        def is_visible(self): return True
+        def get_attribute(self, attr):
+            return {
+                "aria-label": "プロフィール",
+                "title": None,
+                "aria-haspopup": "menu",
+                "aria-expanded": "false",
+                "aria-controls": "private-control",
+            }.get(attr)
+        def locator(self, selector):
+            return Image() if selector == "img" else EmptyForm()
+        def click(self, timeout): self.page.url = "https://evil.example/"
+    class Page:
+        url = "https://note.com/"
+        def evaluate(self, script, *args):
+            assert "VERIFIED_AVATAR_OPEN_PREFLIGHT_FIXED_BITS" in script
+            return 64
+        def locator(self, sel): return Trigger(self)
+        def wait_for_timeout(self, delay): pass
+    result = recovery._safe_note_home_verified_avatar_menu_open_probe(
+        Page(), verified_account=True
+    )
+    assert result == {
+        "home_avatar_open_preflight_ready", "home_avatar_open_route_changed"
+    }
+
+
+def test_avatar_menu_writes_forbidden_and_account_proof_order_unchanged():
+    recovery = _module()
+    import inspect
+    fn = inspect.getsource(recovery._safe_note_home_verified_avatar_menu_open_probe)
+    home = inspect.getsource(recovery._safe_note_home_profile_probe)
+    audit = inspect.getsource(recovery._probe_official_article_list)
+    assert "verified_account: bool = False" in fn
+    assert "verified_account: bool = False" in home
+    assert 'codes.add("account_proven")' in audit
+    assert 'verified_account=True' in audit
+    assert audit.index('codes.add("account_proven")') < audit.index(
+        "_safe_note_home_profile_probe(page, verified_account=True)"
+    )
+    assert "home_image_menu_target_missing" in home
+    assert 'record.snapshot.canonical_document_sha256' in audit
+    assert "target.click(timeout=3000)" in fn
+    assert "home_avatar_open_owner_link_visible" in fn
+    for forbidden in (
+        "page.goto(", "page.content(", ".fill(", ".set_input_files(",
+        "requests.post(", "create_draft(", "mark_draft_created(",
+        "localStorage", "sessionStorage", "document.cookie",
+    ):
+        assert forbidden not in fn
