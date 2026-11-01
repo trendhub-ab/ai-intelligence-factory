@@ -541,3 +541,47 @@ def test_b18_unavailable_ledger_overrides_eligible_queue_and_creates_zero(monkey
         with pytest.raises(LedgerUnavailableError):
             create_or_resume_delivery(base, impossible, prepared, run_correlation_id="run-a")
         assert base.create_count == 0
+
+def test_terra_manually_approved_recreate_uses_original_delivery_and_does_not_repeat(monkeypatch):
+    from note_delivery_ledger import InvalidStateTransition
+    monkeypatch.setenv("NOTE_TARGET_IDENTITY", "trendhub_biz")
+    with TemporaryDirectory() as tmp:
+        base = _creation_base(tmp, mode="success")
+        base.article["sync_id"] = "40a479ffdca981efb47bc5fe5fee1da9"
+        prepared = prepare_delivery(base, base.article["sync_id"])
+        ledger = SQLiteDeliveryLedger(Path(tmp) / "ledger.sqlite3")
+        intent = ledger.begin_or_load(prepared.snapshot, run_correlation_id="old")
+        ledger.record_blocked(
+            intent.record.operation_key,
+            state=DeliveryState.CREATION_UNKNOWN,
+            category="unknown",
+            expected_version=intent.record.state_version,
+        )
+        # A normal retry cannot ignore UNKNOWN.
+        result = create_or_resume_delivery(
+            base, ledger, prepared, run_correlation_id="ordinary"
+        )
+        assert result.state == DeliveryState.CREATION_UNKNOWN
+        assert base.create_count == 0
+        monkeypatch.setattr(
+            reconcile, "patch_and_readback_draft_binding",
+            lambda *_a, **_k: _queue_binding(
+                posting="投稿待ち", draft_id=""
+            ),
+        )
+        second = create_or_resume_delivery(
+            base, ledger, prepared, run_correlation_id="owner",
+            terra_manual_confirmation="ASSUME_ABSENT_TERRA_ONCE",
+        )
+        assert second.state == DeliveryState.QUEUE_CONFIRMATION_PENDING
+        assert base.create_count == 1
+        with pytest.raises(InvalidStateTransition):
+            create_or_resume_delivery(
+                base, ledger, prepared, run_correlation_id="replay",
+                terra_manual_confirmation="ASSUME_ABSENT_TERRA_ONCE",
+            )
+        retry = create_or_resume_delivery(
+            base, ledger, prepared, run_correlation_id="ordinary-again"
+        )
+        assert retry.state == DeliveryState.QUEUE_CONFIRMATION_PENDING
+        assert base.create_count == 1
