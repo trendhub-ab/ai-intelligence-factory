@@ -306,3 +306,83 @@ class EditorRuntimeObservation:
         if self._attached:
             result.update(self._counts)
         return result
+
+# Run912: bounded, read-only observation of the same verified private editor
+# route. All values below are copied from the existing allowlisted surface
+# snapshot; no page content, URL, DOM markup, event text, or network data leaves.
+HYDRATION_SNAPSHOT_DELAYS_MS = (0, 2000, 3000)
+HYDRATION_ALLOWED_FIELDS = {
+    "hydration_probe_status": frozenset({"observed", "unavailable"}),
+    "hydration_first_ready_state": frozenset(_READY_STATES),
+    "hydration_middle_ready_state": frozenset(_READY_STATES),
+    "hydration_final_ready_state": frozenset(_READY_STATES),
+    "hydration_first_shell_class": frozenset({
+        "alert_marker", "loading_marker", "other_editables",
+        "app_root_no_editables", "main_no_editables",
+        "no_visible_editor_markers"
+    }),
+    "hydration_final_shell_class": frozenset({
+        "alert_marker", "loading_marker", "other_editables",
+        "app_root_no_editables", "main_no_editables",
+        "no_visible_editor_markers"
+    }),
+    "hydration_first_body_size_class": frozenset({"empty", "small", "medium", "large"}),
+    "hydration_final_body_size_class": frozenset({"empty", "small", "medium", "large"}),
+    "hydration_editables_transition": frozenset({
+        "present_initially", "appeared_later", "absent_throughout"
+    }),
+}
+
+
+def _validated_hydration_metrics(payload: Any) -> dict[str, Any]:
+    """No dynamically computed strings or unknown keys cross into an audit result."""
+    if not isinstance(payload, dict):
+        return {"hydration_probe_status": "unavailable"}
+    if payload.get("hydration_probe_status") != "observed":
+        return {"hydration_probe_status": "unavailable"}
+    if set(payload) != set(HYDRATION_ALLOWED_FIELDS):
+        return {"hydration_probe_status": "unavailable"}
+    for key, choices in HYDRATION_ALLOWED_FIELDS.items():
+        value = payload.get(key)
+        if type(value) is not str or value not in choices:
+            return {"hydration_probe_status": "unavailable"}
+    return dict(payload)
+
+
+def observe_editor_hydration(page: Any) -> dict[str, Any]:
+    """Sample t=0,+2,+5 seconds; never navigate, reload, click or set data.
+
+    Observation cannot confirm title/content persistence. The calling audit
+    must still use the original strict title/body/eyecatch proof.
+    """
+    observations: list[dict[str, Any]] = []
+    try:
+        for delay_ms in HYDRATION_SNAPSHOT_DELAYS_MS:
+            if delay_ms:
+                page.wait_for_timeout(delay_ms)
+            sample = collect_title_surface_metrics(page, expected_title="")
+            if sample.get("title_probe_status") != "observed":
+                return {"hydration_probe_status": "unavailable"}
+            observations.append(sample)
+    except Exception:
+        return {"hydration_probe_status": "unavailable"}
+    if len(observations) != 3:
+        return {"hydration_probe_status": "unavailable"}
+    first, middle, final = observations
+    if first["title_probe_editable_visible"] > 0:
+        transition = "present_initially"
+    elif middle["title_probe_editable_visible"] > 0 or final["title_probe_editable_visible"] > 0:
+        transition = "appeared_later"
+    else:
+        transition = "absent_throughout"
+    return _validated_hydration_metrics({
+        "hydration_probe_status": "observed",
+        "hydration_first_ready_state": first["title_probe_ready_state"],
+        "hydration_middle_ready_state": middle["title_probe_ready_state"],
+        "hydration_final_ready_state": final["title_probe_ready_state"],
+        "hydration_first_shell_class": first["title_probe_shell_class"],
+        "hydration_final_shell_class": final["title_probe_shell_class"],
+        "hydration_first_body_size_class": first["title_probe_body_size_class"],
+        "hydration_final_body_size_class": final["title_probe_body_size_class"],
+        "hydration_editables_transition": transition,
+    })
