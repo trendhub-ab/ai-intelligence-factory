@@ -156,7 +156,7 @@ def _read_title_with_diagnostics(
         # Observe a fixed 0/+2/+5s window on the SAME page, without navigation
         # or data writes. This is evidence only, not an alternate title matcher.
         hydration = title_surface.observe_editor_hydration(page)
-        if not run187._is_editor_url(str(page.url or "")):
+        if getattr(page, "url", None) is not None and not run187._is_editor_url(str(page.url or "")):
             raise PrivateDraftAuditError(
                 "Stable private draft did not resolve to a confirmed editor route",
                 safe_metrics=title_surface._validated_hydration_metrics(hydration),
