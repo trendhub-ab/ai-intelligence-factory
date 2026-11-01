@@ -2332,3 +2332,157 @@ def test_home_menu_svg_intersection_cannot_authorize_navigation_or_creation():
     assert "home_owner_link_missing" in home
     audit = inspect.getsource(recovery._probe_official_article_list)
     assert 'record.snapshot.canonical_document_sha256' in audit
+
+
+def test_avatar_menu_overlap_exports_only_fixed_allowlisted_codes(monkeypatch):
+    recovery = _module()
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: False)
+    mapping = {
+        1: "home_avatar_overlap_no_popup_svg",
+        2: "home_avatar_overlap_multiple_popup_svg",
+        4: "home_avatar_overlap_no_image_button",
+        8: "home_avatar_overlap_multiple_image_buttons",
+        16: "home_avatar_overlap_same_unique_button",
+        32: "home_avatar_overlap_distinct_unique_buttons",
+        64: "home_avatar_overlap_popup_svg_contains_visible_img",
+        128: "home_avatar_overlap_img_button_has_popup",
+        256: "home_avatar_overlap_img_button_has_svg",
+        512: "home_avatar_overlap_img_button_inside_nav",
+        1024: "home_avatar_overlap_img_button_last_in_header",
+        2048: "home_avatar_overlap_unique_same_parent",
+    }
+
+    class Page:
+        url = "https://note.com/"
+        def __init__(self, mask): self.mask = mask
+        def evaluate(self, script):
+            assert "AVATAR_MENU_OVERLAP_FIXED_BITS" in script
+            assert "svgPopup.length === 1 && imgButtons.length === 1" in script
+            assert "svg === img" in script
+            assert "getBoundingClientRect" in script
+            return self.mask
+
+    for bit, code in mapping.items():
+        assert recovery._safe_note_home_avatar_menu_overlap_probe(Page(bit)) == {
+            code
+        }
+        assert code in recovery.OFFICIAL_LIST_SCAN_CODES
+    assert recovery._safe_note_home_avatar_menu_overlap_probe(
+        Page((1 << 12) - 1)
+    ) == set(mapping.values())
+    projection = recovery.safe_recovery_projection({
+        "official_list_scan_counts": {
+            **{code: 1 for code in mapping.values()},
+            "private_html": "<button>PRIVATE_NAME</button>",
+            "account_token": "SECRET_SESSION",
+        }
+    })
+    assert set(projection["official_list_scan_counts"]) == set(
+        recovery.OFFICIAL_LIST_SCAN_CODES
+    )
+    assert "PRIVATE_NAME" not in str(projection)
+    assert "SECRET_SESSION" not in str(projection)
+
+
+def test_avatar_menu_overlap_fails_closed_on_bad_route_mask_and_js(monkeypatch):
+    recovery = _module()
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: False)
+
+    class Page:
+        def __init__(self, mask=0, url="https://note.com/", fail=False):
+            self.mask, self.url, self.fail = mask, url, fail
+            self.evals = 0
+        def evaluate(self, script):
+            self.evals += 1
+            if self.fail:
+                raise RuntimeError("PRIVATE HTML must never appear in log")
+            return self.mask
+
+    for url in ("https://evil.example/", "http://note.com/",
+                "https://note.com/notes", "https://note.com/?token=SECRET"):
+        page = Page(url=url, mask=16)
+        assert recovery._safe_note_home_avatar_menu_overlap_probe(page) == {
+            "home_avatar_overlap_uninspectable"
+        }
+        assert page.evals == 0
+    for mask in (True, None, -1, 1 << 12, "PRIVATE", 0.5):
+        assert recovery._safe_note_home_avatar_menu_overlap_probe(Page(mask)) == {
+            "home_avatar_overlap_uninspectable"
+        }
+    assert recovery._safe_note_home_avatar_menu_overlap_probe(
+        Page(fail=True)
+    ) == {"home_avatar_overlap_uninspectable"}
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: True)
+    assert recovery._safe_note_home_avatar_menu_overlap_probe(
+        Page(mask=16)
+    ) == {"home_avatar_overlap_uninspectable"}
+
+
+def test_avatar_menu_overlap_readonly_integration_never_claims_owner_identity(monkeypatch):
+    recovery = _module()
+    monkeypatch.setattr(recovery.draft_audit.note_base,
+                        "_looks_logged_out", lambda _: False)
+    calls = []
+
+    class MissingLink:
+        def count(self): return 0
+
+    class Page:
+        url = "https://note.com/settings/profile"
+        def goto(self, url, **_kwargs):
+            assert url == "https://note.com/"
+            self.url = url
+            calls.append("verified_home_get")
+        def wait_for_timeout(self, amount):
+            assert amount == 1200
+        def evaluate(self, script, *args):
+            assert not args
+            if "AVATAR_MENU_OVERLAP_FIXED_BITS" in script:
+                calls.append("overlap")
+                return 32 | 128 | 512  # distinct unique elements, still no authority
+            if "MENU_SVG_INTERSECTION_FIXED_BITS" in script:
+                calls.append("menu")
+                return 1 | 64 | 128
+            if "SVG_CONTEXT_FIXED_BITS" in script:
+                calls.append("svg")
+                return 2 | 128 | 256
+            calls.append("home")
+            return 1024 | 4096 | 4
+        def get_by_role(self, role, name, exact):
+            assert (role, name, exact) == ("link", "自分の記事", True)
+            calls.append("owner_link_check")
+            return MissingLink()
+
+    observed = recovery._safe_note_home_profile_probe(Page())
+    assert {"home_avatar_overlap_distinct_unique_buttons",
+            "home_avatar_overlap_img_button_has_popup",
+            "home_avatar_overlap_img_button_inside_nav",
+            "home_owner_link_missing"} <= observed
+    assert "home_owner_link_exact" not in observed
+    assert "home_owner_route_open" not in observed
+    assert calls == ["verified_home_get", "home", "svg", "menu", "overlap",
+                     "owner_link_check"]
+
+
+def test_avatar_menu_overlap_cannot_click_write_or_change_recovery_authority():
+    recovery = _module()
+    fn = inspect.getsource(recovery._safe_note_home_avatar_menu_overlap_probe)
+    home = inspect.getsource(recovery._safe_note_home_profile_probe)
+    audit = inspect.getsource(recovery._probe_official_article_list)
+    assert "AVATAR_MENU_OVERLAP_FIXED_BITS" in fn
+    assert "_safe_note_home_avatar_menu_overlap_probe(page)" in home
+    assert home.index("_safe_note_home_avatar_menu_overlap_probe(page)") < home.index(
+        'get_by_role("link", name="自分の記事", exact=True)'
+    )
+    assert '"home_owner_link_missing"' in home
+    assert "record.snapshot.canonical_document_sha256" in audit
+    for forbidden in (
+        ".click(", ".fill(", ".screenshot(", ".set_input_files(",
+        "requests.post(", "create_draft(", "mark_draft_created(",
+        "page.goto(", "page.wait_for_timeout(", "page.content(",
+        "localStorage", "sessionStorage", "document.cookie",
+    ):
+        assert forbidden not in fn
