@@ -177,3 +177,132 @@ def collect_title_surface_metrics(
     result["title_probe_navigation_status"] = navigation_status_category(navigation_response)
     result["title_probe_shell_class"] = _shell_classification(result)
     return result
+
+
+# Run911: passive page/network evidence during the exact authenticated editor navigation.
+# Event payloads may contain unpublished content; neither messages nor URLs are read.
+_RUNTIME_COUNTERS = (
+    "runtime_page_error_count",
+    "runtime_console_error_count",
+    "runtime_page_crash_count",
+    "runtime_failed_script_count",
+    "runtime_failed_fetch_count",
+    "runtime_failed_document_count",
+    "runtime_failed_other_count",
+    "runtime_script_http_error_count",
+    "runtime_fetch_http_error_count",
+    "runtime_document_http_error_count",
+    "runtime_http_401_count",
+    "runtime_http_403_count",
+    "runtime_http_404_count",
+    "runtime_http_5xx_count",
+    "runtime_script_success_count",
+    "runtime_fetch_success_count",
+)
+
+
+class EditorRuntimeObservation:
+    """Observe only resource type, numeric HTTP status and error occurrence.
+
+    This is a passive recorder, not an editor readiness check. It attaches only
+    after exact owner+official draft-list proof and detaches on all exit paths.
+    """
+
+    def __init__(self) -> None:
+        self._counts = {key: 0 for key in _RUNTIME_COUNTERS}
+        self._page: Any | None = None
+        self._handlers: list[tuple[str, Any]] = []
+        self._attached = False
+
+    def _increment(self, key: str) -> None:
+        if key in self._counts:
+            self._counts[key] = min(20, self._counts[key] + 1)
+
+    @staticmethod
+    def _resource_category(value: Any) -> str:
+        try:
+            kind = value.resource_type
+        except Exception:
+            return "other"
+        if type(kind) is not str:
+            return "other"
+        if kind == "script":
+            return "script"
+        if kind in {"fetch", "xhr"}:
+            return "fetch"
+        if kind == "document":
+            return "document"
+        return "other"
+
+    def _on_page_error(self, _event: Any) -> None:
+        self._increment("runtime_page_error_count")
+
+    def _on_console(self, message: Any) -> None:
+        try:
+            kind = message.type
+        except Exception:
+            return
+        if kind == "error":
+            self._increment("runtime_console_error_count")
+
+    def _on_crash(self, _event: Any) -> None:
+        self._increment("runtime_page_crash_count")
+
+    def _on_request_failed(self, request: Any) -> None:
+        category = self._resource_category(request)
+        self._increment(f"runtime_failed_{category}_count")
+
+    def _on_response(self, response: Any) -> None:
+        try:
+            status = response.status
+            request = response.request
+        except Exception:
+            return
+        if type(status) is not int or not 100 <= status <= 599:
+            return
+        category = self._resource_category(request)
+        if status in {401, 403, 404}:
+            self._increment(f"runtime_http_{status}_count")
+        elif status >= 500:
+            self._increment("runtime_http_5xx_count")
+        if status >= 400 and category in {"script", "fetch", "document"}:
+            self._increment(f"runtime_{category}_http_error_count")
+        elif 200 <= status < 300 and category in {"script", "fetch"}:
+            self._increment(f"runtime_{category}_success_count")
+
+    def attach(self, page: Any) -> None:
+        """Attach after owner/list proof; a partial listener failure is harmless."""
+        self._page = page
+        for name, callback in (
+            ("pageerror", self._on_page_error),
+            ("console", self._on_console),
+            ("crash", self._on_crash),
+            ("requestfailed", self._on_request_failed),
+            ("response", self._on_response),
+        ):
+            try:
+                page.on(name, callback)
+                self._handlers.append((name, callback))
+            except Exception:
+                self._attached = False
+                return
+        self._attached = True
+
+    def detach(self) -> None:
+        page = self._page
+        self._page = None
+        if page is not None:
+            for name, callback in self._handlers:
+                try:
+                    page.remove_listener(name, callback)
+                except Exception:
+                    pass
+        self._handlers = []
+
+    def safe_metrics(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "runtime_probe_status": "observed" if self._attached else "unavailable",
+        }
+        if self._attached:
+            result.update(self._counts)
+        return result
