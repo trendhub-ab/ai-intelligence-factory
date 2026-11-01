@@ -265,13 +265,25 @@ def create_or_resume_delivery(
     prepared: PreparedDelivery,
     *,
     run_correlation_id: str,
+    terra_manual_confirmation: str = "",
 ) -> DeliveryRecord:
-    decision = ledger.begin_or_load(prepared.snapshot, run_correlation_id=run_correlation_id)
-    if not decision.creation_authorized:
-        return _resume_existing_delivery(base, ledger, decision.record)
+    if terra_manual_confirmation:
+        # An explicit one-off owner action, never the default Production path.
+        # The durable transaction refuses wrong target/snapshot or replay.
+        record = ledger.authorize_terra_owner_assumed_absent_once(
+            prepared.snapshot,
+            confirmation=terra_manual_confirmation,
+            run_correlation_id=run_correlation_id,
+        )
+    else:
+        decision = ledger.begin_or_load(
+            prepared.snapshot, run_correlation_id=run_correlation_id
+        )
+        if not decision.creation_authorized:
+            return _resume_existing_delivery(base, ledger, decision.record)
+        record = decision.record
 
     revalidate_before_mutation(base, prepared)
-    record = decision.record
     durable_created: DeliveryRecord | None = None
     storage_path = base._decode_storage_state()
 
@@ -459,11 +471,19 @@ def install(base: Any) -> Any:
         if prepare_only:
             return safe_delivery_result(status="prepared")
 
+        manual_token = str(os.environ.get("NOTE_TERRA_MANUAL_RECREATE_TOKEN", "") or "")
+        if manual_token and (
+            requested != "40a479ffdca981efb47bc5fe5fee1da9" or
+            note_target != "trendhub_biz" or
+            manual_token != "ASSUME_ABSENT_TERRA_ONCE"
+        ):
+            raise base.NoteDraftError("Terra one-off recreation authorization invalid")
         record = create_or_resume_delivery(
             base,
             ledger,
             prepared,
             run_correlation_id=str(os.environ.get("GITHUB_RUN_ID", "local-run")).strip() or "local-run",
+            terra_manual_confirmation=manual_token,
         )
         return safe_delivery_result(status=_status_for_record(record))
 

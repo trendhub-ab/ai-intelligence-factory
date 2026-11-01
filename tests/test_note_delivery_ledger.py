@@ -339,3 +339,107 @@ def test_read_only_gate_blocks_ambiguous_delivery_without_mutating_ledger():
             "should_run_delivery": True,
             "zero_gemini_calls": True,
         }
+
+def test_terra_owner_assumed_absent_one_shot_is_durable_and_replay_closed():
+    """Explicit owner accepts possible duplicate; cannot create twice."""
+    with TemporaryDirectory() as tmp:
+        ledger = _file_ledger(tmp)
+        snapshot = _snapshot(
+            sync_id="40a479ffdca981efb47bc5fe5fee1da9",
+            note_target="trendhub_biz",
+        )
+        first = ledger.begin_or_load(snapshot, run_correlation_id="before")
+        unknown = ledger.record_blocked(
+            first.record.operation_key,
+            state=DeliveryState.CREATION_UNKNOWN,
+            category="creation_result_ambiguous",
+            expected_version=first.record.state_version,
+        )
+        with pytest.raises(InvalidStateTransition):
+            ledger.authorize_terra_owner_assumed_absent_once(
+                snapshot, confirmation="WRONG", run_correlation_id="new",
+            )
+        approved = ledger.authorize_terra_owner_assumed_absent_once(
+            snapshot, confirmation="ASSUME_ABSENT_TERRA_ONCE",
+            run_correlation_id="new",
+        )
+        assert approved.record_id == unknown.record_id
+        assert approved.operation_key == unknown.operation_key
+        assert approved.state == DeliveryState.CREATE_INTENT_RECORDED
+        assert approved.state_version == unknown.state_version + 1
+        assert approved.draft_id is None
+
+        # Even if the authorized second attempt crashes before an ID is
+        # recorded, the consent event prevents a third creation.
+        ledger.record_blocked(
+            approved.operation_key,
+            state=DeliveryState.CREATION_UNKNOWN,
+            category="creation_result_ambiguous_again",
+            expected_version=approved.state_version,
+        )
+        restarted = _file_ledger(tmp)
+        with pytest.raises(InvalidStateTransition, match="already_consumed"):
+            restarted.authorize_terra_owner_assumed_absent_once(
+                snapshot, confirmation="ASSUME_ABSENT_TERRA_ONCE",
+                run_correlation_id="third",
+            )
+        existing = restarted.begin_or_load(snapshot, run_correlation_id="third")
+        assert existing.creation_authorized is False
+        assert existing.record.state == DeliveryState.CREATION_UNKNOWN
+        conn = sqlite3.connect(restarted.path)
+        try:
+            total = conn.execute(
+                "SELECT count(*) FROM delivery_events "
+                "WHERE category='owner_assumed_absent_once'"
+            ).fetchone()[0]
+            assert total == 1
+        finally:
+            conn.close()
+
+
+def test_terra_owner_assumed_absent_does_not_grant_generic_recreate():
+    with TemporaryDirectory() as tmp:
+        ledger = _file_ledger(tmp)
+        valid = _snapshot(
+            sync_id="40a479ffdca981efb47bc5fe5fee1da9",
+            note_target="trendhub_biz",
+        )
+        for other in (
+            _snapshot(sync_id="different", note_target="trendhub_biz"),
+            _snapshot(sync_id=valid.sync_id, note_target="another"),
+        ):
+            with pytest.raises(InvalidStateTransition):
+                ledger.authorize_terra_owner_assumed_absent_once(
+                    other, confirmation="ASSUME_ABSENT_TERRA_ONCE",
+                    run_correlation_id="manual",
+                )
+        with pytest.raises(InvalidStateTransition):
+            ledger.authorize_terra_owner_assumed_absent_once(
+                valid, confirmation="ASSUME_ABSENT_TERRA_ONCE",
+                run_correlation_id="manual",
+            )
+        first = ledger.begin_or_load(valid, run_correlation_id="first")
+        unknown = ledger.record_blocked(
+            first.record.operation_key,
+            state=DeliveryState.CREATION_UNKNOWN,
+            category="unknown",
+            expected_version=first.record.state_version,
+        )
+        # An altered manuscript/asset must not rebind old private intent.
+        with pytest.raises(InvalidStateTransition):
+            ledger.authorize_terra_owner_assumed_absent_once(
+                replace(valid, manuscript_sha256="f" * 64),
+                confirmation="ASSUME_ABSENT_TERRA_ONCE",
+                run_correlation_id="manual",
+            )
+        assert ledger.get_by_operation_key(first.record.operation_key) == unknown
+        # Existing bound identity forbids assumed-absence reattempt.
+        ledger.record_draft_created(
+            unknown.operation_key, draft_id="nverified",
+            note_host="note.com", expected_version=unknown.state_version,
+        )
+        with pytest.raises(InvalidStateTransition):
+            ledger.authorize_terra_owner_assumed_absent_once(
+                valid, confirmation="ASSUME_ABSENT_TERRA_ONCE",
+                run_correlation_id="manual",
+            )

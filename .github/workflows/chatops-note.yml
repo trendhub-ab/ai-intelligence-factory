@@ -29,6 +29,7 @@ jobs:
       (github.event.comment.body == '/aiif note sync' ||
        startsWith(github.event.comment.body, '/aiif note sync ') ||
        github.event.comment.body == '/aiif note draft' ||
+       github.event.comment.body == '/aiif note terra recreate 40a479ffdca981efb47bc5fe5fee1da9' ||
        github.event.comment.body == '/aiif note vtcode draft' ||
        github.event.comment.body == '/aiif note audit openai2015' ||
        github.event.comment.body == '/aiif note lp audit' ||
@@ -65,6 +66,7 @@ jobs:
               sync_id="${COMMAND#'/aiif note sync '}"
               ;;
             '/aiif note draft') action='draft' ;;
+            '/aiif note terra recreate 40a479ffdca981efb47bc5fe5fee1da9') action='terra_manual_recreate' ;;
             '/aiif note vtcode draft') action='vtcode_draft' ;;
             '/aiif note audit openai2015') action='openai2015_audit' ;;
             '/aiif note lp audit') action='lp_audit' ;;
@@ -120,6 +122,10 @@ jobs:
             draft)
               workflow='note-create-draft.yml'
               payload='{"ref":"main","inputs":{"confirm":"CREATE_NOTE_DRAFT","sync_id":"","prepare_only":"false"}}'
+              ;;
+            terra_manual_recreate)
+              workflow='note-create-draft.yml'
+              payload='{"ref":"main","inputs":{"confirm":"CREATE_NOTE_DRAFT","sync_id":"40a479ffdca981efb47bc5fe5fee1da9","prepare_only":"false","terra_manual_recreate":"ASSUME_ABSENT_TERRA_ONCE"}}'
               ;;
             vtcode_draft)
               workflow='note-ready-sync.yml'

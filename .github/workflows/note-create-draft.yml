@@ -16,6 +16,11 @@ on:
         required: true
         default: false
         type: boolean
+      terra_manual_recreate:
+        description: 'ONE TIME Terra only: exact ASSUME_ABSENT_TERRA_ONCE token, accepts duplicate risk'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -47,6 +52,21 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install requests
+
+      - name: Require owner-only Terra manual exception be exact and unpublished
+        env:
+          MANUAL_TOKEN: ${{ inputs.terra_manual_recreate }}
+          SYNC_ID: ${{ inputs.sync_id }}
+          CONFIRM: ${{ inputs.confirm }}
+          PREPARE_ONLY: ${{ inputs.prepare_only }}
+        run: |
+          set -euo pipefail
+          if [ -n "$MANUAL_TOKEN" ]; then
+            test "$MANUAL_TOKEN" = 'ASSUME_ABSENT_TERRA_ONCE'
+            test "$SYNC_ID" = '40a479ffdca981efb47bc5fe5fee1da9'
+            test "$CONFIRM" = 'CREATE_NOTE_DRAFT'
+            test "$PREPARE_ONLY" = 'false'
+          fi
 
       - name: Zero-VM preflight regression tests
         run: |
@@ -244,6 +264,7 @@ jobs:
         env:
           WORKER_RESULT_FILE: ${{ runner.temp }}/note_worker_preflight.json
           LEDGER_RESULT_FILE: ${{ runner.temp }}/note_ledger_preflight.json
+          NOTE_TERRA_MANUAL_RECREATE_TOKEN: ${{ inputs.terra_manual_recreate }}
         run: |
           set -euo pipefail
           selected="$(python - <<'PY'
@@ -336,6 +357,7 @@ jobs:
           NOTE_DRAFT_CONFIRM: ${{ inputs.confirm }}
           NOTE_TARGET_IDENTITY: 'trendhub_biz'
           NOTE_DELIVERY_LEDGER_PATH: '~/.aiif-note/delivery-ledger-v1.sqlite3'
+          NOTE_TERRA_MANUAL_RECREATE_TOKEN: ${{ inputs.terra_manual_recreate }}
           NOTE_PREPARE_ONLY: 'false'
           NOTE_DRAFT_RESULT_FILE: ${{ runner.temp }}/note_draft_result.json
           NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
