@@ -71,7 +71,7 @@ class Run912HydrationTests(unittest.TestCase):
             sample("interactive", 0, "main_no_editables", "medium"),
             sample("complete", 1, "other_editables", "medium"),
         ]
-        with mock.patch.object(probe, "collect_title_surface_metrics", side_effect=samples) as capture:
+        with mock.patch.object(probe, "_hydration_snapshot", side_effect=samples) as capture:
             result = probe.observe_editor_hydration(page)
         self.assertEqual(page.waits, [2000, 3000])
         self.assertEqual(capture.call_count, 3)
@@ -83,7 +83,7 @@ class Run912HydrationTests(unittest.TestCase):
 
     def test_persistently_inert_shell_is_classified_not_treated_as_deleted_draft(self):
         page = Page()
-        with mock.patch.object(probe, "collect_title_surface_metrics",
+        with mock.patch.object(probe, "_hydration_snapshot",
                                side_effect=[sample(), sample("complete"), sample("complete")]):
             metrics = probe.observe_editor_hydration(page)
         self.assertEqual(metrics["hydration_editables_transition"], "absent_throughout")
@@ -97,14 +97,41 @@ class Run912HydrationTests(unittest.TestCase):
                                    "title_probe_status": "observed"}],
         ]:
             with self.subTest(snapshots=snapshots):
-                with mock.patch.object(probe, "collect_title_surface_metrics", side_effect=snapshots):
+                with mock.patch.object(probe, "_hydration_snapshot", side_effect=snapshots):
                     metrics = probe.observe_editor_hydration(Page())
                 self.assertEqual(metrics, {"hydration_probe_status": "unavailable"})
                 self.assertNotIn("PRIVATE_BODY", repr(metrics))
-        with mock.patch.object(probe, "collect_title_surface_metrics",
+        with mock.patch.object(probe, "_hydration_snapshot",
                                side_effect=[sample(), sample(), sample()]):
             self.assertEqual(probe.observe_editor_hydration(Page(fail=True)),
                              {"hydration_probe_status": "unavailable"})
+
+    def test_hydration_snapshot_rejects_untrusted_fields_without_logging_content(self):
+        class DomPage:
+            def __init__(self, payload):
+                self.payload = payload
+
+            def evaluate(self, script):
+                assert "textContent" not in script
+                assert "innerHTML" not in script
+                assert "document.cookie" not in script
+                return self.payload
+
+        raw = {"ready": "loading", "editables": 0, "main": 0,
+               "roots": 1, "alerts": 0, "loaders": 0, "size": "small",
+               "private_body": "UNPUBLISHED"}
+        observed = probe._hydration_snapshot(DomPage(raw))
+        self.assertEqual(observed["title_probe_shell_class"], "app_root_no_editables")
+        self.assertNotIn("UNPUBLISHED", repr(observed))
+        for key, value in [
+            ("editables", "PRIVATE"), ("roots", True),
+            ("loaders", 55), ("ready", "PRIVATE"),
+            ("size", "PRIVATE"),
+        ]:
+            with self.subTest(key=key):
+                malformed = dict(raw)
+                malformed[key] = value
+                self.assertIsNone(probe._hydration_snapshot(DomPage(malformed)))
 
     def test_reject_unknown_keys_invalid_enums_and_private_data(self):
         for key, value in [
@@ -131,7 +158,7 @@ class Run912HydrationTests(unittest.TestCase):
         ) as hydrated, mock.patch.object(
             audit.run187, "_is_editor_url", return_value=True
         ), mock.patch.object(
-            probe, "collect_title_surface_metrics"
+            probe, "_hydration_snapshot"
         ) as metrics:
             result = audit._read_title_with_diagnostics(page, "EXACT_PRIVATE_TITLE")
         self.assertEqual(result, "EXACT_PRIVATE_TITLE")
@@ -148,7 +175,7 @@ class Run912HydrationTests(unittest.TestCase):
         ), mock.patch.object(
             audit.run187, "_is_editor_url", return_value=True
         ), mock.patch.object(
-            probe, "collect_title_surface_metrics", return_value={"title_probe_status": "observed"}
+            probe, "_hydration_snapshot", return_value={"title_probe_status": "observed"}
         ):
             with self.assertRaises(audit.PrivateDraftAuditError) as error:
                 audit._read_title_with_diagnostics(page, "SECRET_TITLE")
