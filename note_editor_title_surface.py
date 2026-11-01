@@ -421,7 +421,18 @@ def observe_editor_hydration(page: Any) -> dict[str, Any]:
             if delay_ms:
                 page.wait_for_timeout(delay_ms)
             sample = _hydration_snapshot(page)
-            if sample is None:
+            # Treat incomplete/untrusted snapshots as unavailable; never raise
+            # a content-bearing KeyError into the private-audit log.
+            if not isinstance(sample, dict) or sample.get("title_probe_status") != "observed":
+                return {"hydration_probe_status": "unavailable"}
+            if sample.get("title_probe_ready_state") not in _READY_STATES:
+                return {"hydration_probe_status": "unavailable"}
+            if sample.get("title_probe_body_size_class") not in {"empty", "small", "medium", "large"}:
+                return {"hydration_probe_status": "unavailable"}
+            if sample.get("title_probe_shell_class") not in HYDRATION_ALLOWED_FIELDS["hydration_first_shell_class"]:
+                return {"hydration_probe_status": "unavailable"}
+            editables = sample.get("title_probe_editable_visible")
+            if type(editables) is not int or not 0 <= editables <= _MAX_OUTPUT_COUNT:
                 return {"hydration_probe_status": "unavailable"}
             observations.append(sample)
     except Exception:
