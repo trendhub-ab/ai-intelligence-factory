@@ -1586,8 +1586,7 @@ def _safe_note_home_verified_avatar_menu_open_probe(
             };
             const image = el => Array.from(el.querySelectorAll('img'))
                 .slice(0,5).some(visible);
-            const popup = el => ['menu','true'].includes(
-                String(el.getAttribute('aria-haspopup') || '').toLowerCase());
+            const popup = el => String(el.getAttribute('aria-haspopup') || '') === 'menu';
             const controls = Array.from(header.querySelectorAll('button'))
                 .slice(0,150).filter(visible);
             const matches = controls.filter(el => popup(el) && image(el));
@@ -1646,8 +1645,7 @@ def _safe_note_home_verified_avatar_menu_open_probe(
             name.lower() for name in semantic
         } for value in names if str(value).strip()):
             return {"home_avatar_open_identity_missing"}
-        if (str(target.get_attribute("aria-haspopup") or "").lower() not in
-            {"menu", "true"} or
+        if (str(target.get_attribute("aria-haspopup") or "") != "menu" or
             target.get_attribute("aria-expanded") != "false" or
             not str(target.get_attribute("aria-controls") or "").strip()):
             return {"home_avatar_open_uninspectable"}
@@ -1675,8 +1673,7 @@ def _safe_note_home_verified_avatar_menu_open_probe(
                 return r.width>0 && r.height>0 &&
                     s.display!=='none' && s.visibility!=='hidden';
             };
-            const popup = el => ['menu','true'].includes(
-                String(el.getAttribute('aria-haspopup')||'').toLowerCase());
+            const popup = el => String(el.getAttribute('aria-haspopup')||'') === 'menu';
             const img = el => Array.from(el.querySelectorAll('img'))
                 .slice(0,5).some(visible);
             const list = Array.from(header.querySelectorAll('button'))
