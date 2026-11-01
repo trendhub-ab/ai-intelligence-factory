@@ -2804,7 +2804,13 @@ def test_avatar_menu_writes_forbidden_and_account_proof_order_unchanged():
     )
     assert "home_image_menu_target_missing" in home
     assert 'record.snapshot.canonical_document_sha256' in audit
-    assert "target.click(timeout=3000)" in fn
+    assert "_safe_owner_articles_menu_route(" in fn
+    assert "target.click(" not in fn
+    assert "semantic[0].click(timeout=3000)" in audit or (
+        "semantic[0].click(timeout=3000)" in inspect.getsource(
+            recovery._safe_owner_articles_menu_route
+        )
+    )
     assert "home_avatar_open_owner_link_visible" in fn
     for forbidden in (
         "page.goto(", "page.content(", ".fill(", ".set_input_files(",
