@@ -184,6 +184,15 @@ OFFICIAL_LIST_SCAN_CODES = (
     "home_svg_header_image_child", "home_svg_guest_login_visible",
     "home_svg_guest_signup_visible", "home_svg_header_icon_link_visible",
     "home_svg_header_profile_link_visible",
+    # Intersection-only menu trigger structural signals (never navigation authority).
+    "home_menu_svg_probe_uninspectable", "home_menu_svg_unique",
+    "home_menu_svg_multiple", "home_menu_svg_absent",
+    "home_menu_svg_unique_unlabeled", "home_menu_svg_unique_account_named",
+    "home_menu_svg_unique_other_named", "home_menu_svg_unique_controls",
+    "home_menu_svg_unique_expanded_false", "home_menu_svg_unique_expanded_true",
+    "home_menu_svg_unique_last_header_button", "home_menu_svg_unique_inside_nav",
+    "home_menu_svg_unique_circle", "home_menu_svg_unique_image_child",
+    "home_menu_non_svg_trigger_visible",
 )
 
 
@@ -1235,6 +1244,86 @@ def _safe_note_home_svg_context_probe(page: Any) -> set[str]:
         return {"home_svg_context_uninspectable"}
 
 
+def _safe_note_home_menu_svg_intersection_probe(page: Any) -> set[str]:
+    """Intersect SVG+menu semantics on logged-in note home without clicking.
+
+    Fixed 14-bit diagnostics only. A unique popup trigger is *not* proof that
+    it is the owner's profile, and must never authorize navigation/recovery.
+    Exports no raw DOM, text, attributes, private URLs, IDs or count values.
+    """
+    if (str(getattr(page, "url", "") or "") != _EXACT_READONLY_NOTE_HOME_URL or
+        draft_audit.note_base._looks_logged_out(page)):
+        return {"home_menu_svg_probe_uninspectable"}
+    try:
+        mask = page.evaluate(r"""() => {
+            // MENU_SVG_INTERSECTION_FIXED_BITS
+            const header = document.querySelector('header,[role="banner"]');
+            if (!header) return 0;
+            const vis = el => {
+                const r = el.getBoundingClientRect();
+                const s = getComputedStyle(el);
+                return r.width > 0 && r.height > 0 &&
+                    s.visibility !== 'hidden' && s.display !== 'none';
+            };
+            const buttons = Array.from(header.querySelectorAll(
+                'button,[role="button"]'
+            )).slice(0,150).filter(vis);
+            const popup = el => ['menu','true'].includes(
+                String(el.getAttribute('aria-haspopup') || '').toLowerCase());
+            const svgMenus = buttons.filter(el => popup(el) && !!el.querySelector('svg'));
+            const otherMenus = buttons.filter(el => popup(el) && !el.querySelector('svg'));
+            let bits = 0;
+            if (svgMenus.length === 0) bits |= 4;
+            if (svgMenus.length === 1) bits |= 1;
+            if (svgMenus.length > 1) bits |= 2;
+            if (otherMenus.length > 0) bits |= 8192;
+            // Do not classify an arbitrary one of multiple candidates.
+            if (svgMenus.length !== 1) return bits;
+            const one = svgMenus[0];
+            const label = String(
+                one.getAttribute('aria-label') ||
+                one.getAttribute('title') ||
+                one.getAttribute('data-tooltip') ||
+                one.querySelector('svg title')?.textContent || ''
+            ).replace(/\s+/g,' ').trim().slice(0,100);
+            const profile = /^(プロフィール|アカウント|マイページ|ユーザーメニュー|プロフィールメニュー|profile|account|user menu|my account)$/i;
+            if (!label) bits |= 8;
+            else if (profile.test(label)) bits |= 16;
+            else bits |= 32;
+            if (one.hasAttribute('aria-controls')) bits |= 64;
+            if (one.getAttribute('aria-expanded') === 'false') bits |= 128;
+            if (one.getAttribute('aria-expanded') === 'true') bits |= 256;
+            if (buttons[buttons.length - 1] === one) bits |= 512;
+            if (one.closest('nav,[role="navigation"]')) bits |= 1024;
+            if (one.querySelector('svg circle')) bits |= 2048;
+            if (one.querySelector('img')) bits |= 4096;
+            return bits;
+        }""")
+        if (not isinstance(mask, int) or isinstance(mask, bool) or
+            not 0 <= mask < (1 << 14)):
+            return {"home_menu_svg_probe_uninspectable"}
+        return {
+            code for bit, code in (
+                (1, "home_menu_svg_unique"),
+                (2, "home_menu_svg_multiple"),
+                (4, "home_menu_svg_absent"),
+                (8, "home_menu_svg_unique_unlabeled"),
+                (16, "home_menu_svg_unique_account_named"),
+                (32, "home_menu_svg_unique_other_named"),
+                (64, "home_menu_svg_unique_controls"),
+                (128, "home_menu_svg_unique_expanded_false"),
+                (256, "home_menu_svg_unique_expanded_true"),
+                (512, "home_menu_svg_unique_last_header_button"),
+                (1024, "home_menu_svg_unique_inside_nav"),
+                (2048, "home_menu_svg_unique_circle"),
+                (4096, "home_menu_svg_unique_image_child"),
+                (8192, "home_menu_non_svg_trigger_visible"),
+            ) if mask & bit
+        }
+    except Exception:
+        return {"home_menu_svg_probe_uninspectable"}
+
+
 def _safe_note_home_profile_probe(page: Any) -> set[str]:
     """Inspect the authenticated note homepage, never edit or create anything.
 
@@ -1371,6 +1460,10 @@ def _safe_note_home_profile_probe(page: Any) -> set[str]:
         "home_owner_article_link_visible" not in evidence and
         "home_loading_visible" not in evidence):
         evidence.update(_safe_note_home_svg_context_probe(page))
+        # Follow up only on an actually observed SVG+popup overlap.
+        # Diagnostics are not identity evidence and never trigger a click.
+        if "home_svg_header_menu_semantics" in evidence:
+            evidence.update(_safe_note_home_menu_svg_intersection_probe(page))
 
     try:
         link = page.get_by_role("link", name="自分の記事", exact=True)
