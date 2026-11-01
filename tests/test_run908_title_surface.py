@@ -28,7 +28,10 @@ SECRET = "SECRET_UNPUBLISHED_TITLE"
 
 
 def sample_metrics() -> dict[str, object]:
-    data: dict[str, object] = {"title_probe_ready_state": "complete"}
+    data: dict[str, object] = {
+        "title_probe_ready_state": "complete",
+        "title_probe_body_size_class": "large",
+    }
     for key in surface._COUNT_KEYS:
         data[key] = 0
     data["title_probe_editable_visible"] = 2
@@ -57,8 +60,12 @@ class Run908TitleSurfaceTests(unittest.TestCase):
         self.assertEqual(result["title_probe_exact_leaf_visible"], 1)
         self.assertEqual(result["title_probe_ready_state"], "complete")
         self.assertEqual(set(result), set(surface._COUNT_KEYS) | {
-            "title_probe_status", "title_probe_ready_state"
+            "title_probe_status", "title_probe_ready_state",
+            "title_probe_body_size_class", "title_probe_navigation_status",
+            "title_probe_shell_class",
         })
+        self.assertEqual(result["title_probe_navigation_status"], "no_response")
+        self.assertEqual(result["title_probe_shell_class"], "other_editables")
         self.assertEqual(page.args[0], SECRET)
         self.assertNotIn(SECRET, repr(result))
 
@@ -79,6 +86,7 @@ class Run908TitleSurfaceTests(unittest.TestCase):
             ("title_probe_editable_visible", -1),
             ("title_probe_editable_visible", 21),
             ("title_probe_ready_state", "secret-state"),
+            ("title_probe_body_size_class", "private-state"),
         ]:
             with self.subTest(key=key, value=value):
                 payload = sample_metrics()
@@ -132,7 +140,7 @@ class Run908TitleSurfaceTests(unittest.TestCase):
     def test_read_only_boundary_and_verified_route_are_preserved(self):
         code = inspect.getsource(surface)
         run = inspect.getsource(audit._browser_audit)
-        self.assertIn("_read_title_with_diagnostics(page, str(article[\"title\"]))", run)
+        self.assertIn('page, str(article["title"]), navigation_response=editor_response', run)
         self.assertLess(run.index("run190._assert_expected_note_account(page)"),
                         run.index("_read_title_with_diagnostics(page"))
         self.assertLess(run.index("run190._verify_draft_in_article_list(page, private_url"),
