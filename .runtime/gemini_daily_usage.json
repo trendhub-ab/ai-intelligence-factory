@@ -9,6 +9,14 @@
           },
           "exhausted": false,
           "used": 7
+        },
+        "gemini-3.8-flash": {
+          "budget": 18,
+          "by_kind": {
+            "aiif_next_private_pilot": 1
+          },
+          "exhausted": false,
+          "used": 1
         }
       }
     }
@@ -17,5 +25,5 @@
   "quota_date": "2026-11-02",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-11-02T14:52:42.817575+00:00"
+  "updated_at": "2026-11-02T22:47:39.581345+00:00"
 }
