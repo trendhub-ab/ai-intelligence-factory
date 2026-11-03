@@ -2,6 +2,14 @@
   "counter_scopes": {
     "3fc8d8746c93f55a": {
       "models": {
+        "gemini-3-flash-preview": {
+          "budget": 18,
+          "by_kind": {
+            "aiif_next_private_pilot": 1
+          },
+          "exhausted": false,
+          "used": 1
+        },
         "gemini-3.6-flash": {
           "budget": 18,
           "by_kind": {
@@ -25,5 +33,5 @@
   "quota_date": "2026-11-03",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-11-03T08:12:35.580847+00:00"
+  "updated_at": "2026-11-03T08:16:37.213080+00:00"
 }
