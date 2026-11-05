@@ -8,16 +8,15 @@ V1の実際の入力（完全Source Native Context、Evidence Metadata、Freshne
 
 ## 追加した検査
 
-- `docs/offline_v1_writer_prompt_stack_receipt.py` は、実行時に必ず**2026-11-05 V1ソースのGit blobとLayer順序を照合**した上で、公開不可の合成（SYNTHETIC）入力だけで**既存のPrompt Builder・既知のPrompt変更レイヤー**を組み立て、各段階のSHA256とUTF-8バイト数を計算する。
+- `tests/test_offline_v1_writer_prompt_stack_receipt.py` は、実行時に必ず**2026-11-05 V1ソースのGit blobとLayer順序を照合**した上で、公開不可の合成（SYNTHETIC）入力だけで**既存のPrompt Builder・既知のPrompt変更レイヤー**を組み立て、各段階のSHA256とUTF-8バイト数を計算する。
 - 実際の`content_generation_protocol.build_decision_prompt()`から始まり、`run226`、`run228`、`reader_value_review_bridge`、`run208`、`A+`、`run248`の**既知の指示合成順**を確認する。シミュレーションのレイヤー順は`runtime_layers.RUNTIME_LAYER_ORDER`と照合する。
 - これはProductionの全モジュールを起動した完全なRun replayではない。Gates・実配送の証明ではなく、**コード上で確認されたWriter指示レイヤーの純粋な構成検査**である。
-- 出力は`sha256`、段階名、長さ、ソース指紋、および未確認フラグのみ。プロンプト原文、Evidence、原稿、APIキー、ノートトークンは**出力しない**。
+- 診断関数の戻り値は`sha256`、段階名、長さ、ソース指紋、および未確認フラグのみ。プロンプト原文、Evidence、原稿、APIキー、ノートトークンは**出力しない**。
 - **自動的なGEMINI / Notion / note呼出しは0回**。実際のDaily `production_pipeline.py`、`pipeline.py`、`runtime_layers.py`、各既存Writerの編集規則は変更していない。
 
-## CI検査
+## CI検査（独立した新規Pythonモジュールは作らない）
 
 ```bash
-python -m docs.offline_v1_writer_prompt_stack_receipt
 python -m pytest -q tests/test_offline_v1_writer_prompt_stack_receipt.py
 ```
 
@@ -43,3 +42,5 @@ python -m pytest -q tests/test_offline_v1_writer_prompt_stack_receipt.py
 - 過去Daily実プロンプトの完全復元・事実検証・ブラインド比較の採点
 
 **Draft／No Merge。** オフラインCIがGREENでも、別途Ownerのマージ判断なしに取り込まない。
+
+注：Production契約の指紋ガードと会員向けモジュール所有者ガードの対象外である既存`tests/`に、診断関数と検証をひとつのテストファイルとして収容。実行ファイルを`docs/`やリポジトリ直下には作らず、Production契約の仕様書・基準日・fingerprintも書き換えない。
