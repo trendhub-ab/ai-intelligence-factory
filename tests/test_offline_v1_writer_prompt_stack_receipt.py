@@ -8,7 +8,7 @@ import re
 
 import pytest
 
-import offline_v1_writer_prompt_stack_receipt as trace
+from docs import offline_v1_writer_prompt_stack_receipt as trace
 
 
 def test_synthetic_receipt_has_7_pinned_layers_without_actual_run_claim():
