@@ -1,43 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-11-05T11:22:17.561212+00:00",
+  "updated_at": "2026-11-05T11:23:36.762326+00:00",
   "items": [
-    {
-      "key": "https://openai.com/products/release-notes?aif_revision=b4490b735aed7a56",
-      "deferred_at": "2026-11-05T11:22:17.560898+00:00",
-      "expires_at": "2026-11-19T11:22:17.560898+00:00",
-      "repo": {
-        "source": "OfficialVendor",
-        "nameWithOwner": "OpenAI — GPT-6 Rosalind Research in Work, Codex, and the API",
-        "originalTitle": "OpenAI — GPT-6 Rosalind Research in Work, Codex, and the API",
-        "displayName": "OpenAI — GPT-6 Rosalind Research in Work, Codex, and the API",
-        "sourceLanguage": "en",
-        "url": "https://openai.com/products/release-notes/?aif_revision=b4490b735aed7a56",
-        "description": "GPT-6 Rosalind Research in Work, Codex, and the API",
-        "stargazerCount": 0,
-        "licenseInfo": null,
-        "publishedAt": "Oct 30, 2026",
-        "sourceContext": "GPT-6 Rosalind Research in Work, Codex, and the API",
-        "primaryUrl": "https://openai.com/products/release-notes/",
-        "sourceDetails": {
-          "vendor": "OpenAI",
-          "vendor_region": "US",
-          "source_role": "commercial_primary_source",
-          "official_release_url": "https://openai.com/products/release-notes/",
-          "candidate_revision": "b4490b735aed7a56",
-          "vendor_record_kind": "structured_html",
-          "run269_precision": true
-        }
-      },
-      "notion_page_id": "40f479ff-dca9-8175-833c-f91537757d99",
-      "score": 85,
-      "reason": "GPT-6のリリースは全企業にとって優先検討事項",
-      "commercial_score": 95,
-      "shelf_life_score": 60,
-      "shelf_life": "TREND",
-      "portfolio_topic": "MODEL",
-      "deep_dive_priority_score": 88.5
-    },
     {
       "key": "https://platform.claude.com/docs/en/release-notes/overview?aif_revision=08b8405e14bf7004",
       "deferred_at": "2026-11-05T11:22:17.561007+00:00",
