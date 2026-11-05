@@ -1,0 +1,186 @@
+{
+  "schema": "aiif-next-research-candidates-v1",
+  "verification_status": "CANDIDATE_NOT_HUMAN_VERIFIED",
+  "cases": [
+    {
+      "case_id": "FFT",
+      "status": "CANDIDATE_NOT_HUMAN_VERIFIED",
+      "pack": {
+        "topic": "OpenAIの高速フーリエ変換の理論的進歩と実用性の限界",
+        "sources": [
+          {
+            "source_id": "S1",
+            "title": "OpenAI math: exact DFT theorem and caveats",
+            "url": "https://github.com/openai/math/blob/main/preprints/An-explicit-power-saving-for-the-exact-discrete-Fourier-transform-September-25-2026/build/sections/introduction.tex"
+          },
+          {
+            "source_id": "S2",
+            "title": "Ben Recht: Faster Fourier Transforms (expert commentary)",
+            "url": "https://www.argmin.net/p/faster-fourier-transforms"
+          }
+        ],
+        "facts": [
+          {
+            "fact_id": "FFT1",
+            "source_id": "S1",
+            "statement": "OpenAI公開の論文は、厳密な離散フーリエ変換について従来のn log nより小さい漸近的演算量を示すと主張する。",
+            "evidence_excerpt": "O\\!\\left(n(\\log n)^\\theta(\\log\\log n)^{4-\\theta}\\right)",
+            "qualifier": "厳密な複素数演算を前提とした理論上の主張。数値的に安定した実用FFTの実測高速化を示すものではない。"
+          },
+          {
+            "fact_id": "FFT2",
+            "source_id": "S1",
+            "statement": "著者らは定数項が非常に大きいと明記し、安定した浮動小数点FFTやビット計算量の改善は主張していない。",
+            "evidence_excerpt": "The constants in the algorithm are enormous",
+            "qualifier": "研究本文が明示する適用範囲の限界。"
+          },
+          {
+            "fact_id": "FFT3",
+            "source_id": "S2",
+            "statement": "数学・機械学習研究者Ben Rechtは、この手法を巨大な定数項のため現実のコンピュータで優位にならないギャラクティック・アルゴリズムと批評している。",
+            "evidence_excerpt": "The OpenAI FFT algorithm is definitely galactic.",
+            "qualifier": "専門家による批評・評価であり、論文著者が認めた実測結果ではない。"
+          },
+          {
+            "fact_id": "FFT4",
+            "source_id": "S2",
+            "statement": "Ben Rechtは、厳密な複素数演算を単位時間で扱う理論モデルと現実の計算機との乖離を問題視している。",
+            "evidence_excerpt": "exact complex arithmetic",
+            "qualifier": "外部の専門家の批判的解釈。"
+          }
+        ],
+        "questions": [
+          {
+            "text": "理論上のFFT高速化なのに、なぜ現実のコンピュータでは速くならないのか？",
+            "supporting_fact_ids": [
+              "FFT1",
+              "FFT2",
+              "FFT3",
+              "FFT4"
+            ]
+          },
+          {
+            "text": "『計算量が少ない』と『実行時間が短い』はどこで食い違うのか？",
+            "supporting_fact_ids": [
+              "FFT1",
+              "FFT2"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "Elastic",
+      "status": "CANDIDATE_NOT_HUMAN_VERIFIED",
+      "pack": {
+        "topic": "Your Transformer Is Secretly Elastic：再学習なしでTransformerを伸縮させる提案",
+        "sources": [
+          {
+            "source_id": "S1",
+            "title": "Your Transformer Is Secretly Elastic (research paper)",
+            "url": "https://arxiv.org/abs/2610.20588"
+          }
+        ],
+        "facts": [
+          {
+            "fact_id": "EL1",
+            "source_id": "S1",
+            "statement": "著者らは、既存の学習済みTransformerを重みの再学習なしで複数の計算予算に対応させる手法を提案している。",
+            "evidence_excerpt": "retraining-free method that elastifies pre-trained transformers",
+            "qualifier": "公開研究の提案・評価であり、あらゆるTransformerへの適用の保証ではない。"
+          },
+          {
+            "fact_id": "EL2",
+            "source_id": "S1",
+            "statement": "個々のMLPニューロンとAttention Headを共通尺度で順位付けし、異なる削減率での損失を使ってその順位を最適化する。",
+            "evidence_excerpt": "rank every individual MLP neuron and attention head jointly",
+            "qualifier": "評価対象は論文のTransformerエンコーダー群であり、すべてのAIモデルではない。"
+          },
+          {
+            "fact_id": "EL3",
+            "source_id": "S1",
+            "statement": "論文のDINOv3 ViT-H+/16で50% sparsityにした例では、4.27億パラメータを除去し、ImageNet-1k linear probingの精度低下は0.8%だった。",
+            "evidence_excerpt": "removes 427M parameters",
+            "qualifier": "特定モデル・特定評価条件の結果。すべてのモデルで同じ性能維持ではない。"
+          }
+        ],
+        "questions": [
+          {
+            "text": "学習済みのモデルを作り直さず、何を順位付けするだけで『伸縮』できるのか？",
+            "supporting_fact_ids": [
+              "EL1",
+              "EL2"
+            ]
+          },
+          {
+            "text": "半分まで削っても精度があまり落ちないのは、すべてのニューロンが等しく重要ではないからなのか？",
+            "supporting_fact_ids": [
+              "EL2",
+              "EL3"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "Claude",
+      "status": "CANDIDATE_NOT_HUMAN_VERIFIED",
+      "pack": {
+        "topic": "ClaudeがGoogle Docs・Sheets・Slidesへ直接入る意味",
+        "sources": [
+          {
+            "source_id": "S1",
+            "title": "Anthropic official: Claude now works with Google Docs, Sheets, and Slides",
+            "url": "https://claude.com/resources/articles/claude-now-works-in-google-docs-sheets-and-slides"
+          }
+        ],
+        "facts": [
+          {
+            "fact_id": "CL1",
+            "source_id": "S1",
+            "statement": "Anthropicは2026年10月6日、Google Docs・Sheets・Slides向けClaudeアドオンとファイル操作コネクタのパブリックベータを案内した。",
+            "evidence_excerpt": "public beta on all paid Claude plans",
+            "qualifier": "発表時点の有料Claudeプラン向けベータ提供であり、すべてのWorkspace管理者が導入を許可するとは限らない。"
+          },
+          {
+            "fact_id": "CL2",
+            "source_id": "S1",
+            "statement": "アドオンは開いているDocs・Sheets・Slidesのファイルにサイドバーを表示し、選択した要素などを読み取り、直接修正できる。",
+            "evidence_excerpt": "read the doc, sheet, or deck",
+            "qualifier": "アクセス権限と対象ファイルの範囲内での機能。"
+          },
+          {
+            "fact_id": "CL3",
+            "source_id": "S1",
+            "statement": "Docsでは小さな文言修正や提案カード、Sheetsでは数式・ピボットテーブル、Slidesでは既存テーマに沿ったスライド作成を説明している。",
+            "evidence_excerpt": "write formulas, build pivot tables",
+            "qualifier": "サポートされる機能の例示であり、すべてのファイル・作業の完全自動化を意味しない。"
+          },
+          {
+            "fact_id": "CL4",
+            "source_id": "S1",
+            "statement": "既定の編集モードでは変更の承認を求め、ユーザーが各変更を確認してから適用する。",
+            "evidence_excerpt": "Ask before edits",
+            "qualifier": "既定モードについての発表。別モードへの変更も可能。"
+          }
+        ],
+        "questions": [
+          {
+            "text": "AIに文章を貼り付ける時代から、開いている文書をその場で直す時代に変わるのか？",
+            "supporting_fact_ids": [
+              "CL1",
+              "CL2"
+            ]
+          },
+          {
+            "text": "AIが直接直せるなら、どこまで人間が承認すべきなのか？",
+            "supporting_fact_ids": [
+              "CL2",
+              "CL4"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
