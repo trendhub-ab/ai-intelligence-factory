@@ -1,15 +1,8 @@
 {
   "schema_version": 1,
   "purpose": "Gemini lane provider availability routing; no prompt/article content",
-  "updated_at": "2026-11-05T11:22:07.703387+00:00",
+  "updated_at": "2026-11-05T11:22:52.560718+00:00",
   "attempts": [
-    {
-      "timestamp": "2026-10-12T08:41:36.420225+00:00",
-      "model": "gemini-3.5-flash-lite",
-      "kind": "screening_batch",
-      "outcome": "success",
-      "error_type": ""
-    },
     {
       "timestamp": "2026-10-12T08:41:45.297036+00:00",
       "model": "gemini-3.5-flash-lite",
@@ -1400,6 +1393,13 @@
       "timestamp": "2026-11-05T11:21:54.609583+00:00",
       "model": "gemini-3-flash-preview",
       "kind": "quality_retry",
+      "outcome": "success",
+      "error_type": ""
+    },
+    {
+      "timestamp": "2026-11-05T11:22:41.634662+00:00",
+      "model": "gemini-3-flash-preview",
+      "kind": "deep_dive",
       "outcome": "success",
       "error_type": ""
     }
