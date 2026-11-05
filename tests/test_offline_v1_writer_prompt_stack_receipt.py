@@ -10,6 +10,7 @@ It never prints prompt text or any article and does not change pipeline.py.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import re
 from hashlib import sha1, sha256
 import json
 from pathlib import Path
