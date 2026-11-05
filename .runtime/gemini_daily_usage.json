@@ -2,20 +2,20 @@
   "counter_scopes": {
     "3fc8d8746c93f55a": {
       "models": {
-        "gemini-3.6-flash": {
-          "budget": 18,
+        "gemini-3.5-flash-lite": {
+          "budget": 450,
           "by_kind": {
-            "aiif_next_private_pilot": 8
+            "screening_batch": 1
           },
           "exhausted": false,
-          "used": 8
+          "used": 1
         }
       }
     }
   },
   "provider_project_fingerprint": "8feffa4385ed3d61",
-  "quota_date": "2026-11-04",
+  "quota_date": "2026-11-05",
   "schema_version": 3,
   "scope_kind": "repository_local",
-  "updated_at": "2026-11-04T12:00:22.186717+00:00"
+  "updated_at": "2026-11-05T11:10:30.546522+00:00"
 }
