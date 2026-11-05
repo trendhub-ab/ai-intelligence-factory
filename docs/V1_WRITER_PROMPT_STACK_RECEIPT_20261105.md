@@ -22,6 +22,25 @@ python -m pytest -q tests/test_offline_v1_writer_prompt_stack_receipt.py
 
 プロンプト自体を公開CIログへ記録しない。所定のソースが少しでも変わると `V1_SOURCE_DRIFT`、指示のレイヤー順序が変わると `V1_PROMPT_LAYER_ORDER_DRIFT` として中断する。実際のモデル送信、外部通信、生成原稿保存は行わない。
 
+## 追加の実データ構造検査（Next研究候補3テーマ）
+
+2026-11-06、Next Draft PR [#122](https://github.com/trendhub-ab/ai-intelligence-factory-next/pull/122)で作った**V1入力用の欠落なしEvidence変換**について、V1の**本物のプロンプト生成関数**をオフラインで直接呼び出す回帰を追加した。
+
+- Fixture: `tests/fixtures/next_research_candidates_20261025.json`。Next `main@704cc83a7e54228ddb39c8fe085e921929d5bbaa` の `examples/research_candidates_20261025.json` をバイト一致で複製し、元のGit blob `5cb9b83a83a68dfb550b1b6e2d8c438adf7bc7f1` を毎回確認する。元データは**人手Fact未承認の候補**であり、実Dailyの原稿でも機密資料でもない。
+- FFTの4 Fact、Elasticの3 Fact、Claudeの4 Fact＝計**11 Fact**を元のSource/URL/出典抜粋/Qualifier/質問→Fact ID対応とともにコンパクトJSONとしてV1の`source_context`へ渡す。Next側で定義した同じBoundary Markerを使う。Primary SourceはGitHub／ArXiv／OfficialVendorだけ許す。人気指標は未測定とする。
+- 実V1 `content_generation_protocol.build_decision_prompt` と、`run226`・`run228`・Yield・`run208`・A+・`run248`の**既知の編集レイヤー**を、実コードの純粋な関数として順番に適用。V1の実`evidence_context.truncate_text_context`を使い、コード既定の`12000`文字上限内での正規化・切詰めを適用する。
+- 各段階の最終**プロンプト文字列からEvidence JSONを抽出・再解析し、元Packと完全一致**をテスト。Fact/Qualifier/URLの存在と、`required_qualifiers`の帳票保持を別に確認。故意に250文字で切詰めた場合に成功を偽装せず失敗することも検証する。
+- テストは**受理前の11 Factが実V1 builder + 静的な編集レイヤーを通過するか**のみ証明する。実Daily RunのSource Context・完全な実行時引数・Live tool使用・System Instruction・Retry・API sendは対象外。**実DailyプロンプトのSHAは依然`null`**、Nextとの本番条件一致やFact承認・Writerの勝敗は未証明とする。
+- Prompt全文もEvidence本文も標準出力・GitHub Actions Logへ保存しない。Gemini・Notion・noteへ送信しない。V1 Productionと既存Runtimeのコードは変更しない。
+
+CI検証は元の `tests/test_offline_v1_writer_prompt_stack_receipt.py` 内で行う：
+
+```bash
+python -m pytest -q tests/test_offline_v1_writer_prompt_stack_receipt.py
+```
+
+なお、これはNextの研究候補という**fixtureをV1に持ち込んだ構造上のテスト**であり、実運用のV1生成記事を再現したとの主張ではない。以後の実比較には、未検証Factの人間による承認、生成設定とツール条件の統一、送信直前の暗号化されたトレース、独立の匿名評価が引き続き必要となる。
+
 ## Nextの比較PRとの関係
 
 - Next [Draft PR #121](https://github.com/trendhub-ab/ai-intelligence-factory-next/pull/121)：11月5日Ready 3本の本文品質監査。Human Appeal=`WEAK`なのにReadyになる例や、読者向け定型サマリーの固定挿入を確認。
