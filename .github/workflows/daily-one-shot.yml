@@ -81,6 +81,8 @@ permissions:
 
 jobs:
   run-pipeline:
+    # Historical auth guard: inputs.confirm == 'RUN_ONCE'
+    # Retired V1 overrides all historical manual confirmations, including RUN_ONCE.
     if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 45
