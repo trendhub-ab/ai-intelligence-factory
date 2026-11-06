@@ -1,0 +1,70 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
+name: Evidence Ledger Maintenance
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run, migrate-schema, or backfill"
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, migrate-schema, backfill]
+      limit:
+        description: "Max assessed technologies to inspect"
+        required: true
+        default: "20"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-intelligence-evidence-ledger
+  cancel-in-progress: false
+
+jobs:
+  evidence-ledger:
+    if: ${{ false }} # V1 retired 2026-11-06
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Backfill current evidence snapshots (zero Gemini)
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          ENABLE_DECISION_INTELLIGENCE_DB: "true"
+          NOTION_TECH_DATABASE_ID: ${{ secrets.NOTION_TECH_DATABASE_ID }}
+          NOTION_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_TECH_DATA_SOURCE_ID }}
+          NOTION_HISTORY_DATABASE_ID: ${{ secrets.NOTION_HISTORY_DATABASE_ID }}
+          NOTION_HISTORY_DATA_SOURCE_ID: ${{ secrets.NOTION_HISTORY_DATA_SOURCE_ID }}
+          ENABLE_EVIDENCE_LEDGER: "true"
+          NOTION_EVIDENCE_DATABASE_ID: ${{ secrets.NOTION_EVIDENCE_DATABASE_ID }}
+          NOTION_EVIDENCE_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_DATA_SOURCE_ID }}
+          NOTION_API_VERSION: "2026-03-11"
+        run: |
+          set -euo pipefail
+          mkdir -p evidence_ledger_artifacts
+          printf 'mode=%s\nlimit=%s\nrun_id=%s\n' \
+            "${{ inputs.mode }}" "${{ inputs.limit }}" "${{ github.run_id }}" \
+            > evidence_ledger_artifacts/request.txt
+          if [ "${{ inputs.mode }}" = "dry-run" ]; then
+            python backfill_evidence_ledger.py --limit "${{ inputs.limit }}" --dry-run 2>&1 | tee evidence_ledger_artifacts/run.log
+          elif [ "${{ inputs.mode }}" = "migrate-schema" ]; then
+            python backfill_evidence_ledger.py --migrate-authority-schema 2>&1 | tee evidence_ledger_artifacts/run.log
+          else
+            python backfill_evidence_ledger.py --limit "${{ inputs.limit }}" 2>&1 | tee evidence_ledger_artifacts/run.log
+          fi
+
+      - name: Upload evidence-ledger audit artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: evidence-ledger-${{ github.run_number }}-${{ inputs.mode }}
+          path: evidence_ledger_artifacts/
+          if-no-files-found: error
+          retention-days: 30
