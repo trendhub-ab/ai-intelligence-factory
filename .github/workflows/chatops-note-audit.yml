@@ -1,0 +1,101 @@
+# OWNER RETIREMENT: V1 jobs are disabled; Next remains separate.
+name: AIIF ChatOps Exact Note Audit Bridge
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+concurrency:
+  group: aiif-chatops-note-audit-control
+  cancel-in-progress: false
+
+jobs:
+  authorize-and-dispatch:
+    if: ${{ false }} # V1 retired 2026-11-06
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Re-authorize exact read-only audit command fail-closed
+        id: auth
+        env:
+          COMMAND: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          case "$COMMAND" in
+            '/aiif note audit '*)
+              sync_id="${COMMAND#'/aiif note audit '}"
+              ;;
+            *)
+              echo '::error::Refusing unknown Note audit ChatOps command'
+              exit 1
+              ;;
+          esac
+          if ! printf '%s' "${sync_id:-}" | grep -Eq '^[0-9a-fA-F]{32}$'; then
+            echo '::error::Exact 32-hex sync_id is required'
+            exit 1
+          fi
+          echo "sync_id=${sync_id,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Claim this Issue comment exactly once
+        id: claim
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          set -euo pipefail
+          endpoint="/repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}/reactions"
+          claimed="$(gh api \
+            -H 'Accept: application/vnd.github+json' \
+            "$endpoint" \
+            --paginate \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and .content == "eyes") | .id' \
+            | head -n 1)"
+          if [ -n "$claimed" ]; then
+            echo 'dispatch=false' >> "$GITHUB_OUTPUT"
+            echo 'duplicate Issue-comment delivery suppressed before audit dispatch' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "$endpoint" \
+            -f content=eyes \
+            >/dev/null
+          echo 'dispatch=true' >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch existing read-only private draft audit exactly once
+        if: steps.claim.outputs.dispatch == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYNC_ID: ${{ steps.auth.outputs.sync_id }}
+        run: |
+          set -euo pipefail
+          payload="$(printf '{"ref":"main","inputs":{"confirm":"AUDIT_NOTE_DRAFT","sync_id":"%s"}}' "$SYNC_ID")"
+          printf '%s' "$payload" | gh api \
+            --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/note-private-draft-audit.yml/dispatches" \
+            --input -
+
+      - name: Record safe read-only dispatch
+        env:
+          SYNC_ID: ${{ steps.auth.outputs.sync_id }}
+          DISPATCH: ${{ steps.claim.outputs.dispatch }}
+        run: |
+          {
+            echo '### AIIF ChatOps Exact Note Audit Bridge'
+            echo '- control issue: `#71`'
+            echo '- target branch: `main`'
+            echo "- exact private-draft read-only audit authorized for sync_id: \`$SYNC_ID\`"
+            echo "- dispatch performed by this bridge run: \`$DISPATCH\`"
+            echo '- Gemini/model calls performed by bridge: `0`'
+            echo '- draft mutation authorized: `false`'
+            echo '- Production started: `false`'
+            echo '- public note release authorized: `false`'
+          } >> "$GITHUB_STEP_SUMMARY"

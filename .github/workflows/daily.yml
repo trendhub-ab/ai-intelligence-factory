@@ -1,0 +1,68 @@
+# OWNER RETIREMENT: V1 jobs are disabled; Next remains separate.
+name: Daily Intelligence & Content Pipeline [PAUSED]
+
+# PAUSED by explicit user instruction on 2026-08-30 JST.
+# There is intentionally NO schedule trigger.
+# The only job is hard-disabled, so workflow_dispatch cannot consume Gemini, Apify, or write production data.
+# The dormant block below is a MINIMUM SAFETY CONTRACT only, not a full copy of production env settings.
+# When Daily is explicitly resumed, restore operational settings from the then-validated ONE-SHOT workflow
+# and keep the zero-API workflow contract tests green; do not infer production defaults from this paused stub.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ai-intelligence-gemini-budget
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run-pipeline:
+    if: ${{ false }} # V1 retired 2026-11-06
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Daily is paused
+        run: echo "Daily Intelligence & Content Pipeline is paused until explicit user instruction to resume."
+        env:
+          # Dormant minimum safety contract. This job never executes while PAUSED.
+          GEMINI_QUOTA_PROJECT_ID: ${{ vars.GEMINI_QUOTA_PROJECT_ID || secrets.GEMINI_QUOTA_PROJECT_ID }}
+          GEMINI_QUOTA_FALLBACK_ID: ${{ github.repository }}
+          GEMINI_SCREENING_CALL_TIMEOUT_SECONDS: "60"
+          GEMINI_DEEP_DIVE_PER_RUN_REQUEST_BUDGET: "12"
+          GEMINI_MODEL_TIMEOUT_CIRCUIT_BREAKER_THRESHOLD: "2"
+          PRODUCT_REVIEW_MAX_PER_RUN: "0"
+          PORTFOLIO_DIVERSITY_TOLERANCE: "8"
+
+      - name: Dormant production entrypoint contract
+        if: ${{ false }}
+        run: python production_pipeline.py
+        env:
+          AIIF_RUN_MODE: "full"
+          AIIF_X_DISCOVERY_ENABLED: "true"
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          APIFY_ACTOR_ID: "xquik~x-tweet-scraper"
+          APIFY_MAX_CHARGE_USD: "0.05"
+          X_DISCOVERY_MAX_RECORDS: "100"
+
+      - name: Dormant portfolio review contract
+        if: ${{ false }}
+        run: python daily_portfolio_review.py
+
+      - name: Dormant monthly digest private artifact contract
+        if: ${{ false }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: monthly-digest-${{ github.run_number }}
+          path: monthly_digests/
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Safe daily operational receipt
+        if: ${{ false }}
+        env:
+          SAFE_JOB_STATUS: ${{ job.status }}
+        run: |
+          python operational_output_contract.py --component daily --status "$SAFE_JOB_STATUS"
