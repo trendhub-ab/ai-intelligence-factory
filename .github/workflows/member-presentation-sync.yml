@@ -1,0 +1,139 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
+name: Member Presentation Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_full_body_sync:
+        description: 'Force a full Member DB body scan/migration'
+        required: false
+        default: false
+        type: boolean
+  workflow_run:
+    # The presentation DB is derived from the Subscriber Technology/Decision Brief bridge.
+    # Normal Daily fan-out follows that bridge. A presentation-only full migration
+    # is separately authorized by the [member-ux-refresh] main commit marker and
+    # waits for successful full Integration CI; it shares the same writer lock.
+    workflows:
+      - Subscriber Decision Brief Sync
+      - Integration Reconciliation CI
+    types: [completed]
+
+# Transitive Daily contract: Subscriber Decision Brief Sync directly follows both
+# Daily Intelligence & Content Pipeline and Daily Intelligence & Content Pipeline [ONE-SHOT].
+# This workflow intentionally follows that bridge instead of listening to either source directly.
+# This workflow and Subscriber Decision Brief write the same member product through
+# NOTION_DECISION_INTELLIGENCE_API_KEY. Keep a single cross-workflow writer lock so
+# source->brief->presentation writes cannot overlap or leave stale member rows.
+concurrency:
+  group: member-derived-notion-writes
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  sync:
+    if: ${{ false }} # V1 retired 2026-11-06
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # Only the explicit migration route is pinned to the CI-verified commit.
+          ref: ${{ github.event.workflow_run.name == 'Integration Reconciliation CI' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Member UX unit tests
+        run: |
+          python -m unittest tests/test_run158_member_presentation_sync.py
+          python -m unittest tests/test_run166_member_page_body.py
+          python -m unittest tests/test_run169_member_ux_guard.py
+          python -m unittest tests/test_run169_1_member_body_fast.py
+          python -m unittest tests/test_run170_member_human_language_ux.py
+          python -m unittest tests/test_run170_1_member_copy_role_separation.py
+          python -m unittest tests/test_run211_member_sync_ordering.py
+          python -m unittest tests/test_run212_member_review_copy.py
+          python -m unittest tests/test_run213_member_topic_specificity.py
+          python -m unittest tests/test_run214_member_action_specificity.py
+          python -m unittest tests/test_run215_member_action_final_dedup.py
+          python -m unittest tests/test_run219_member_human_language_ui.py
+          python -m unittest tests/test_run220_member_db_canonical_cutover.py
+          python -m unittest tests/test_run221_member_db_host_isolation.py
+          python -m unittest tests/test_member_home_physical_host_migration.py
+          python -m unittest tests/test_run225_stock_lifecycle.py
+          python -m unittest tests/test_run225_member_lifecycle_ui.py
+          python -m unittest tests/test_run250_member_client_action_product.py
+          python -m unittest tests/test_run270_proposal_first_member_surface.py
+          python -m unittest tests/test_run307_use_decision_member_surface.py
+          python -m unittest tests/test_member_offer_copy.py
+          python -m unittest tests/test_member_experience_quality_audit.py
+          python -m unittest tests/test_member_reader_quality_policy.py
+          python -m unittest tests/test_run271_member_body_delta_sync.py
+          python -m unittest tests/test_run271_1_member_body_checkpoint.py
+          python -m unittest tests/test_member_monthly_decision_brief_sync.py
+          python -m unittest tests/test_member_customer_surface_contract.py
+          python member_surface_coverage_guard.py
+
+      - name: Resolve canonical member DB
+        run: python provision_member_presentation_db.py
+        env:
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          MEMBER_PRESENTATION_DB_TITLE: 'AI・技術一覧｜判断DB'
+          MEMBER_PRESENTATION_CANONICAL_DATABASE_ID: 'b2787ee0-5b58-4ca7-b4eb-774f60237f1f'
+          MEMBER_PRESENTATION_CANONICAL_DATA_SOURCE_ID: '7e4ceaa7-7bdf-4c4b-bf78-c2cccac44404'
+          MEMBER_PRESENTATION_API_HOST_PAGE_ID: '3c5479ff-dca9-8103-bff0-f2d5f408d35f'
+          MEMBER_PRESENTATION_ALLOW_CREATE: 'false'
+
+      - name: Resolve previous successful member sync checkpoint
+        run: python member_body_delta_checkpoint.py
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Sync clean member DB with lifecycle-aware Use-Decision UI
+        run: python run219_member_human_language_ui.py presentation
+        env:
+          TZ: 'Asia/Tokyo'
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_SUBSCRIBER_TECH_DATABASE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATABASE_ID }}
+          NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID: ${{ secrets.NOTION_SUBSCRIBER_TECH_DATA_SOURCE_ID }}
+          DI_PRODUCT_TIMEZONE: 'Asia/Tokyo'
+          MEMBER_HOME_MAX: '3'
+          MEMBER_HOME_DIVERSITY_TOLERANCE: '3'
+          STOCK_FRESH_DAYS: '30'
+          STOCK_ARCHIVE_DAYS: '90'
+
+      - name: Sync readable member page bodies for general use decisions
+        run: python run219_member_human_language_ui.py body
+        env:
+          TZ: 'Asia/Tokyo'
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          MEMBER_BODY_CHANGED_SINCE: ${{ env.MEMBER_BODY_CHANGED_SINCE }}
+          MEMBER_BODY_FORCE_FULL: ${{ github.event.workflow_run.name == 'Integration Reconciliation CI' || github.run_attempt > 1 || github.event.inputs.force_full_body_sync == 'true' }}
+
+      - name: Refresh paid monthly Decision Brief from the current member DB
+        run: python member_monthly_decision_brief_sync.py
+        env:
+          TZ: 'Asia/Tokyo'
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_MEMBER_PRESENTATION_DATABASE_ID: ${{ env.NOTION_MEMBER_PRESENTATION_DATABASE_ID }}
+          NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID: ${{ env.NOTION_MEMBER_PRESENTATION_DATA_SOURCE_ID }}
+          MEMBER_MONTHLY_BRIEF_PAGE_ID: '3d0479ff-dca9-81de-b614-fef528d2f32c'
+          MEMBER_MONTHLY_BRIEF_TOP_LIMIT: '5'
+          MEMBER_MONTHLY_BRIEF_CHANGE_LIMIT: '5'
+          DI_PRODUCT_TIMEZONE: 'Asia/Tokyo'
