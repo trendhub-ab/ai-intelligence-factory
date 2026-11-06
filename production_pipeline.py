@@ -230,10 +230,9 @@ def _workflow_dispatch_mode() -> str:
 
 
 def main() -> None:
-    # V1 LIVE retirement is unconditional. Only the hermetic, provider-free
-    # synthetic regression path is permitted for GitHub branch protection.
-    if os.environ.get("SYNTHETIC_REGRESSION_MODE", "").strip().lower() not in {"1", "true"}:
-        raise RuntimeError("AIIF_V1_RETIRED: V1 production execution disabled; use AIIF Next")
+    # Owner-directed V1 retirement. No mode, secret, environment override or
+    # synthetic test setting may execute this legacy pipeline.
+    raise RuntimeError("AIIF_V1_RETIRED: legacy V1 execution is disabled; use AIIF Next")
     mode = _workflow_dispatch_mode()
     if mode == "pending_retry_validation":
         from pending_retry_validation import main as run_pending_retry_validation
