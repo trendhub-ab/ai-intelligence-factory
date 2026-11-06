@@ -1,18 +1,23 @@
 # AIIF V1 retired from production — 2026-11-06 JST
 
-Owner direction: V1 is no longer needed. Its GitHub Actions operational and CI workflows were removed from the default-branch tree (85 workflow definitions). The **separate** `trendhub-ab/ai-intelligence-factory-next` repository is unaffected.
+Owner directive: V1 is obsolete. Prevent any V1 production run while keeping the separate AIIF Next repository unchanged.
 
-## Safety / scope
-- This is not a deletion of articles, Notion pages, note drafts, credentials or production data.
-- Existing history remains recoverable in Git.
-- Deleting all default-branch workflow definitions prevents normal V1 GitHub Actions schedules, workflow_dispatch, issue/ChatOps entrypoints, fan-out chains and workflow_run triggers from initiating via the default branch.
-- This commit does not stop any already-running job; last inspected V1 in_progress count: 0.
-- Other branches or independent external computers/automation cannot be ruled out by repository file changes alone.
-- For an organization-level hard shutdown, switch off GitHub Actions for this repository in Settings → Actions → General → Actions permissions; remove any external scheduler/webhook, and revoke V1-only service credentials after confirming Next uses separate credentials.
-- Do not re-enable or rerun V1 without a fresh explicit owner decision. This repository should be treated as read-only legacy history.
-- Next publication pipeline is not automatically promoted or proven live by this retirement.
+## Runtime deactivation
 
-## Associated checks
-- V1 workflow inventory: 85 YAML definitions as of `main@3276b740c8a525cd47ec9ebe9e6057044137b551`.
-- Legacy V1 prompt-audit Draft PR #914 must remain unmerged because it no longer serves the target product.
-- New Next development should proceed exclusively in its separate repository.
+- All **81 non-required-CI GitHub Actions workflows** are preserved for history/tests but **every job** has a job-level `if: ${{ false }}` fail-closed guard on the default branch. These include Daily, manual ONE-SHOT, ChatOps, issue reservation, provider/model calls, note drafts, Notion/DB synchronizations, publication reconciliation, member workflows and maintenance jobs. No V1 operational job can run via the default-branch configuration.
+- Four **strictly offline safety/CI workflows** stay usable for the protected branch's required status checks:
+  `integration-reconciliation-ci.yml`, `p0b-offline-verification.yml`,
+  `repository-falsification.yml`, `notion-access-policy-guard.yml`.
+  They must not execute V1 production operations.
+- Direct legacy Python entrypoints `production_pipeline.main()` and `pipeline.main()` raise `AIIF_V1_RETIRED` before any data production or provider call. There is **no override flag**.
+
+## Preservation and remaining controls
+
+- No article, Notion page, note draft, secret, research data, repository history or Next code is removed by this shutdown.
+- Audit-only past V1 PR #914 should remain unmerged; it is superseded by the retirement.
+- Last checked running V1 Actions jobs before implementation: zero; a stale September CI job was queued.
+- This repository-level stop is not GitHub's **server-side repository Actions disable** setting. Another historical branch may still contain executable workflow code; independent external scripts, schedules and hosts cannot be ruled out by changes to `main` alone.
+- For defense-in-depth, disable GitHub Actions in this V1 repository's Settings → Actions → General → Actions permissions (and review all branches) and cancel outstanding V1 runs as appropriate. Stop any external scheduler/webhook, then revoke V1-only credentials once their independence from Next is verified.
+- There must be no automatic migration to Next; its production readiness remains a separate decision.
+
+Do not restore any V1 runtime without a fresh explicit owner directive. Treat the V1 repository as legacy read-only history.
