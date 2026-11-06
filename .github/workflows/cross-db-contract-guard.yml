@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs are disabled; Next remains separate.
 name: Cross DB Contract Guard
 
 on:
@@ -69,7 +70,7 @@ permissions:
 
 jobs:
   unit-tests:
-    if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -90,9 +91,7 @@ jobs:
           python -m unittest tests/test_product_review_provider_lock.py
 
   live-schema-contract:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push'
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -139,11 +138,7 @@ jobs:
           NOTION_EVIDENCE_DATA_SOURCE_ID: ${{ secrets.NOTION_EVIDENCE_DATA_SOURCE_ID }}
 
   live-member-contract:
-    if: >-
-      github.event_name == 'workflow_run' &&
-      github.event.workflow_run.name == 'Member Presentation Sync' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch == 'main'
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

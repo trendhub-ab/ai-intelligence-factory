@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs are disabled; Next remains separate.
 name: Daily Intelligence & Content Pipeline [PAUSED]
 
 # PAUSED by explicit user instruction on 2026-08-30 JST.
@@ -18,7 +19,7 @@ permissions:
 
 jobs:
   run-pipeline:
-    if: ${{ false }}
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 45
 

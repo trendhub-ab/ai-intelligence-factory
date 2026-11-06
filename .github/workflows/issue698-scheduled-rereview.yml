@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Stage 4 Scheduled Verified Re-Review
 
 on:
@@ -12,7 +13,7 @@ concurrency:
 
 jobs:
   bounded-rereview:
-    if: github.actor == 'trendhub-ab'
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:

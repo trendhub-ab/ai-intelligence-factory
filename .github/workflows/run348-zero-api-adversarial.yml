@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Run348 Zero-API Adversarial Editorial Lab
 
 on:
@@ -17,6 +18,7 @@ permissions:
 
 jobs:
   adversarial-zero-api:
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:

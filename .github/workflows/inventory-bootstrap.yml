@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Subscriber Inventory Bootstrap
 run-name: Subscriber Inventory Bootstrap [${{ inputs.mode }}]
 
@@ -42,7 +43,7 @@ concurrency:
 
 jobs:
   bootstrap:
-    if: github.ref == 'refs/heads/main'
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

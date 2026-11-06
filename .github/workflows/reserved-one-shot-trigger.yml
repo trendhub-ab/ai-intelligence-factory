@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Reserved ONE-SHOT Trigger
 
 # Bridge for ChatGPT reservations.
@@ -14,10 +15,7 @@ permissions:
 
 jobs:
   dispatch:
-    if: >-
-      github.event.issue.author_association == 'OWNER' &&
-      contains(github.event.issue.labels.*.name, 'aiif-reserved-run') &&
-      startsWith(github.event.issue.title, '[AIIF RESERVED RUN]')
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

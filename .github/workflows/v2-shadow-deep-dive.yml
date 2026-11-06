@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: V2 Provider-Backed Shadow Variable Fallback [MAX SEVEN REQUESTS]
 
 on:
@@ -18,7 +19,7 @@ permissions:
 
 jobs:
   observe:
-    if: ${{ inputs.confirm == 'RUN_V2_SHADOW_DEEP_DIVE' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

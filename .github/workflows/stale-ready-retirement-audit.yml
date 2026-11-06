@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Stale Ready Retirement Audit
 on:
   workflow_dispatch:
@@ -5,6 +6,7 @@ permissions:
   contents: read
 jobs:
   audit:
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

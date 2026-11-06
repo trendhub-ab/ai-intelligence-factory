@@ -230,6 +230,9 @@ def _workflow_dispatch_mode() -> str:
 
 
 def main() -> None:
+    # Owner-directed V1 retirement. No mode, secret, environment override or
+    # synthetic test setting may execute this legacy pipeline.
+    raise RuntimeError("AIIF_V1_RETIRED: legacy V1 execution is disabled; use AIIF Next")
     mode = _workflow_dispatch_mode()
     if mode == "pending_retry_validation":
         from pending_retry_validation import main as run_pending_retry_validation

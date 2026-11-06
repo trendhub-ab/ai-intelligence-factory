@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Screening Stock Lifecycle [ONE-SHOT]
 
 # Run225: zero-Gemini stock aging maintenance.
@@ -30,6 +31,7 @@ concurrency:
 
 jobs:
   reconcile:
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

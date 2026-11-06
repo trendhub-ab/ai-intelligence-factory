@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Synthetic Regression Suite
 # Run264: keep the standalone regression signal on the same hermetic, locked test contract as Integration CI.
 
@@ -33,6 +34,7 @@ concurrency:
 
 jobs:
   regression:
+    if: ${{ false }} # V1 retired 2026-11-06
     name: Synthetic Regression (${{ github.event.inputs.suite || 'smoke' }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20

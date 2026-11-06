@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Fresh Source Preflight [ZERO GEMINI]
 
 # Manual only. Reads source endpoints and authoritative Notion identities;
@@ -33,7 +34,7 @@ concurrency:
 
 jobs:
   source-preflight:
-    if: ${{ inputs.confirm == 'RUN_READ_ONLY_PREFLIGHT' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

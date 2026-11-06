@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Real Article Regression Test
 
 on:
@@ -21,6 +22,7 @@ permissions:
 
 jobs:
   regression:
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

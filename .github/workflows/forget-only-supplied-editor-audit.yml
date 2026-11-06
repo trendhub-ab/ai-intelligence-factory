@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Forget-Only Supplied Editor Identity Audit [READ-ONLY]
 
 on:
@@ -14,13 +15,7 @@ concurrency:
 
 jobs:
   preflight:
-    if: >-
-      github.run_attempt == 1 &&
-      github.event.issue.number == 71 &&
-      github.event.issue.pull_request == null &&
-      github.event.comment.user.login == 'trendhub-ab' &&
-      github.actor == 'trendhub-ab' &&
-      github.event.comment.body == '/aiif audit forget-only supplied-editor-identity 3f4479ffdca981ca9220cf15ac374db6'
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 12
     outputs:
@@ -48,7 +43,7 @@ jobs:
         run: echo 'start_vm=true' >> "$GITHUB_OUTPUT"
 
   start-cloud-vm:
-    if: ${{ needs.preflight.outputs.start_vm == 'true' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -74,7 +69,7 @@ jobs:
           fi
 
   private-draft-audit:
-    if: ${{ needs.preflight.outputs.start_vm == 'true' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: [preflight, start-cloud-vm]
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
     timeout-minutes: 22
@@ -108,7 +103,7 @@ jobs:
         run: xvfb-run -a python -m operations.forget_only_supplied_editor_audit
 
   stop-cloud-vm:
-    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: [preflight, start-cloud-vm, private-draft-audit]
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -131,7 +126,7 @@ jobs:
           [ "$state" != RUNNING ] || gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
 
   report:
-    if: ${{ always() && github.event.issue.number == 71 && github.event.comment.user.login == 'trendhub-ab' && github.event.comment.body == '/aiif audit forget-only supplied-editor-identity 3f4479ffdca981ca9220cf15ac374db6' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: [preflight, start-cloud-vm, private-draft-audit, stop-cloud-vm]
     runs-on: ubuntu-latest
     timeout-minutes: 5

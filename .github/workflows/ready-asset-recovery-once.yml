@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Ready Asset Persistence Recovery [ONE-SHOT]
 
 on:
@@ -22,7 +23,7 @@ concurrency:
 
 jobs:
   recover:
-    if: ${{ inputs.confirm == 'RUN_ONCE' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:

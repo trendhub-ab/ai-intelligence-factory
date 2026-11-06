@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Run269 Live Acquisition Smoke
 
 on:
@@ -25,6 +26,7 @@ concurrency:
 
 jobs:
   live-acquisition-smoke:
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:

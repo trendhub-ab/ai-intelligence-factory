@@ -1,34 +1,19 @@
+# AIIF V1 is retired. This check verifies retirement, not historical V1 runtime quality.
+# No Gemini, Apify, Notion, note, cloud runners, or production setup is invoked.
 name: Notion Access Policy Guard
-
 on:
-  workflow_dispatch:
   pull_request:
+    branches: [main]
   push:
     branches: [main]
-    paths:
-      - '**/*.py'
-      - '**/*.yml'
-      - '**/*.yaml'
-      - 'NOTION_ACCESS_POLICY.md'
-      - 'notion_audit_views.json'
-
 permissions:
   contents: read
-
 jobs:
   notion-access-policy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - name: Install minimal dependency
-        run: pip install requests
-      - name: Unit tests
-        run: |
-          python -m unittest tests.test_notion_access_policy_guard -v
-          python -m unittest tests.test_public_db_contract_guard -v
-      - name: Enforce Public API / View-first policy
-        run: python notion_access_policy_guard.py
+      - name: Checkout shutdown branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Verify V1 retirement is fail-closed
+        run: python v1_retirement_contract_guard.py

@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs are disabled; Next remains separate.
 name: AIIF ChatOps V3 P2 Replay
 
 # Dedicated owner-only bridge. No Gemini API call is made by this workflow.
@@ -16,13 +17,7 @@ concurrency:
 
 jobs:
   authorize-and-dispatch:
-    if: >-
-      github.run_attempt == 1 &&
-      github.event.issue.number == 71 &&
-      github.event.issue.pull_request == null &&
-      github.event.comment.user.login == 'trendhub-ab' &&
-      github.actor == 'trendhub-ab' &&
-      github.event.comment.body == '/aiif v3 p2 run'
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

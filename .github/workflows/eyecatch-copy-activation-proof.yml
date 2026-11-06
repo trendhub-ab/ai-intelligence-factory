@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 # Explicit manual, main-only, provider-free proof of Production Fernet runtime-state cache.
 # Never run user content, Daily, Gemini, Notion or note from this workflow.
 name: Eyecatch Copy Activation Proof
@@ -14,7 +15,7 @@ concurrency:
 
 jobs:
   encrypted-writer:
-    if: github.ref == 'refs/heads/main' && github.repository == 'trendhub-ab/ai-intelligence-factory'
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     permissions:
@@ -51,6 +52,7 @@ jobs:
           PY
 
   encrypted-reader:
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: encrypted-writer
     runs-on: ubuntu-24.04
     timeout-minutes: 8
@@ -84,7 +86,7 @@ jobs:
           PY
 
   remove-synthetic-canary:
-    if: ${{ always() && needs.encrypted-writer.result != 'skipped' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: [encrypted-writer, encrypted-reader]
     runs-on: ubuntu-24.04
     timeout-minutes: 8

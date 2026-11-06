@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Sync Member Public DB
 
 on:
@@ -5,6 +6,7 @@ on:
 
 jobs:
   sync:
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

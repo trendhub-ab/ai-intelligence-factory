@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Save exact member onboarding server revision
 
 on:
@@ -17,6 +18,7 @@ concurrency:
 
 jobs:
   preflight:
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -39,7 +41,7 @@ jobs:
           echo 'authorized=true' >> "$GITHUB_OUTPUT"
 
   start-cloud-vm:
-    if: ${{ needs.preflight.outputs.authorized == 'true' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -65,7 +67,7 @@ jobs:
           fi
 
   save-and-prove:
-    if: ${{ needs.preflight.outputs.authorized == 'true' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: [preflight, start-cloud-vm]
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
     timeout-minutes: 15
@@ -112,7 +114,7 @@ jobs:
           PY
 
   stop-cloud-vm:
-    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: [preflight, start-cloud-vm, save-and-prove]
     runs-on: ubuntu-latest
     timeout-minutes: 10

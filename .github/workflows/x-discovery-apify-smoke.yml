@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: X Discovery Apify Smoke
 
 on:
@@ -28,6 +29,7 @@ permissions:
 
 jobs:
   apify-smoke:
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 8
     env:

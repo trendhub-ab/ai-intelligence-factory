@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Audit existing note Private Draft
 
 on:
@@ -21,6 +22,7 @@ concurrency:
 
 jobs:
   preflight:
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -81,7 +83,7 @@ jobs:
           PY
 
   start-cloud-vm:
-    if: ${{ needs.preflight.outputs.should_start_vm == 'true' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -131,7 +133,7 @@ jobs:
           echo 'Persistent note VM is running for a read-only draft audit.'
 
   audit-private-draft:
-    if: ${{ needs.preflight.outputs.should_start_vm == 'true' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: [preflight, start-cloud-vm]
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
     timeout-minutes: 15
@@ -267,7 +269,7 @@ jobs:
           PY
 
   stop-cloud-vm:
-    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: [preflight, start-cloud-vm, audit-private-draft]
     runs-on: ubuntu-latest
     timeout-minutes: 10

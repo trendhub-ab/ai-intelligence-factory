@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: V2 Manual Shadow Observation [ZERO MODEL]
 
 on:
@@ -14,7 +15,7 @@ permissions:
 
 jobs:
   observe:
-    if: ${{ inputs.confirm == 'RUN_V2_SHADOW_OBSERVATION' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs are disabled; Next remains separate.
 name: AIIF ChatOps ONE-SHOT Bridge
 
 # Safe bridge from the dedicated GitHub control issue to reviewed manual workflows.
@@ -18,37 +19,9 @@ concurrency:
 
 jobs:
   authorize-and-dispatch:
+    if: ${{ false }} # V1 retired 2026-11-06
     # Defense layer 1: reject every event except an exact command from the repository owner
     # on the dedicated non-PR control issue. Manual re-runs are blocked by run_attempt == 1.
-    if: >-
-      github.run_attempt == 1 &&
-      github.event.issue.number == 71 &&
-      github.event.issue.pull_request == null &&
-      github.event.comment.user.login == 'trendhub-ab' &&
-      github.actor == 'trendhub-ab' &&
-      (github.event.comment.body == '/aiif run article_validation' ||
-       github.event.comment.body == '/aiif run pending_retry_validation' ||
-       github.event.comment.body == '/aiif run ready_rescue_validation' ||
-       github.event.comment.body == '/aiif run production_e2e_validation' ||
-       github.event.comment.body == '/aiif run production_e2e_preflight' ||
-       github.event.comment.body == '/aiif run full' ||
-       github.event.comment.body == '/aiif run local_skills_canary_validation' ||
-       github.event.comment.body == '/aiif run local_skills_canary_github' ||
-       github.event.comment.body == '/aiif run local_skills_canary_hackernews' ||
-       github.event.comment.body == '/aiif run local_skills_canary_arxiv' ||
-       github.event.comment.body == '/aiif run local_skills_canary_officialvendor' ||
-       github.event.comment.body == '/aiif run local_skills_production_validation' ||
-       github.event.comment.body == '/aiif run x_discovery_stage2' ||
-       github.event.comment.body == '/aiif run stale_ready_portfolio_audit' ||
-       github.event.comment.body == '/aiif run v2_shadow_observation' ||
-       github.event.comment.body == '/aiif run v2_shadow_deep_dive' ||
-       github.event.comment.body == '/aiif run p5_ablation_once' ||
-       startsWith(github.event.comment.body, '/aiif run article_validation ') ||
-       startsWith(github.event.comment.body, '/aiif eyecatch finalize ') ||
-       startsWith(github.event.comment.body, '/aiif note body_resync ') ||
-       startsWith(github.event.comment.body, '/aiif note cover_apply ') ||
-       startsWith(github.event.comment.body, '/aiif note regenerate ') ||
-       startsWith(github.event.comment.body, '/aiif note regenerate_resume '))
     runs-on: ubuntu-latest
     timeout-minutes: 5
 

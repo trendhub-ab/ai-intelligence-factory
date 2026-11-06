@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Note Failure Snapshot
 
 on:
@@ -12,6 +13,7 @@ concurrency:
 
 jobs:
   start-cloud-vm:
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -48,6 +50,7 @@ jobs:
           echo "VM start request completed; waiting for self-hosted runner."
 
   collect-snapshot:
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: start-cloud-vm
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
     timeout-minutes: 10
@@ -74,7 +77,7 @@ jobs:
           PYSAFE
 
   stop-cloud-vm:
-    if: ${{ always() }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: [start-cloud-vm, collect-snapshot]
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Workflow Reference Guard
 
 on:
@@ -19,6 +20,7 @@ permissions:
 
 jobs:
   validate:
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

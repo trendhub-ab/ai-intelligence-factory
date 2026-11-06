@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Update exact note profile biography
 
 on:
@@ -17,6 +18,7 @@ concurrency:
 
 jobs:
   preflight:
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -45,7 +47,7 @@ jobs:
           echo 'authorized=true' >> "$GITHUB_OUTPUT"
 
   start-cloud-vm:
-    if: ${{ needs.preflight.outputs.authorized == 'true' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -91,7 +93,7 @@ jobs:
           fi
 
   update-profile:
-    if: ${{ needs.preflight.outputs.authorized == 'true' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: [preflight, start-cloud-vm]
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
     timeout-minutes: 15
@@ -161,7 +163,7 @@ jobs:
           path: ${{ runner.temp }}/run330-note-profile-update.json
 
   stop-cloud-vm:
-    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: [preflight, start-cloud-vm, update-profile]
     runs-on: ubuntu-latest
     timeout-minutes: 10

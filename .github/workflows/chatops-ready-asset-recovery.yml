@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs are disabled; Next remains separate.
 name: Ready Asset Recovery ChatOps Bridge
 
 on:
@@ -15,13 +16,7 @@ concurrency:
 
 jobs:
   dispatch:
-    if: >-
-      github.run_attempt == 1 &&
-      github.event.issue.number == 71 &&
-      github.event.issue.pull_request == null &&
-      github.event.comment.user.login == 'trendhub-ab' &&
-      github.actor == 'trendhub-ab' &&
-      startsWith(github.event.comment.body, '/aiif ready asset_recovery ')
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 5
 

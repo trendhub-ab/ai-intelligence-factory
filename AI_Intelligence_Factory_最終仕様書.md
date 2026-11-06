@@ -1,12 +1,14 @@
 # AI Intelligence Factory — 現行Production仕様
 
-仕様最終変更日: **2026-10-26**
-Production最終照合日: **2026-11-01**
+仕様最終変更日: **2026-11-06**
+Production最終照合日: **2026-11-06**
 Production Source of Truth: **`main`**
 Canonical Specification: **本ファイル**
-Production Contract Fingerprint: **`b0c1f1b770f06298d2d93637ab026563659556f0bf95ee6f9173c8fb9e67e835`**
+Production Contract Fingerprint: **`63e23f988ffa6330eaa5d39b9c1f4a48a38675c9bd3cc240d243281f43405841`**
 実装監査基準SHA: **`774211333c9103d7bed92d46fa6d2824ec521953`**
 
+> **V1 RETIRED / オーナー指示 2026-11-06（最優先）**：このリポジトリ `trendhub-ab/ai-intelligence-factory` のV1本番は終了する。81の運用ワークフローは全ジョブを `if: ${{ false }}` で停止し、残す4本はGitHub保護ルールのためのオフラインCIのみ。主要実行入口 `production_pipeline.main()` / `pipeline.main()` も無条件で `AIIF_V1_RETIRED` を出して停止する。従前の運用説明・記事配送フロー・復旧フローは**歴史的仕様**であり、稼働指示ではない。この退役方針は以下すべての章に優先する。詳細は `V1_RETIRED.md`。別リポジトリのAIIF Nextは無変更。
+>
 > 本書は、現在のAI Intelligence Factory（AIIF）がProductionで「何を実行し、何を禁止し、どこをFail-Closedにするか」を示す唯一の全体仕様入口である。
 > 実装監査基準SHAは、本書の意味内容を人間が最後に横断照合した`main`の基準点である。Production Contract Fingerprintは、現行Productionの実行コード・workflow・runtime asset等の実バイトから機械計算し、仕様書自身・tests・docsは含めない。mergeでHEAD SHAが進んでも、Production bytesが同一ならFingerprintは同一である。
 > 過去のRun番号、検証レポート、Recovery文書、`docs/reference/`、`docs/archive/`、Git履歴は設計理由・監査証跡として参照できるが、現在の実装・安全契約を上書きしない。

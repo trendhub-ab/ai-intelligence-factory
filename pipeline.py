@@ -10077,6 +10077,9 @@ def process_article_backlog(pending_items: list[dict] | None, generated_count: i
 
 
 def main():
+    # Owner-directed V1 retirement. No mode, secret, environment override or
+    # synthetic test setting may execute this legacy pipeline.
+    raise RuntimeError("AIIF_V1_RETIRED: legacy V1 execution is disabled; use AIIF Next")
     if PUBLIC_DB_SYNC_MODE:
         sync_public_approved_to_member_db()
         logger.info("[PUBLIC SYNC COMPLETE] Gemini APIは使用していません。")

@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: P0-B Creation Unknown Read-Only Audit
 
 on:
@@ -15,13 +16,7 @@ concurrency:
 
 jobs:
   start-cloud-vm:
-    if: >-
-      github.run_attempt == 1 &&
-      github.event.issue.number == 71 &&
-      github.event.issue.pull_request == null &&
-      github.event.comment.user.login == 'trendhub-ab' &&
-      github.actor == 'trendhub-ab' &&
-      github.event.comment.body == '/aiif note audit creation_unknown 40a479ffdca981efb47bc5fe5fee1da9'
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 12
     permissions:
@@ -76,6 +71,7 @@ jobs:
           exit 1
 
   read-only-audit:
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: start-cloud-vm
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
     timeout-minutes: 18
@@ -137,7 +133,7 @@ jobs:
           # The private result includes a draft identity if one is found. Never upload it.
 
   stop-cloud-vm:
-    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: [start-cloud-vm, read-only-audit]
     runs-on: ubuntu-latest
     timeout-minutes: 12

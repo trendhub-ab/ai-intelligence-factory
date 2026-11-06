@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Create note Draft
 
 on:
@@ -34,6 +35,7 @@ concurrency:
 
 jobs:
   preflight:
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -130,7 +132,7 @@ jobs:
           PY
 
   start-cloud-vm:
-    if: ${{ inputs.prepare_only == false && needs.preflight.outputs.should_start_vm == 'true' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -206,7 +208,7 @@ jobs:
           echo "Exactly one registered aiif-note-cloud runner is online."
 
   create-draft:
-    if: ${{ inputs.prepare_only == false && needs.preflight.outputs.should_start_vm == 'true' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: [preflight, start-cloud-vm]
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
     timeout-minutes: 25
@@ -408,7 +410,7 @@ jobs:
           PY
 
   stop-cloud-vm:
-    if: ${{ always() && inputs.prepare_only == false && needs.preflight.outputs.should_start_vm == 'true' && needs.start-cloud-vm.result != 'skipped' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: [preflight, start-cloud-vm, create-draft]
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs are disabled; Next remains separate.
 name: Editorial Engine v3 P1 — Manual C-only Proof
 
 # Independent, default-branch entrypoint. The experimental V3 branch stays Draft/NO-GO.
@@ -24,8 +25,8 @@ permissions:
 
 jobs:
   c-only-proof:
+    if: ${{ false }} # V1 retired 2026-11-06
     name: Pinned V3 P1 C-only bounded proof
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirm == 'RUN_V3_P1_C_ONLY' && github.run_attempt == 1 }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     concurrency:

@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Note Cloud Runner Diagnostic
 
 on:
@@ -15,7 +16,7 @@ concurrency:
 
 jobs:
   diagnose:
-    if: ${{ github.event.issue.number == 71 && github.event.comment.body == '/aiif diagnose note-cloud-runner' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 14
     env:

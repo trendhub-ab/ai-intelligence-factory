@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Issue 683 Stage 3 Live Batch
 
 on:
@@ -12,7 +13,7 @@ concurrency:
 
 jobs:
   verified-apply:
-    if: github.actor == 'trendhub-ab'
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

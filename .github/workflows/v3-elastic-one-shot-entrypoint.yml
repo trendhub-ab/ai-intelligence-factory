@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: V3 Elastic One-Shot C Proof
 on:
   workflow_dispatch:
@@ -16,7 +17,7 @@ concurrency:
 
 jobs:
   proof:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirm == 'RUN_ELASTIC_ONCE' && github.run_attempt == 1 }}
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

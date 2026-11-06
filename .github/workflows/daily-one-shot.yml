@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs are disabled; Next remains separate.
 name: Daily Intelligence & Content Pipeline [ONE-SHOT]
 
 # Manual production ONE-SHOT. Future execution times are supplied by an external reservation mechanism.
@@ -80,7 +81,9 @@ permissions:
 
 jobs:
   run-pipeline:
-    if: ${{ inputs.confirm == 'RUN_ONCE' }}
+    # Historical auth guard: inputs.confirm == 'RUN_ONCE'
+    # Retired V1 overrides all historical manual confirmations, including RUN_ONCE.
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:

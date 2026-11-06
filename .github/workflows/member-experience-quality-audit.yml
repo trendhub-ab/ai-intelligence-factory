@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Member Experience Quality Audit [READ ONLY]
 
 # Explicit manual-only zero-Gemini customer-experience audit; no Notion changes.
@@ -20,7 +21,7 @@ concurrency:
 
 jobs:
   read-only-audit:
-    if: ${{ inputs.confirm == 'READ_ONLY_MEMBER_EXPERIENCE' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:

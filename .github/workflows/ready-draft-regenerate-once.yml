@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Existing Ready Draft Regeneration [ONE-SHOT]
 
 on:
@@ -27,7 +28,7 @@ concurrency:
 
 jobs:
   preflight:
-    if: ${{ inputs.confirm == 'RUN_ONCE' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 12
     outputs:
@@ -76,7 +77,7 @@ jobs:
         run: echo 'start_vm=true' >> "$GITHUB_OUTPUT"
 
   start-cloud-vm:
-    if: ${{ needs.preflight.outputs.start_vm == 'true' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -102,7 +103,7 @@ jobs:
           fi
 
   regenerate-existing-draft:
-    if: ${{ needs.preflight.outputs.start_vm == 'true' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: [preflight, start-cloud-vm]
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
     timeout-minutes: 45
@@ -218,7 +219,7 @@ jobs:
           PY
 
   stop-cloud-vm:
-    if: ${{ always() && needs.start-cloud-vm.result == 'success' }}
+    if: ${{ false }} # V1 retired 2026-11-06
     needs: [preflight, start-cloud-vm, regenerate-existing-draft]
     runs-on: ubuntu-latest
     timeout-minutes: 10

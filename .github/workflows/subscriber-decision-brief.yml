@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Subscriber Decision Brief Sync
 
 on:
@@ -29,17 +30,10 @@ permissions:
 
 jobs:
   sync:
+    if: ${{ false }} # V1 retired 2026-11-06
     # Inventory plan is contractually read-only. Only an explicitly labelled apply run
     # may fan out into subscriber/member writes. Explicit workflow_dispatch is the live
     # ONE-SHOT path while normal Daily remains hard-PAUSED.
-    if: >-
-      github.event_name != 'workflow_run' ||
-      (
-        github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.head_branch == 'main' &&
-        github.event.workflow_run.name == 'Subscriber Inventory Bootstrap' &&
-        contains(github.event.workflow_run.display_title, '[apply]')
-      )
     runs-on: ubuntu-latest
     # A valid Notion Retry-After can be tens of seconds. Allow bounded recovery across the
     # full member inventory rather than converting normal throttling into a partial failure.

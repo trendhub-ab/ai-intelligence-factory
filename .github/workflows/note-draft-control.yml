@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Note Draft Queue Recovery
 
 on:
@@ -13,13 +14,7 @@ concurrency:
 
 jobs:
   cancel-stale-pending:
-    if: >-
-      github.run_attempt == 1 &&
-      github.event.issue.number == 71 &&
-      github.event.issue.pull_request == null &&
-      github.event.comment.user.login == 'trendhub-ab' &&
-      github.actor == 'trendhub-ab' &&
-      startsWith(github.event.comment.body, '/aiif note cancel_stale_pending ')
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -76,13 +71,7 @@ jobs:
           echo "Cancelled validated stale pending note-draft run ${run_id}."
 
   redispatch-exact-ready:
-    if: >-
-      github.run_attempt == 1 &&
-      github.event.issue.number == 71 &&
-      github.event.issue.pull_request == null &&
-      github.event.comment.user.login == 'trendhub-ab' &&
-      github.actor == 'trendhub-ab' &&
-      startsWith(github.event.comment.body, '/aiif note redispatch_exact ')
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:

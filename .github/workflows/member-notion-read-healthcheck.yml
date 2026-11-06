@@ -1,3 +1,4 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
 name: Member Notion Read Health Check
 
 on:
@@ -8,6 +9,7 @@ permissions:
 
 jobs:
   read-health:
+    if: ${{ false }} # V1 retired 2026-11-06
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
