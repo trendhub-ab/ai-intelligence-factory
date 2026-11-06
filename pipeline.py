@@ -10077,9 +10077,10 @@ def process_article_backlog(pending_items: list[dict] | None, generated_count: i
 
 
 def main():
-    # Preserve legacy source for audit, but never execute V1 workloads.
-    # This also blocks direct invocations bypassing production_pipeline.py.
-    raise RuntimeError("AIIF_V1_RETIRED: direct V1 pipeline execution is disabled; use AIIF Next")
+    # Never run V1 live. Keep historical provider-free synthetic regression
+    # available for the protected main's required offline smoke contract.
+    if not SYNTHETIC_REGRESSION_MODE:
+        raise RuntimeError("AIIF_V1_RETIRED: V1 production execution disabled; use AIIF Next")
     if PUBLIC_DB_SYNC_MODE:
         sync_public_approved_to_member_db()
         logger.info("[PUBLIC SYNC COMPLETE] Gemini APIは使用していません。")
