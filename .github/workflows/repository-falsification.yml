@@ -1,0 +1,161 @@
+name: Repository-wide Falsification Guard
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-falsification-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  falsify-all-tracked-surfaces:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11.16'
+
+      - name: Compile tracked Python contracts
+        run: python -m compileall -q *.py tests
+
+      - name: Enforce canonical specification freshness
+        run: |
+          python specification_freshness_guard.py
+          python -m unittest tests.test_specification_freshness_guard -v
+
+      - name: Enforce canonical runtime layer source of truth
+        run: |
+          python run279_runtime_layer_guard.py
+          python -m unittest tests.test_run279_runtime_layer_guard -v
+
+      - name: Enforce publication dependency completeness
+        run: |
+          python run280_publication_dependency_guard.py
+          python -m unittest tests.test_run280_publication_dependency_guard -v
+          python -m unittest tests.test_run281_publication_causality_source_contract -v
+          python -m unittest tests.test_run283_numeric_evidence_equivalence -v
+          python -m unittest tests.test_run284_reader_recovery_precision -v
+          python -m unittest tests.test_run285_operational_accounting -v
+
+      - name: Scan repository-wide executable, workflow, provenance and secret surfaces
+        run: python repository_falsification_guard.py
+
+      - name: Enforce workflow reference integrity
+        run: |
+          python workflow_reference_guard.py
+          python -m unittest tests.test_workflow_reference_guard -v
+
+      - name: Enforce provider routing and ONE-SHOT fan-out safety
+        run: |
+          python run262_documentation_contract_guard.py
+          python -m unittest tests.test_run262_documentation_contract_guard -v
+
+      - name: Enforce CI dependency and eyecatch safety
+        run: |
+          python run267_documentation_contract_guard.py
+          python -m unittest tests.test_run267_documentation_contract_guard -v
+
+      - name: Enforce source acquisition strategy
+        run: |
+          python run268_business_source_strategy_guard.py
+          python -m unittest tests.test_run268_business_source_strategy_guard -v
+          python -m unittest tests.test_run268_business_source_strategy -v
+
+      - name: Enforce live acquisition precision and zero-model smoke
+        run: |
+          python run269_acquisition_precision_guard.py
+          python -m unittest tests.test_run269_acquisition_precision_guard -v
+          python -m unittest tests.test_run269_acquisition_precision -v
+          python -m unittest tests.test_run269_vendor_current_state -v
+
+      - name: Enforce historical member compatibility safety
+        run: |
+          python run270_proposal_first_member_surface_guard.py
+          python -m unittest tests.test_run270_proposal_first_member_surface_guard -v
+          python -m unittest tests.test_run270_proposal_first_member_surface -v
+
+      - name: Enforce current member use-decision product
+        run: |
+          python run307_use_decision_product_guard.py
+          python -m unittest tests.test_run307_use_decision_product_guard -v
+          python -m unittest tests.test_run307_use_decision_member_surface -v
+
+      - name: Enforce paid-member surface coverage and readable copy
+        run: |
+          python member_surface_coverage_guard.py
+          python -m unittest tests.test_member_customer_surface_contract -v
+          python -m unittest tests.test_member_reader_quality_policy -v
+
+      - name: Enforce current public-copy alignment
+        run: |
+          python run308_public_copy_alignment_guard.py
+          python -m unittest tests.test_run308_public_copy_alignment -v
+
+      - name: Enforce member body delta sync safety
+        run: |
+          python run271_member_body_delta_sync_guard.py
+          python -m unittest tests.test_run271_member_body_delta_sync_guard -v
+          python -m unittest tests.test_run271_1_member_body_checkpoint -v
+
+      - name: Enforce integration hermeticity and stability
+        run: |
+          python integration_stability_guard.py
+          python -m unittest tests.test_integration_stability_guard -v
+
+      - name: Falsify repository organization and runtime safety contracts
+        run: |
+          python -m unittest tests.test_run200_repository_layout -v
+          python -m unittest tests.test_run201_repository_garbage_cleanup -v
+          python -m unittest tests.test_run246_repository_hygiene -v
+          python -m unittest tests.test_run202_chatops_control -v
+          python -m unittest tests.test_run203_runtime_state_channel -v
+          python -m unittest tests.test_run204_gemini_transient_recovery -v
+          python -m unittest tests.test_run206_pending_retry_fast_lane -v
+          python -m unittest tests.test_run260_gemini_model_routing -v
+          python -m unittest tests.test_run261_live_routing_fanout -v
+          python -m unittest tests.test_run231_pipeline_slim -v
+          python -m unittest tests.test_run231_stage2_repository_contract -v
+          python -m unittest tests.test_run233_ci_collection_integrity -v
+          python -m unittest tests.test_run235_source_normalization_module -v
+          python -m unittest tests.test_run235_stage3b_source_normalization_migration -v
+          python -m unittest tests.test_run236_evidence_context_module -v
+          python -m unittest tests.test_run237_product_delivery_maintenance_module -v
+          python -m unittest tests.test_run238_deep_dive_portfolio_module -v
+          python -m unittest tests.test_run239_reader_experience_module -v
+          python -m unittest tests.test_run240_editorial_naturalness_module -v
+          python -m unittest tests.test_run241_batched_modules -v
+          python -m unittest tests.test_run242_notional_source_deferred_modules -v
+          python -m unittest tests.test_run243_content_generation_protocol_module -v
+          python -m unittest tests.test_run244_decision_product_protocol_module -v
+          python -m unittest tests.test_run245_fact_validation_modules -v
+
+      - name: Falsify Note Ready policy-change reconciliation contract
+        run: |
+          python -m unittest \
+            tests.test_run197_note_ready_policy_reconciliation.Run197NoteReadyPolicyReconciliationTests.test_publication_policy_reconciliation_is_explicit_only \
+            tests.test_run197_note_ready_policy_reconciliation.Run197NoteReadyPolicyReconciliationTests.test_policy_change_reconciliation_remains_zero_model_and_never_opens_note_browser \
+            -v
+          python -m unittest tests.test_run290_quality_workflow_separation -v
+
+      - name: Falsify private-draft and editorial-surface boundaries
+        run: |
+          python -m unittest tests.test_run292_note_rendered_body_audit -v
+          python -m unittest tests.test_run293_private_draft_guard_diagnostics -v
+          python -m unittest tests.test_run294_note_eyecatch_persistence_diagnostics -v
+          python -m unittest tests.test_run295_note_eyecatch_persistence -v
+          python -m unittest tests.test_run296_editorial_format_v2 -v
+          python -m unittest tests.test_run292_note_audit_workflow -v
