@@ -230,6 +230,9 @@ def _workflow_dispatch_mode() -> str:
 
 
 def main() -> None:
+    # Owner-directed irreversible-by-default V1 production retirement.
+    # No environment flag, event, retry, or mode may override this guard.
+    raise RuntimeError("AIIF_V1_RETIRED: production execution is permanently disabled; use AIIF Next")
     mode = _workflow_dispatch_mode()
     if mode == "pending_retry_validation":
         from pending_retry_validation import main as run_pending_retry_validation
