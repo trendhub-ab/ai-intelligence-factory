@@ -1,0 +1,148 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
+name: Note Ready Article Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      create_private_draft:
+        description: 'After Ready sync, dispatch private note draft flow only when an exact publish-safe candidate exists'
+        required: true
+        default: true
+        type: boolean
+      target_sync_id:
+        description: 'Optional exact Content Intelligence sync_id to keep Production E2E causality pinned'
+        required: false
+        default: ''
+        type: string
+      target_source_url:
+        description: 'Optional exact current-run source URL; resolves fail-closed to one Content Intelligence sync_id'
+        required: false
+        default: ''
+        type: string
+
+# This workflow writes Notion and may fan out a private note draft.
+# It must run only from an explicit ONE-SHOT/manual dispatch.
+permissions:
+  contents: read
+
+# Keep one writer through completion; retain up to 100 waiting runs instead
+# of replacing the previous pending Ready delivery (GitHub queue limit).
+concurrency:
+  group: note-ready-article-sync
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  sync-note-ready:
+    if: ${{ false }} # V1 retired 2026-11-06
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install minimal dependency
+        run: pip install requests
+
+      - name: Zero-API unit tests
+        run: |
+          python -m unittest tests.test_note_ready_sync -v
+          python -m unittest tests.test_run194_note_ready_workflow -v
+          python -m unittest tests.test_run197_note_ready_policy_reconciliation -v
+          python -m unittest tests.test_run222_note_presentation_integrity -v
+          python -m unittest tests.test_run223_technical_claim_precision -v
+          python -m unittest tests.test_run283_numeric_evidence_equivalence -v
+          python -m unittest tests.test_run284_reader_recovery_precision -v
+          python -m unittest tests.test_run285_operational_accounting -v
+          python -m unittest tests.test_run287_publication_date_provenance -v
+          python -m unittest tests.test_run224_multiplier_deterministic_rescue -v
+          python -m unittest tests.test_editorial_quality_memory -v
+          python -m unittest tests.test_run226_reader_delight_planning -v
+          python -m unittest tests.test_run227_japanese_surface_integrity -v
+          python -m unittest tests.test_run228_reader_rhythm_planning -v
+          python -m unittest tests.test_run249_final_publication_surface_gate -v
+          python -m unittest tests.test_run273_reader_draft_autoflow -v
+          python -m unittest tests.test_run280_publication_dependency_guard -v
+          python -m unittest tests.test_run281_publication_causality_source_contract -v
+          python -m unittest tests.test_run296_editorial_format_v2 -v
+          python -m unittest tests.test_run624_delivery_causality -v
+
+      - name: Sync complete current-policy Ready articles to note posting DB
+        id: sync
+        run: python note_ready_sync.py
+        env:
+          TARGET_SYNC_ID: ${{ inputs.target_sync_id }}
+          TARGET_SOURCE_URL: ${{ inputs.target_source_url }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+
+      - name: Resolve exact private-draft fan-out eligibility
+        id: fanout
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_private_draft == true }}
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DECISION_INTELLIGENCE_API_KEY: ${{ secrets.NOTION_DECISION_INTELLIGENCE_API_KEY }}
+          NOTION_API_VERSION: '2026-03-11'
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_NOTE_READY_DATABASE_ID: '198667bce72443f3ad2e3b9706a0edb3'
+          NOTION_NOTE_READY_DATA_SOURCE_ID: '0b79b64d-4823-4084-be57-8bb11d7d2ce6'
+          TARGET_SYNC_ID: ${{ inputs.target_sync_id || steps.sync.outputs.resolved_sync_id }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import run199_note_vm_preflight as preflight
+          result = preflight.preflight(os.environ.get("TARGET_SYNC_ID", ""))
+          print("[RUN624 NOTE DRAFT PREFLIGHT] " + json.dumps(result, ensure_ascii=False, sort_keys=True))
+          eligible = result.get("should_start_vm") is True
+          selected = str(result.get("selected_sync_id") or "").strip()
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"eligible={'true' if eligible else 'false'}\n")
+              fh.write(f"selected_sync_id={selected}\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
+              fh.write("### Run281 draft fan-out causality\n")
+              fh.write(f"- exact eligible Ready exists: `{eligible}`\n")
+              fh.write(f"- preflight status: `{result.get('status', 'unknown')}`\n")
+              if not eligible:
+                  fh.write("- Child Create note Draft workflow was not dispatched.\n")
+          PY
+
+      - name: Dispatch private note draft flow only for an exact eligible Ready
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_private_draft == true && steps.fanout.outputs.eligible == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          SELECTED_SYNC_ID: ${{ steps.fanout.outputs.selected_sync_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::GH_PAT is required to dispatch the private note draft workflow"
+            exit 1
+          fi
+          if [ -z "${SELECTED_SYNC_ID:-}" ]; then
+            echo "::error::Run281 fan-out preflight did not pin an eligible sync_id"
+            exit 1
+          fi
+          gh workflow run note-create-draft.yml --ref main \
+            -f confirm=CREATE_NOTE_DRAFT \
+            -f sync_id="$SELECTED_SYNC_ID" \
+            -f prepare_only=false
+          {
+            echo "### Run281 private draft fan-out"
+            echo "- source: exact publish-safe Ready preflight"
+            echo "- target: Create note Draft"
+            echo "- candidate: pinned by sync_id before dispatch"
+            echo "- target workflow repeats zero-VM preflight as defense in depth"
+            echo "- publication: private draft only; public release remains human-only"
+          } >> "$GITHUB_STEP_SUMMARY"
