@@ -1,0 +1,161 @@
+# OWNER RETIREMENT: V1 jobs disabled; Next unaffected.
+name: Probe exact onboarding official edit route
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Exact Run321-323 confirmation token'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: note-member-onboarding-official-edit-route-probe-n284e428c80f4
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: ${{ false }} # V1 retired 2026-11-06
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      authorized: ${{ steps.auth.outputs.authorized }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Falsify exact official edit-route progression
+        run: |
+          python -m unittest tests.test_run321_member_onboarding_official_edit_route_probe -v
+          python -m unittest tests.test_run321b_member_onboarding_edit_route_diagnostic -v
+          python -m unittest tests.test_run322_member_onboarding_version_confirm_publish_probe -v
+          python -m unittest tests.test_run323_member_onboarding_publish_surface_deep_probe -v
+      - name: Validate exact probe authorization
+        id: auth
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          [ "$CONFIRM" = 'PROBE_MEMBER_ONBOARDING_OFFICIAL_EDIT_ROUTE_N284E428C80F4_SHAAAB9E57B' ] || exit 1
+          echo 'authorized=true' >> "$GITHUB_OUTPUT"
+
+  start-cloud-vm:
+    if: ${{ false }} # V1 retired 2026-11-06
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+
+  probe:
+    if: ${{ false }} # V1 retired 2026-11-06
+    needs: [preflight, start-cloud-vm]
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install browser dependencies
+        run: |
+          pip install requests playwright
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 || exit 1
+          command -v xvfb-run >/dev/null 2>&1 || exit 1
+      - name: Re-run exact deep publish-surface regression
+        run: python -m unittest tests.test_run323_member_onboarding_publish_surface_deep_probe -v
+      - name: Deep-probe exact publish surface without mutation
+        env:
+          NOTE_MEMBER_ONBOARDING_PUBLISH_SURFACE_DEEP_PROBE_CONFIRM: ${{ inputs.confirm }}
+          NOTE_MEMBER_ONBOARDING_PUBLISH_SURFACE_DEEP_PROBE_RESULT_FILE: ${{ runner.temp }}/run323-result.json
+          NOTE_MEMBER_ONBOARDING_PUBLISH_SURFACE_SCREENSHOT_FILE: ${{ runner.temp }}/run323-publish-surface.png
+          NOTE_CHROME_CHANNEL: 'chrome'
+          NOTE_CHROME_HEADLESS: 'false'
+        run: xvfb-run -a python run323_member_onboarding_publish_surface_deep_probe.py
+      - name: Summarize deep publish-surface probe
+        env:
+          RESULT_FILE: ${{ runner.temp }}/run323-result.json
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          r = json.loads(Path(os.environ['RESULT_FILE']).read_text(encoding='utf-8'))
+          if r.get('status') != 'deep_probe_complete_no_public_mutation':
+              raise SystemExit('Run323 deep probe did not complete')
+          if r.get('final_commit_clicked') is not False or r.get('public_mutation') is not False:
+              raise SystemExit('Run323 mutation contract failed')
+          snaps = r.get('snapshots') or []
+          forms = max((len(s.get('forms') or []) for s in snaps), default=0)
+          fixed = max((len(s.get('fixedSticky') or []) for s in snaps), default=0)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as fh:
+              fh.write('### Run323 deep publish-surface probe\n')
+              fh.write(f'- target: `{r.get("target_note_id")}`\n')
+              fh.write(f'- source body sha: `{r.get("source_body_sha256")}`\n')
+              fh.write(f'- publish URL: `{r.get("publish_url")}`\n')
+              fh.write(f'- snapshots: `{len(snaps)}`\n')
+              fh.write(f'- max forms observed: `{forms}`\n')
+              fh.write(f'- max fixed/sticky nodes observed: `{fixed}`\n')
+              fh.write(f'- exact 更新する outerHTML hits: `{r.get("exact_update_outerhtml_hits_across_snapshots")}`\n')
+              fh.write(f'- candidate labels: `{json.dumps((r.get("candidate_labels") or [])[:40], ensure_ascii=False)}`\n')
+              fh.write('- final commit clicked: `false`\n')
+              fh.write('- public mutation: `false`\n')
+              fh.write('- zero model calls: `true`\n')
+          PY
+      - name: Preserve Run323 forensic artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run323-onboarding-publish-surface
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/run323-result.json
+            ${{ runner.temp }}/run323-publish-surface.png
+
+  stop-cloud-vm:
+    if: ${{ false }} # V1 retired 2026-11-06
+    needs: [preflight, start-cloud-vm, probe]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Stop persistent note Chrome VM
+        run: |
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
