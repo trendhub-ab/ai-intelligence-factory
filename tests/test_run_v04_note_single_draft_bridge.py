@@ -117,6 +117,67 @@ class SingleNoteBridgeTests(unittest.TestCase):
                     ledger_path=path,
                 )
 
+    def test_read_only_inspection_never_authorizes_retry(self):
+        with TemporaryDirectory() as td:
+            path = Path(td)/"ledger.json"
+            safe = lambda _title: {
+                "note_account": "VERIFIED", "matching_title": "NONE_VISIBLE"
+            }
+            fresh = bridge.inspect_existing_attempt(
+                204, SHA, "title", ledger_path=path, browser_probe=safe
+            )
+            self.assertEqual(fresh["ledger"], "NO_RECORD")
+            self.assertFalse(fresh["automatic_retry_allowed"])
+            self.assertEqual(fresh["note_mutations"], 0)
+            self.assertFalse(fresh["publication_approved"])
+            for phase in (
+                "ATTEMPTING", "CREATED_PENDING_PERSISTENCE_PROOF", "DRAFT_SAVED"
+            ):
+                path.write_text(json.dumps({
+                    f"{bridge.NEXT_REPO}#204:{SHA}": {
+                        "issue_number": 204, "manuscript_sha256": SHA,
+                        "status": phase, "draft_url":
+                            "https://editor.note.com/notes/nabc1234/edit",
+                    }
+                }), encoding="utf-8")
+                receipt = bridge.inspect_existing_attempt(
+                    204, SHA, "title", ledger_path=path, browser_probe=safe
+                )
+                self.assertEqual(receipt["ledger"], phase)
+                self.assertTrue(receipt["stable_draft_url_recorded"])
+                self.assertFalse(receipt["automatic_retry_allowed"])
+                self.assertEqual(receipt["matching_title"], "NONE_VISIBLE")
+
+    def test_read_only_inspection_rejects_corrupt_ledger_or_probe(self):
+        with TemporaryDirectory() as td:
+            path = Path(td)/"ledger.json"
+            path.write_text(json.dumps({
+                f"{bridge.NEXT_REPO}#204:{SHA}": {
+                    "issue_number": 204, "manuscript_sha256": SHA,
+                    "status": "UNKNOWN_STATUS"
+                }
+            }), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "LEDGER_INVALID"):
+                bridge.inspect_existing_attempt(
+                    204, SHA, "title", ledger_path=path,
+                    browser_probe=lambda _: self.fail("UNSAFE_PROBE")
+                )
+            path.unlink()
+            with self.assertRaisesRegex(ValueError, "PROBE_INVALID"):
+                bridge.inspect_existing_attempt(
+                    204, SHA, "title", ledger_path=path,
+                    browser_probe=lambda _: {"draft_url": "secret"}
+                )
+
+    def test_read_only_probe_is_ineligible_to_modify_existing_draft(self):
+        s = WORKFLOW.read_text("utf-8")
+        self.assertIn("inputs.operation == 'create'", s)
+        self.assertIn("inputs.operation == 'inspect'", s)
+        self.assertIn("inspect-draft-state:", s)
+        self.assertIn("--mode inspect", s)
+        self.assertIn("options: [create, inspect]", s)
+        self.assertIn("needs: [verify-private-input, start-note-vm, create-exact-draft, inspect-draft-state]", s)
+
     def test_workflow_is_one_off_no_auto_or_publication(self):
         s = WORKFLOW.read_text("utf-8")
         for piece in (
