@@ -1,0 +1,172 @@
+name: AIIF V04 - One Private Note Draft Bridge (Manual Only)
+
+# This is a new, explicitly scoped exception; retired V1 Daily remains disabled.
+# Never run production_pipeline.py, Ready sync, Gemini, or note publication.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        type: string
+        description: "Type CREATE_V04_SINGLE_PRIVATE_NOTE_DRAFT"
+        required: true
+      source_issue_number:
+        type: string
+        description: "Trusted owner Issue in private Next repository"
+        required: true
+      manuscript_sha256:
+        type: string
+        description: "Exact SHA256 of the whole private issue body"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: note-draft-create-v2
+  cancel-in-progress: false
+
+jobs:
+  verify-private-input:
+    if: >-
+      ${{ github.repository == 'trendhub-ab/ai-intelligence-factory' &&
+          github.ref == 'refs/heads/main' &&
+          github.actor == 'trendhub-ab' &&
+          github.event_name == 'workflow_dispatch' &&
+          inputs.confirm == 'CREATE_V04_SINGLE_PRIVATE_NOTE_DRAFT' &&
+          github.run_attempt == 1 }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Ensure manifest is authentic and private (no browser)
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          INPUT_ISSUE: ${{ inputs.source_issue_number }}
+          INPUT_SHA: ${{ inputs.manuscript_sha256 }}
+          INPUT_CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_run_v04_note_single_draft_bridge -v
+          python run_v04_note_single_draft_bridge.py --mode preflight \
+            --confirm "$INPUT_CONFIRM" --issue-number "$INPUT_ISSUE" \
+            --sha256 "$INPUT_SHA"
+
+  start-note-vm:
+    needs: verify-private-input
+    if: ${{ needs.verify-private-input.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+      GH_TOKEN: ${{ secrets.GH_PAT }}
+    steps:
+      - name: Validate existing note cloud configuration
+        env:
+          WIF_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          WIF_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          for value in GCP_PROJECT_ID GCP_NOTE_VM_ZONE GCP_NOTE_VM_NAME WIF_PROVIDER WIF_ACCOUNT GH_TOKEN; do
+            test -n "${!value:-}" || { echo "::error::Missing $value"; exit 1; }
+          done
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start existing persistent note Chrome VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "STOPPING" ]; then
+            for _ in $(seq 1 30); do
+              sleep 5
+              state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+              [ "$state" = "TERMINATED" ] && break
+            done
+          fi
+          if [ "$state" != "RUNNING" ]; then
+            gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
+      - name: Verify exactly one online account-bound note runner
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 60); do
+            count="$(gh api "repos/$GITHUB_REPOSITORY/actions/runners?per_page=100" \
+              --jq '[.runners[] | select(.status == "online") | select(any(.labels[]?; .name == "aiif-note-cloud"))] | length' 2>/dev/null || true)"
+            count="${count:-0}"
+            if [ "$count" = "1" ]; then exit 0; fi
+            if [ "$count" -gt 1 ] 2>/dev/null; then
+              echo "::error::Multiple note runners online"; exit 1
+            fi
+            sleep 5
+          done
+          echo "::error::No uniquely authenticated note runner"; exit 1
+
+  create-exact-draft:
+    needs: [verify-private-input, start-note-vm]
+    if: ${{ needs.start-note-vm.result == 'success' }}
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare existing Chrome session, zero Gemini
+        run: |
+          set -euo pipefail
+          python -m pip install 'playwright>=1.45,<2' requests
+          command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1
+          command -v xvfb-run >/dev/null 2>&1
+          python -m unittest tests.test_run_v04_note_single_draft_bridge -v
+      - name: Save only one exact article as a private draft and re-open to verify
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+          NOTE_CHROME_CHANNEL: "chrome"
+          NOTE_CHROME_HEADLESS: "false"
+          INPUT_CONFIRM: ${{ inputs.confirm }}
+          INPUT_ISSUE: ${{ inputs.source_issue_number }}
+          INPUT_SHA: ${{ inputs.manuscript_sha256 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          xvfb-run -a python run_v04_note_single_draft_bridge.py \
+            --mode create --confirm "$INPUT_CONFIRM" \
+            --issue-number "$INPUT_ISSUE" --sha256 "$INPUT_SHA"
+
+  stop-note-vm:
+    needs: [verify-private-input, start-note-vm, create-exact-draft]
+    if: ${{ always() && needs.verify-private-input.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+      - name: Stop existing VM after manual attempt
+        if: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != '' }}
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)' 2>/dev/null || true)"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
