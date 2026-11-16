@@ -5,6 +5,12 @@ name: AIIF V04 - One Private Note Draft Bridge (Manual Only)
 on:
   workflow_dispatch:
     inputs:
+      operation:
+        type: choice
+        description: "create = one draft; inspect = read-only existing attempt diagnostic"
+        required: true
+        default: create
+        options: [create, inspect]
       confirm:
         type: string
         description: "Type CREATE_V04_SINGLE_PRIVATE_NOTE_DRAFT"
@@ -114,7 +120,7 @@ jobs:
 
   create-exact-draft:
     needs: [verify-private-input, start-note-vm]
-    if: ${{ needs.start-note-vm.result == 'success' }}
+    if: ${{ needs.start-note-vm.result == 'success' && inputs.operation == 'create' }}
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
     timeout-minutes: 25
     steps:
@@ -148,8 +154,38 @@ jobs:
             --mode create --confirm "$INPUT_CONFIRM" \
             --issue-number "$INPUT_ISSUE" --sha256 "$INPUT_SHA"
 
+  inspect-draft-state:
+    needs: [verify-private-input, start-note-vm]
+    if: ${{ needs.start-note-vm.result == 'success' && inputs.operation == 'inspect' }}
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python for read-only inspection
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install read-only dependencies
+        run: python -m pip install 'playwright>=1.45,<2' requests
+      - name: Inspect existing ledger and official note list without modifying drafts
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          NOTE_CHROME_CHANNEL: "chrome"
+          NOTE_CHROME_HEADLESS: "false"
+          INPUT_CONFIRM: ${{ inputs.confirm }}
+          INPUT_ISSUE: ${{ inputs.source_issue_number }}
+          INPUT_SHA: ${{ inputs.manuscript_sha256 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          xvfb-run -a python run_v04_note_single_draft_bridge.py \
+            --mode inspect --confirm "$INPUT_CONFIRM" \
+            --issue-number "$INPUT_ISSUE" --sha256 "$INPUT_SHA"
+
   stop-note-vm:
-    needs: [verify-private-input, start-note-vm, create-exact-draft]
+    needs: [verify-private-input, start-note-vm, create-exact-draft, inspect-draft-state]
     if: ${{ always() && needs.verify-private-input.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
