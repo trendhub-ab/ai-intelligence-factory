@@ -1,7 +1,7 @@
 name: AIIF V04 - One Private Note Draft Bridge (Manual Only)
 
 # This is a new, explicitly scoped exception; retired V1 Daily remains disabled.
-# Never run production_pipeline.py, Ready sync, Gemini, or note publication.
+# Limited to a single manual private note draft; no model or public release.
 on:
   workflow_dispatch:
     inputs:
