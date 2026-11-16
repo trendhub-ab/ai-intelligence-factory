@@ -19,7 +19,7 @@ FALSE_GUARD = "    if: ${{ false }} # V1 retired 2026-11-06"
 V04_NOTE_BRIDGE = "v04-single-note-draft-bridge.yml"
 V04_NOTE_BRIDGE_JOBS = [
     "verify-private-input", "start-note-vm",
-    "create-exact-draft", "stop-note-vm",
+    "create-exact-draft", "inspect-draft-state", "stop-note-vm",
 ]
 
 
