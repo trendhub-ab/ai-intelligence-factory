@@ -202,9 +202,97 @@ def save_once(
         return {"status": "DRAFT_SAVED", "draft_url": result_url}
 
 
+
+def _read_only_browser_probe(title: str) -> dict:
+    """Observe existing note account and article list; never enter an editor or write."""
+    try:
+        import note_draft_automation as base
+        import run190_note_persistent_cloud as cloud
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as playwright:
+            context = cloud._launch_persistent_context(playwright)
+            try:
+                page = context.pages[0] if context.pages else context.new_page()
+                page.set_default_timeout(12000)
+                try:
+                    cloud._assert_expected_note_account(page)
+                except (base.NoteAuthenticationExpired, base.NoteDraftError):
+                    return {"note_account": "NOT_VERIFIED", "matching_title": "NOT_CHECKED"}
+                page.goto("https://note.com/notes", wait_until="domcontentloaded", timeout=30000)
+                page.wait_for_timeout(1300)
+                if (str(page.url or "").split("?")[0].rstrip("/") !=
+                        "https://note.com/notes" or base._looks_logged_out(page)):
+                    return {"note_account": "VERIFIED", "matching_title": "LIST_NOT_VERIFIED"}
+                count = page.get_by_role(
+                    "button", name=f"{title}を編集", exact=True
+                ).count()
+                # Matching a title is only a hint, not proof of exact manuscript or saved draft.
+                return {
+                    "note_account": "VERIFIED",
+                    "matching_title": "NONE_VISIBLE" if count == 0 else
+                        ("ONE_VISIBLE" if count == 1 else "MULTIPLE_VISIBLE"),
+                }
+            finally:
+                context.close()
+    except Exception:
+        # Never expose browser errors, cookies, identifiers or title through Actions logs.
+        return {"note_account": "BROWSER_UNAVAILABLE", "matching_title": "NOT_CHECKED"}
+
+
+def inspect_existing_attempt(
+    issue_number: int, expected_sha256: str, title: str,
+    *, ledger_path: Path = DRAFT_LEDGER, browser_probe=_read_only_browser_probe,
+) -> dict:
+    """Read-only reconciliation; never clears the ledger or authorizes a retry."""
+    if (type(issue_number) is not int or issue_number < 1
+            or type(expected_sha256) is not str
+            or SHA_PATTERN.fullmatch(expected_sha256) is None
+            or type(title) is not str or not title):
+        raise ValueError("V04_BRIDGE_INSPECT_INPUT_INVALID")
+    identity = f"{NEXT_REPO}#{issue_number}:{expected_sha256}"
+    if ledger_path.exists():
+        data = json.loads(ledger_path.read_text("utf-8"))
+        if type(data) is not dict:
+            raise ValueError("V04_BRIDGE_INSPECT_LEDGER_INVALID")
+        record = data.get(identity)
+    else:
+        record = None
+    if record is not None and (
+        type(record) is not dict
+        or record.get("status") not in (
+            "ATTEMPTING", "CREATED_PENDING_PERSISTENCE_PROOF", "DRAFT_SAVED"
+        )
+        or record.get("manuscript_sha256") != expected_sha256
+        or record.get("issue_number") != issue_number
+    ):
+        raise ValueError("V04_BRIDGE_INSPECT_LEDGER_INVALID")
+    evidence = {
+        "status": "READ_ONLY_INSPECTION_COMPLETE",
+        "ledger": record["status"] if record is not None else "NO_RECORD",
+        "stable_draft_url_recorded": bool(record and record.get("draft_url")),
+        "publication_approved": False,
+        "note_mutations": 0,
+        "gemini_calls": 0,
+        "automatic_retry_allowed": False,
+    }
+    probe = browser_probe(title)
+    if (type(probe) is not dict
+        or probe.get("note_account") not in (
+            "VERIFIED", "NOT_VERIFIED", "BROWSER_UNAVAILABLE"
+        )
+        or probe.get("matching_title") not in (
+            "NOT_CHECKED", "LIST_NOT_VERIFIED", "NONE_VISIBLE",
+            "ONE_VISIBLE", "MULTIPLE_VISIBLE"
+        )):
+        raise ValueError("V04_BRIDGE_INSPECT_PROBE_INVALID")
+    evidence.update(probe)
+    return evidence
+
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=("preflight", "create"), required=True)
+    parser.add_argument("--mode", choices=("preflight", "create", "inspect"), required=True)
     parser.add_argument("--confirm", required=True)
     parser.add_argument("--issue-number", type=int, required=True)
     parser.add_argument("--sha256", required=True)
@@ -222,6 +310,11 @@ def main() -> None:
                 "source_hash_verified": True, "note_writes": 0,
                 "publication_approved": False, "gemini_calls": 0,
             }))
+            return
+        if args.mode == "inspect":
+            print(json.dumps(inspect_existing_attempt(
+                args.issue_number, args.sha256, title
+            ), ensure_ascii=False, sort_keys=True))
             return
         result = save_once(args.issue_number, args.sha256, manuscript, title)
         try:
