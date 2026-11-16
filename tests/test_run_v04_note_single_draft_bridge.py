@@ -128,6 +128,7 @@ class SingleNoteBridgeTests(unittest.TestCase):
             "self-hosted, linux, x64, aiif-note-cloud",
             "GCP_WORKLOAD_IDENTITY_PROVIDER", "NOTE_STORAGE_STATE_B64:",
             "stop-note-vm:", "persist-credentials: false",
+            "uses: actions/setup-python@v6", "python-version: '3.11'",
         ):
             self.assertIn(piece, s)
         for forbidden in (
