@@ -521,8 +521,8 @@ def _read_only_browser_probe(title: str) -> dict:
                     "matching_title": (
                         "POSSIBLE_MATCH_VISIBLE" if owner["title_visible"] or draft["title_visible"]
                         else "NONE_VISIBLE" if (
-                            owner["coverage"] != "NOT_VERIFIED" and
-                            draft["coverage"] != "NOT_VERIFIED"
+                            owner["coverage"] not in ("NOT_VERIFIED", "UNINSPECTABLE") and
+                            draft["coverage"] not in ("NOT_VERIFIED", "UNINSPECTABLE")
                         ) else "LIST_NOT_VERIFIED"
                     ),
                     "owner_list_coverage": owner["coverage"],
