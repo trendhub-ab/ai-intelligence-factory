@@ -298,6 +298,12 @@ def recover_owner_confirmed_once(
         import note_draft_automation as base
         if not base._body_manuscript_for_note(title, manuscript).strip():
             raise ValueError("V04_BRIDGE_RECOVERY_BODY_INVALID")
+        # Validate legacy selector installation before the once-only marker.
+        # Installing Python functions does not launch Chrome, visit note or write.
+        import run190_note_persistent_cloud as cloud
+        print("V04_NOTE_STAGE=RECOVERY_PRE_BROWSER_CHECK", flush=True)
+        cloud.install()
+        print("V04_NOTE_STAGE=RECOVERY_PRE_BROWSER_READY", flush=True)
         # Save the irreversible once-only claim before invoking any note editor.
         record["status"] = "OWNER_RECOVERY_ATTEMPTING"
         record["recovery_attempt_started_at"] = datetime.now(timezone.utc).isoformat()
