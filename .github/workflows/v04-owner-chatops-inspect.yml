@@ -1,7 +1,8 @@
-name: AIIF V04 - Owner ChatOps Inspect (Manual Comment Only)
+name: AIIF V04 - Owner ChatOps Inspect or One-time Recovery
 
 # Independent v0.4 exception: never re-enable retired V1 ChatOps/Daily.
-# This bridge is read-only: no note draft create, publish or ledger reset.
+# Only exact owner issue commands; recovery is explicitly approved, once-only,
+# and still requires a fresh account/list recheck before any note mutation.
 on:
   issue_comment:
     types: [created]
@@ -29,7 +30,8 @@ jobs:
           github.event.issue.pull_request == null &&
           github.event.comment.user.login == 'trendhub-ab' &&
           github.event.comment.author_association == 'OWNER' &&
-          github.event.comment.body == '/aiif v04 inspect 204' &&
+          (github.event.comment.body == '/aiif v04 inspect 204' ||
+           github.event.comment.body == '/aiif v04 recover 204') &&
           github.run_attempt == 1 }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -67,23 +69,34 @@ jobs:
           gh api --method POST -H 'Accept: application/vnd.github+json' \
             "$endpoint" -f content=eyes >/dev/null
           echo 'dispatch=true' >> "$GITHUB_OUTPUT"
-      - name: Dispatch only the pinned v0.4 read-only inspect
+      - name: Dispatch the pinned v0.4 inspect or approved recovery
         if: ${{ steps.auth.outputs.authorized == 'true' && steps.claim.outputs.dispatch == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
+          OPERATION: ${{ steps.auth.outputs.operation }}
         run: |
           set -euo pipefail
-          cat <<'JSON' | gh api --method POST \
+          case "$OPERATION" in
+            inspect)
+              payload='{"ref":"main","inputs":{"operation":"inspect","confirm":"CREATE_V04_SINGLE_PRIVATE_NOTE_DRAFT","source_issue_number":"204","manuscript_sha256":"1f39788f6c1c9dc9e9ca93af5c260e0c396374f76b5dc33c3ece0def3cffb690"}}'
+              ;;
+            recover)
+              payload='{"ref":"main","inputs":{"operation":"recover","confirm":"CREATE_V04_SINGLE_PRIVATE_NOTE_DRAFT","source_issue_number":"204","manuscript_sha256":"1f39788f6c1c9dc9e9ca93af5c260e0c396374f76b5dc33c3ece0def3cffb690","recovery_approval":"OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_RETRY_ONCE"}}'
+              ;;
+            *)
+              echo "::error::Invalid v0.4 ChatOps mode"; exit 1
+              ;;
+          esac
+          printf '%s' "$payload" | gh api --method POST \
             -H 'Accept: application/vnd.github+json' \
             "/repos/${GITHUB_REPOSITORY}/actions/workflows/v04-single-note-draft-bridge.yml/dispatches" \
             --input -
-          {"ref":"main","inputs":{"operation":"inspect","confirm":"CREATE_V04_SINGLE_PRIVATE_NOTE_DRAFT","source_issue_number":"204","manuscript_sha256":"1f39788f6c1c9dc9e9ca93af5c260e0c396374f76b5dc33c3ece0def3cffb690"}}
-          JSON
           {
-            echo '### v0.4 owner-only ChatOps inspect'
+            echo '### v0.4 owner-only ChatOps operation'
             echo '- Source: private Next Issue #204, pinned SHA256'
             echo '- Target: v04-single-note-draft-bridge.yml on main'
-            echo '- Operation: inspect (read-only)'
-            echo '- No draft create, ledger reset, Gemini call or public release'
+            echo "- Operation: \`$OPERATION\` (owner-authorized)"
+            echo '- inspect is read-only; recover is owner-approved, once-only, with fresh note UI proof'
+            echo '- No blind ledger reset, Gemini call or public release'
             echo '- The existing v0.4 workflow validates its own owner identity and private source'
           } >> "$GITHUB_STEP_SUMMARY"
