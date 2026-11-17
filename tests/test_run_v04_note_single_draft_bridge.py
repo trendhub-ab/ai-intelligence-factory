@@ -178,6 +178,26 @@ class SingleNoteBridgeTests(unittest.TestCase):
                     history_probe=lambda _: "NEW_ROUTE_VISITED",
                 )
 
+    def test_owner_recovery_prebrowser_failure_keeps_original_attempt_eligible(self):
+        with TemporaryDirectory() as td:
+            path = Path(td) / "ledger.json"
+            key = self._recover_ledger(path)
+            with patch("run190_note_persistent_cloud.install",
+                       side_effect=RuntimeError("selector patch invalid")):
+                with self.assertRaisesRegex(RuntimeError, "selector patch invalid"):
+                    bridge.recover_owner_confirmed_once(
+                        204, bridge.RECOVERY_SHA256, SAMPLE,
+                        "AIと一緒に作業を進めていく方法",
+                        recovery_approval=bridge.RECOVERY_APPROVAL,
+                        ledger_path=path,
+                        runner=lambda *_a, **_kw: self.fail("UNSAFE_MUTATION"),
+                        browser_probe=self._recovery_probe,
+                        history_probe=lambda _: "NEW_ROUTE_VISITED",
+                    )
+            record = json.loads(path.read_text("utf-8"))[key]
+            self.assertEqual(record["status"], "ATTEMPTING")
+            self.assertNotIn("recovery_attempt_started_at", record)
+
     def test_owner_recovery_failure_consumes_attempt_without_retry(self):
         with TemporaryDirectory() as td:
             path = Path(td) / "ledger.json"
