@@ -130,6 +130,7 @@ def _draft_from_browser(
 
     # The old note production browser path explicitly installed these UI/DOM
     # selectors and persistence guards. The isolated bridge must not bypass them.
+    print("V04_NOTE_STAGE=RUNNER_ENTERED", flush=True)
     cloud.install()
     print("V04_NOTE_STAGE=BROWSER_SETUP", flush=True)
     body_text = base._body_manuscript_for_note(title, manuscript)
@@ -269,6 +270,8 @@ def recover_owner_confirmed_once(
         # Reject fabricated/future/unknown old attempts; do not reset other keys.
         try:
             began = datetime.fromisoformat(record["started_at"])
+            if began.tzinfo is None:
+                raise ValueError("naive timestamp")
             age = datetime.now(timezone.utc) - began.astimezone(timezone.utc)
         except (KeyError, ValueError, TypeError, OverflowError):
             raise ValueError("V04_BRIDGE_RECOVERY_ATTEMPT_TIMESTAMP_INVALID") from None
@@ -290,6 +293,11 @@ def recover_owner_confirmed_once(
                 or probe.get("untitled_candidate_visible") is not False
                 or probe.get("list_load_more_observed") is not False):
             raise ValueError("V04_BRIDGE_RECOVERY_NOTE_LIST_UNCERTAIN")
+        # Validate the body using the same pure normalizer as the actual editor,
+        # before consuming the owner's sole recovery opportunity.
+        import note_draft_automation as base
+        if not base._body_manuscript_for_note(title, manuscript).strip():
+            raise ValueError("V04_BRIDGE_RECOVERY_BODY_INVALID")
         # Save the irreversible once-only claim before invoking any note editor.
         record["status"] = "OWNER_RECOVERY_ATTEMPTING"
         record["recovery_attempt_started_at"] = datetime.now(timezone.utc).isoformat()
