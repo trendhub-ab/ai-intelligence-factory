@@ -20,7 +20,7 @@ import re
 import tempfile
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urljoin, urlsplit
 
 NEXT_REPO = "trendhub-ab/ai-intelligence-factory-next"
 NOTE_IDENTITY = "trendhub_biz"
@@ -285,8 +285,222 @@ def _historical_editor_navigation(started_at: str | None) -> str:
 
 
 
+
+# Fixed, user-facing note.com list views. These are browser URLs, not note APIs.
+_OWNER_LIST_URL = "https://note.com/notes"
+_DRAFT_LIST_URL = "https://note.com/notes?kind=draft"
+_LIST_MAX_PAGES = 3
+_LIST_MAX_SCROLLS_PER_PAGE = 12
+
+# Only non-content evidence can escape this module. Even a settled bounded scan
+# is NOT proof that all note drafts were indexed, or that an unnamed draft is absent.
+_LIST_SNAPSHOT_JS = r"""(targetTitle) => {
+  const main = document.querySelector('main,[role="main"]');
+  const root = main || document.body;
+  if (!root) return {mask: 0, next: ""};
+  const visible = el => {
+    const r = el.getBoundingClientRect(), s = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 &&
+      s.visibility !== 'hidden' && s.display !== 'none';
+  };
+  const normalize = x => String(x || '').replace(/\s+/g, ' ').trim();
+  const target = normalize(targetTitle);
+  const controls = Array.from(root.querySelectorAll(
+    'button,[role="button"],[role="tab"],a[href]'
+  )).slice(0, 500);
+  const label = el => normalize(
+    el.getAttribute('aria-label') || el.textContent || ''
+  ).slice(0, 200);
+  const elements = Array.from(root.querySelectorAll(
+    'h1,h2,h3,h4,[role="heading"],button,a[href],[role="listitem"],article'
+  )).slice(0, 800);
+  let mask = 0;
+  if (main && main.children.length > 0) mask |= 1;
+  if (target && (
+      controls.some(el => visible(el) && label(el) === target + 'を編集') ||
+      elements.some(el => visible(el) &&
+        (normalize(el.textContent) === target ||
+         label(el) === target) && el.children.length <= 2)
+    )) mask |= 2;
+  if (elements.some(el => visible(el) &&
+    /^(無題|タイトル未設定|タイトルなし|Untitled)(?:を編集)?$/i.test(
+      normalize(el.textContent || el.getAttribute('aria-label'))
+    ) && el.children.length <= 2)) mask |= 4;
+  if (controls.some(el => visible(el) &&
+      /^(もっと見る|さらに表示|さらに読み込む|Load more)$/i.test(label(el))))
+    mask |= 8;
+  if (root.querySelector(
+    '[aria-busy="true"],[role="progressbar"],[class*="skeleton"]'
+  )) mask |= 16;
+  const scroll = document.scrollingElement || document.documentElement;
+  if (scroll && scroll.scrollHeight > scroll.clientHeight + 8) mask |= 32;
+  if (controls.some(el => visible(el) && (
+      /を編集$/.test(label(el)) ||
+      el.matches('a[href*="/notes/"]')
+    ))) mask |= 64;
+  const nested = Array.from(root.querySelectorAll('*')).slice(0, 450);
+  if (nested.some(el => {
+    const overflow = getComputedStyle(el).overflowY;
+    return (overflow === 'auto' || overflow === 'scroll') &&
+      el.scrollHeight > el.clientHeight + 8;
+  })) mask |= 128;
+  const nextLinks = controls.filter(el => visible(el) &&
+    el.tagName === 'A' && el.hasAttribute('href') &&
+    ((el.getAttribute('rel') || '').split(/\s+/).includes('next') ||
+      /^(次へ|次のページ|Next)$/i.test(label(el))));
+  if (nextLinks.length) mask |= 256;
+  // Raw href is used ONLY inside the VM to validate a constrained next-page
+  // GET. It is never included in diagnostics, logs, or returned reports.
+  return {mask, next: nextLinks.length === 1 ?
+    (nextLinks[0].getAttribute('href') || '') : ''};
+}"""
+
+_LIST_SCROLL_JS = r"""() => {
+  const root = document.scrollingElement || document.documentElement;
+  let moved = false;
+  if (root && root.scrollTop + root.clientHeight + 8 < root.scrollHeight) {
+    const before = root.scrollTop;
+    root.scrollTop = Math.min(root.scrollHeight, before + 1150);
+    moved = moved || root.scrollTop > before;
+  }
+  const container = document.querySelector('main,[role="main"]') || document.body;
+  if (container) {
+    for (const el of Array.from(container.querySelectorAll('*')).slice(0, 450)) {
+      const overflow = getComputedStyle(el).overflowY;
+      if ((overflow === 'auto' || overflow === 'scroll') &&
+          el.scrollHeight > el.clientHeight + 8 &&
+          el.scrollTop + el.clientHeight + 8 < el.scrollHeight) {
+        const before = el.scrollTop;
+        el.scrollTop = Math.min(el.scrollHeight, before + 1150);
+        moved = moved || el.scrollTop > before;
+      }
+    }
+  }
+  return moved ? 1 : 0;
+}"""
+
+
+def _verified_list_route(url: str, *, draft: bool) -> bool:
+    try:
+        parsed = urlsplit(str(url or ""))
+        params = parse_qs(parsed.query, keep_blank_values=True)
+        return (
+            parsed.scheme == "https" and parsed.netloc == "note.com"
+            and parsed.path == "/notes" and not parsed.fragment
+            and (params == {"kind": ["draft"]} if draft else params == {})
+        )
+    except Exception:
+        return False
+
+
+def _next_verified_list_url(raw: str, *, draft: bool) -> str | None:
+    """Follow ONLY an actually rendered, verified /notes?page=N browser link."""
+    if not isinstance(raw, str) or not 0 < len(raw) <= 400:
+        return None
+    try:
+        parsed = urlsplit(urljoin(_OWNER_LIST_URL, raw))
+        params = parse_qs(parsed.query, keep_blank_values=True)
+        expected = {"page", "kind"} if draft else {"page"}
+        page = params.get("page", [])
+        if (parsed.scheme != "https" or parsed.netloc != "note.com"
+                or parsed.path != "/notes" or parsed.fragment
+                or set(params) != expected or len(page) != 1
+                or (draft and params.get("kind") != ["draft"])):
+            return None
+        raw_page = page[0]
+        if (not raw_page.isascii() or not raw_page.isdecimal()
+                or not 2 <= int(raw_page) <= 500):
+            return None
+        return parsed.geturl()
+    except Exception:
+        return None
+
+
+def _bounded_list_inventory(page, title: str, *, draft: bool) -> dict:
+    """Inspect visible article cards on note's owner/draft browser list.
+
+    Browser-only GET and scrolling. No article click, edit, save, post,
+    private API request, list-filter click, or credentials in public logs.
+    A scan limit or partial viewport NEVER proves nonexistence.
+    """
+    base_url = _DRAFT_LIST_URL if draft else _OWNER_LIST_URL
+    result = {
+        "coverage": "NOT_VERIFIED", "title_visible": False,
+        "untitled_visible": False, "entries_visible": False,
+        "load_more_visible": False, "pages_followed": False,
+    }
+    try:
+        page.goto(base_url, wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(1200)
+        if (not _verified_list_route(str(page.url or ""), draft=draft)
+                or page.locator('input[type="password"]:visible').count() > 0):
+            return result
+        result["coverage"] = "BOUNDED_ONLY"
+        visited = {str(page.url or "")}
+        for index in range(_LIST_MAX_PAGES):
+            seen_next = ""
+            motion_stopped = 0
+            for iteration in range(_LIST_MAX_SCROLLS_PER_PAGE):
+                data = page.evaluate(_LIST_SNAPSHOT_JS, str(title))
+                if (not isinstance(data, dict) or type(data.get("mask")) is not int
+                        or not 0 <= data["mask"] < 512
+                        or not isinstance(data.get("next"), str)):
+                    result["coverage"] = "UNINSPECTABLE"
+                    return result
+                mask = data["mask"]
+                result["title_visible"] |= bool(mask & 2)
+                result["untitled_visible"] |= bool(mask & 4)
+                result["load_more_visible"] |= bool(mask & 8)
+                result["entries_visible"] |= bool(mask & 64)
+                if mask & 256:
+                    seen_next = data["next"]
+                    if not seen_next:
+                        result["coverage"] = "PAGINATION_UNVERIFIED"
+                if mask & 16:
+                    # Loading indicators mean a settled inventory was not proven.
+                    result["coverage"] = "BOUNDED_ONLY"
+                moved = page.evaluate(_LIST_SCROLL_JS)
+                if type(moved) is not int or moved not in (0, 1):
+                    result["coverage"] = "UNINSPECTABLE"
+                    return result
+                if moved:
+                    motion_stopped = 0
+                else:
+                    motion_stopped += 1
+                page.wait_for_timeout(350)
+                if motion_stopped >= 2:
+                    break
+            else:
+                result["coverage"] = "SCROLL_LIMIT"
+            if not seen_next:
+                break
+            target = _next_verified_list_url(seen_next, draft=draft)
+            if target is None or target in visited:
+                result["coverage"] = "PAGINATION_UNVERIFIED"
+                break
+            if index + 1 >= _LIST_MAX_PAGES:
+                result["coverage"] = "PAGE_LIMIT"
+                break
+            page.goto(target, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(700)
+            parsed = urlsplit(str(page.url or ""))
+            if (parsed.scheme != "https" or parsed.netloc != "note.com"
+                    or parsed.path != "/notes" or
+                    urlsplit(target).query != parsed.query):
+                result["coverage"] = "PAGINATION_UNVERIFIED"
+                break
+            visited.add(target)
+            result["pages_followed"] = True
+        # Even when all observed pages were visited there may be server-side
+        # unseen/virtualized cards. Coverage must NEVER be marked COMPLETE.
+    except Exception:
+        result["coverage"] = "UNINSPECTABLE"
+    return result
+
+
 def _read_only_browser_probe(title: str) -> dict:
-    """Observe existing note account and article list; never enter an editor or write."""
+    """Owner-proven inventory of visible owner/draft pages, never a write."""
+    basic = {"note_account": "BROWSER_UNAVAILABLE", "matching_title": "NOT_CHECKED"}
     try:
         import note_draft_automation as base
         import run190_note_persistent_cloud as cloud
@@ -294,31 +508,44 @@ def _read_only_browser_probe(title: str) -> dict:
         with sync_playwright() as playwright:
             context = cloud._launch_persistent_context(playwright)
             try:
-                page = context.pages[0] if context.pages else context.new_page()
-                page.set_default_timeout(12000)
+                page = context.new_page()
+                page.set_default_timeout(18000)
                 try:
                     cloud._assert_expected_note_account(page)
                 except (base.NoteAuthenticationExpired, base.NoteDraftError):
                     return {"note_account": "NOT_VERIFIED", "matching_title": "NOT_CHECKED"}
-                page.goto("https://note.com/notes", wait_until="domcontentloaded", timeout=30000)
-                page.wait_for_timeout(1300)
-                if (str(page.url or "").split("?")[0].rstrip("/") !=
-                        "https://note.com/notes" or base._looks_logged_out(page)):
-                    return {"note_account": "VERIFIED", "matching_title": "LIST_NOT_VERIFIED"}
-                count = page.get_by_role(
-                    "button", name=f"{title}を編集", exact=True
-                ).count()
-                # Matching a title is only a hint, not proof of exact manuscript or saved draft.
+                owner = _bounded_list_inventory(page, title, draft=False)
+                draft = _bounded_list_inventory(page, title, draft=True)
                 return {
                     "note_account": "VERIFIED",
-                    "matching_title": "NONE_VISIBLE" if count == 0 else
-                        ("ONE_VISIBLE" if count == 1 else "MULTIPLE_VISIBLE"),
+                    "matching_title": (
+                        "ONE_VISIBLE" if owner["title_visible"] or draft["title_visible"]
+                        else "NONE_VISIBLE" if (
+                            owner["coverage"] != "NOT_VERIFIED" and
+                            draft["coverage"] != "NOT_VERIFIED"
+                        ) else "LIST_NOT_VERIFIED"
+                    ),
+                    "owner_list_coverage": owner["coverage"],
+                    "draft_list_coverage": draft["coverage"],
+                    "draft_list_view_verified": draft["coverage"] not in (
+                        "NOT_VERIFIED", "UNINSPECTABLE",
+                    ),
+                    "untitled_candidate_visible": draft["untitled_visible"],
+                    "list_load_more_observed": (
+                        owner["load_more_visible"] or draft["load_more_visible"]
+                    ),
+                    "list_pagination_followed": (
+                        owner["pages_followed"] or draft["pages_followed"]
+                    ),
+                    "note_list_entries_visible": (
+                        owner["entries_visible"] or draft["entries_visible"]
+                    ),
                 }
             finally:
                 context.close()
     except Exception:
-        # Never expose browser errors, cookies, identifiers or title through Actions logs.
-        return {"note_account": "BROWSER_UNAVAILABLE", "matching_title": "NOT_CHECKED"}
+        # Do not log browser exceptions, cookies, private article data or URLs.
+        return basic
 
 
 def inspect_existing_attempt(
@@ -368,6 +595,19 @@ def inspect_existing_attempt(
             "ONE_VISIBLE", "MULTIPLE_VISIBLE"
         )):
         raise ValueError("V04_BRIDGE_INSPECT_PROBE_INVALID")
+    for key in ("owner_list_coverage", "draft_list_coverage"):
+        if key in probe and probe[key] not in {
+            "NOT_VERIFIED", "BOUNDED_ONLY", "SCROLL_LIMIT",
+            "PAGINATION_UNVERIFIED", "PAGE_LIMIT", "UNINSPECTABLE",
+        }:
+            raise ValueError("V04_BRIDGE_INSPECT_COVERAGE_INVALID")
+    for key in (
+        "draft_list_view_verified", "untitled_candidate_visible",
+        "list_load_more_observed", "list_pagination_followed",
+        "note_list_entries_visible",
+    ):
+        if key in probe and type(probe[key]) is not bool:
+            raise ValueError("V04_BRIDGE_INSPECT_COVERAGE_INVALID")
     evidence.update(probe)
     history = history_probe(record.get("started_at") if record else None)
     if history not in {
