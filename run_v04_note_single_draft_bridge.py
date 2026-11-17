@@ -8,16 +8,19 @@ A persistent fail-closed ledger prevents duplicate drafts on repeat dispatch.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import fcntl
 from hashlib import sha256
 import json
 import os
+import shutil
+import sqlite3
 from pathlib import Path
 import re
 import tempfile
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
 
 NEXT_REPO = "trendhub-ab/ai-intelligence-factory-next"
 NOTE_IDENTITY = "trendhub_biz"
@@ -120,9 +123,14 @@ def _draft_from_browser(
     import run187_note_editor_readiness as readiness
     from playwright.sync_api import sync_playwright
 
+    # The old note production browser path explicitly installed these UI/DOM
+    # selectors and persistence guards. The isolated bridge must not bypass them.
+    cloud.install()
+    print("V04_NOTE_STAGE=BROWSER_SETUP", flush=True)
     body_text = base._body_manuscript_for_note(title, manuscript)
     with sync_playwright() as playwright:
         context = cloud._launch_persistent_context(playwright)
+        print("V04_NOTE_STAGE=BROWSER_LAUNCHED", flush=True)
         page = context.pages[0] if context.pages else context.new_page()
         page.set_default_timeout(30000)
         try:
@@ -138,19 +146,25 @@ def _draft_from_browser(
                 page.goto("https://note.com/", wait_until="domcontentloaded", timeout=60000)
                 cloud._assert_expected_note_account(page)
 
+            print("V04_NOTE_STAGE=ACCOUNT_VERIFIED", flush=True)
             route._ensure_editor_route(page)
             if not readiness._is_editor_url(str(page.url or "")):
                 raise base.NoteDraftError("V04_BRIDGE_NOTE_EDITOR_ROUTE_NOT_VERIFIED")
+            print("V04_NOTE_STAGE=EDITOR_READY", flush=True)
             title_field = base._set_title(page, title)
+            print("V04_NOTE_STAGE=TITLE_INSERTED", flush=True)
             body = base._find_body(page, title_field)
             base._paste_manuscript(page, body, body_text)
             body = base._find_body(page, title_field)
             base._verify_body_content(body, body_text)
+            print("V04_NOTE_STAGE=BODY_VERIFIED", flush=True)
             url = base._save_draft_and_verify(
                 page, title, body_text, image_required=False,
                 on_stable_draft_url=on_url,
             )
+            print("V04_NOTE_STAGE=PERSISTED_DOCUMENT_VERIFIED", flush=True)
             cloud._verify_draft_in_article_list(page, url, title)
+            print("V04_NOTE_STAGE=ARTICLE_LIST_CONFIRMED", flush=True)
             return url
         finally:
             context.close()
@@ -203,6 +217,74 @@ def save_once(
 
 
 
+
+def _historical_editor_navigation(started_at: str | None) -> str:
+    """Categorize *local* Chrome History near the failed attempt; no URLs emitted.
+
+    Chrome history is supporting evidence only: visits may be missing, and an
+    editor visit never proves that note persisted a draft. Not used to unblock
+    the ATTEMPTING ledger or authorize any write.
+    """
+    if not started_at:
+        return "NO_ATTEMPT_TIMESTAMP"
+    try:
+        began = datetime.fromisoformat(started_at)
+        if began.tzinfo is None:
+            return "HISTORY_UNAVAILABLE"
+        lower = began.astimezone(timezone.utc) - timedelta(seconds=90)
+        upper = began.astimezone(timezone.utc) + timedelta(minutes=4)
+        epoch = datetime(1601, 1, 1, tzinfo=timezone.utc)
+        lo = int((lower - epoch).total_seconds() * 1000000)
+        hi = int((upper - epoch).total_seconds() * 1000000)
+        import run190_note_persistent_cloud as cloud
+        paths = sorted(
+            p for p in cloud._profile_dir().rglob("History")
+            if p.is_file() and p.stat().st_size < 100_000_000
+        )[:12]
+        inspected = False
+        types: set[str] = set()
+        with tempfile.TemporaryDirectory(prefix="v04-history-readonly-") as temp:
+            for i, source in enumerate(paths):
+                copied = Path(temp) / f"History-{i}.sqlite"
+                try:
+                    shutil.copy2(source, copied)
+                    db = sqlite3.connect(f"file:{copied}?mode=ro", uri=True)
+                    try:
+                        rows = db.execute(
+                            "SELECT u.url FROM visits v JOIN urls u ON u.id=v.url "
+                            "WHERE v.visit_time BETWEEN ? AND ? LIMIT 1024",
+                            (lo, hi),
+                        ).fetchall()
+                        inspected = True
+                    finally:
+                        db.close()
+                except (OSError, sqlite3.Error):
+                    continue
+                for (raw_url,) in rows:
+                    target = urlsplit(str(raw_url))
+                    if (target.scheme != "https" or target.hostname not in
+                            {"note.com", "editor.note.com"}):
+                        continue
+                    path = target.path.rstrip("/")
+                    if path in {"/notes/new", "/new"}:
+                        types.add("NEW")
+                    elif re.fullmatch(r"/notes/[^/]+/edit", path):
+                        types.add("EDIT")
+        if not inspected:
+            return "HISTORY_UNAVAILABLE"
+        if types == {"NEW", "EDIT"}:
+            return "NEW_AND_EDIT_ROUTES_VISITED"
+        if types == {"EDIT"}:
+            return "EDIT_ROUTE_VISITED"
+        if types == {"NEW"}:
+            return "NEW_ROUTE_VISITED"
+        return "NO_EDITOR_NAVIGATION_SEEN"
+    except Exception:
+        # Never leak file paths, profile contents, URLs or browser exceptions.
+        return "HISTORY_UNAVAILABLE"
+
+
+
 def _read_only_browser_probe(title: str) -> dict:
     """Observe existing note account and article list; never enter an editor or write."""
     try:
@@ -242,6 +324,7 @@ def _read_only_browser_probe(title: str) -> dict:
 def inspect_existing_attempt(
     issue_number: int, expected_sha256: str, title: str,
     *, ledger_path: Path = DRAFT_LEDGER, browser_probe=_read_only_browser_probe,
+    history_probe=_historical_editor_navigation,
 ) -> dict:
     """Read-only reconciliation; never clears the ledger or authorizes a retry."""
     if (type(issue_number) is not int or issue_number < 1
@@ -286,6 +369,14 @@ def inspect_existing_attempt(
         )):
         raise ValueError("V04_BRIDGE_INSPECT_PROBE_INVALID")
     evidence.update(probe)
+    history = history_probe(record.get("started_at") if record else None)
+    if history not in {
+        "NO_ATTEMPT_TIMESTAMP", "HISTORY_UNAVAILABLE",
+        "NEW_AND_EDIT_ROUTES_VISITED", "EDIT_ROUTE_VISITED",
+        "NEW_ROUTE_VISITED", "NO_EDITOR_NAVIGATION_SEEN",
+    }:
+        raise ValueError("V04_BRIDGE_INSPECT_HISTORY_INVALID")
+    evidence["historical_editor_navigation"] = history
     return evidence
 
 
