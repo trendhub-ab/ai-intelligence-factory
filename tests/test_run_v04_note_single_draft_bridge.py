@@ -270,8 +270,8 @@ class SingleNoteBridgeTests(unittest.TestCase):
                 self.nav = []
                 self.evaluate_calls = []
                 self.snapshots = [
-                    {"mask": 1 | 64 | 256, "next": "?page=2"},
-                    {"mask": 1 | 2 | 4 | 64, "next": ""},
+                    {"mask": 1 | 64 | 256, "structure": (1 << 1) | (1 << 10), "next": "?page=2"},
+                    {"mask": 1 | 2 | 4 | 64, "structure": (1 << 2) | (1 << 6), "next": ""},
                 ]
             def goto(self, url, **kwargs):
                 self.url = url
@@ -295,6 +295,10 @@ class SingleNoteBridgeTests(unittest.TestCase):
         self.assertTrue(result["untitled_visible"])
         self.assertTrue(result["entries_visible"])
         self.assertTrue(result["pages_followed"])
+        self.assertEqual(result["structure_signals"], sorted([
+            "main_present", "link_visible", "main_visible",
+            "article_semantic_visible",
+        ]))
         self.assertEqual(page.nav, [
             "https://note.com/notes", "https://note.com/notes?page=2"
         ])
@@ -396,6 +400,82 @@ class SingleNoteBridgeTests(unittest.TestCase):
                     browser_probe=secret_probe,
                     history_probe=lambda _: "NO_ATTEMPT_TIMESTAMP",
                 )
+
+    def test_structure_diagnostics_do_not_contain_private_dom_content(self):
+        with TemporaryDirectory() as td:
+            recorded = {
+                "note_account": "VERIFIED",
+                "matching_title": "NONE_VISIBLE",
+                "owner_list_structure": [
+                    "document_ready", "main_present", "navigation_visible",
+                ],
+                "draft_list_structure": [
+                    "article_semantic_visible", "edit_control_hidden",
+                    "loading_indicator_visible",
+                ],
+            }
+            observed = bridge.inspect_existing_attempt(
+                204, SHA, "private article title",
+                ledger_path=Path(td)/"ledger.json",
+                browser_probe=lambda _: recorded,
+                history_probe=lambda _: "NO_ATTEMPT_TIMESTAMP",
+            )
+            self.assertEqual(
+                observed["draft_list_structure"], recorded["draft_list_structure"]
+            )
+            self.assertFalse(observed["automatic_retry_allowed"])
+            self.assertEqual(observed["note_mutations"], 0)
+            self.assertNotIn("private article title", json.dumps(observed))
+            self.assertNotIn("note.com/notes/", json.dumps(observed))
+
+    def test_structure_output_rejects_unknown_codes_or_duplicate_entries(self):
+        with TemporaryDirectory() as td:
+            def browser(flags):
+                return lambda _: {
+                    "note_account": "VERIFIED", "matching_title": "NONE_VISIBLE",
+                    "owner_list_structure": flags,
+                }
+            for flags in (
+                ["raw_html=<secret>"], ["main_present", "main_present"],
+                ["hidden URL"], "main_present", list(range(25)),
+            ):
+                with self.subTest(flags=str(flags)[:35]):
+                    with self.assertRaisesRegex(ValueError, "STRUCTURE_INVALID"):
+                        bridge.inspect_existing_attempt(
+                            204, SHA, "title",
+                            ledger_path=Path(td) / "ledger.json",
+                            browser_probe=browser(flags),
+                            history_probe=lambda _: "NO_ATTEMPT_TIMESTAMP",
+                        )
+            self.assertEqual(len(bridge._LIST_STRUCTURE_SIGNALS), 20)
+            self.assertTrue(all(
+                isinstance(code, str) and code.isidentifier()
+                for code in bridge._LIST_STRUCTURE_SIGNALS
+            ))
+
+    def test_structure_shape_is_not_content_or_retry_proof(self):
+        class WrongStructurePage:
+            url = ""
+            def goto(self, url, **_):
+                self.url = url
+            def wait_for_timeout(self, *_):
+                pass
+            def locator(self, *_):
+                class L:
+                    def count(self): return 0
+                return L()
+            def evaluate(self, script, *_):
+                if script == bridge._LIST_SNAPSHOT_JS:
+                    return {"mask": 0, "next": "", "structure": "raw private text"}
+                if script == bridge._LIST_SCROLL_JS:
+                    return 0
+                raise AssertionError("Unexpected write or browser request")
+        result = bridge._bounded_list_inventory(
+            WrongStructurePage(), "title", draft=True
+        )
+        self.assertEqual(result["coverage"], "UNINSPECTABLE")
+        self.assertEqual(result["structure_signals"], [])
+        self.assertFalse(result["title_visible"])
 
     def test_workflow_is_one_off_no_auto_or_publication(self):
         s = WORKFLOW.read_text("utf-8")

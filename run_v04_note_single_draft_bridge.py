@@ -292,6 +292,31 @@ _DRAFT_LIST_URL = "https://note.com/notes?kind=draft"
 _LIST_MAX_PAGES = 3
 _LIST_MAX_SCROLLS_PER_PAGE = 12
 
+# Fixed structural observations only. DOM labels, CSS classes, HTML, title,
+# IDs, hrefs, cookies and article text NEVER leave the persistent note runner.
+_LIST_STRUCTURE_SIGNALS = (
+    "document_ready",
+    "main_present",
+    "main_visible",
+    "main_has_children",
+    "navigation_visible",
+    "heading_visible",
+    "article_semantic_visible",
+    "listitem_semantic_visible",
+    "table_row_visible",
+    "button_visible",
+    "link_visible",
+    "edit_control_visible",
+    "edit_control_hidden",
+    "loading_indicator_visible",
+    "empty_state_text_visible",
+    "iframe_present",
+    "list_container_visible",
+    "note_route_link_visible",
+    "generic_testid_list_visible",
+    "draft_filter_visible",
+)
+
 # Only non-content evidence can escape this module. Even a settled bounded scan
 # is NOT proof that all note drafts were indexed, or that an unnamed draft is absent.
 _LIST_SNAPSHOT_JS = r"""(targetTitle) => {
@@ -351,7 +376,50 @@ _LIST_SNAPSHOT_JS = r"""(targetTitle) => {
   if (nextLinks.length) mask |= 256;
   // Raw href is used ONLY inside the VM to validate a constrained next-page
   // GET. It is never included in diagnostics, logs, or returned reports.
-  return {mask, next: nextLinks.length === 1 ?
+  // Purely structural signals, emitted as an integer bitmask. No DOM or
+  // private content, attributes, links or element counts leave the browser.
+  const hasVisible = selector => Array.from(
+    root.querySelectorAll(selector)
+  ).slice(0, 150).some(visible);
+  let structure = 0;
+  if (document.readyState === 'complete') structure |= (1 << 0);
+  if (main) structure |= (1 << 1);
+  if (main && visible(main)) structure |= (1 << 2);
+  if (main && main.children.length) structure |= (1 << 3);
+  if (hasVisible('nav,[role="navigation"]')) structure |= (1 << 4);
+  if (hasVisible('h1,h2,h3,[role="heading"]')) structure |= (1 << 5);
+  if (hasVisible('article')) structure |= (1 << 6);
+  if (hasVisible('[role="listitem"]')) structure |= (1 << 7);
+  if (hasVisible('table tbody tr')) structure |= (1 << 8);
+  if (controls.some(el => el.tagName === 'BUTTON' && visible(el)))
+    structure |= (1 << 9);
+  if (controls.some(el => el.tagName === 'A' && visible(el)))
+    structure |= (1 << 10);
+  if (controls.some(el => visible(el) && /を編集$/.test(label(el))))
+    structure |= (1 << 11);
+  if (controls.some(el => !visible(el) && /を編集$/.test(label(el))))
+    structure |= (1 << 12);
+  if (hasVisible('[aria-busy="true"],[role="progressbar"],[class*="skeleton"]'))
+    structure |= (1 << 13);
+  if (/(記事がありません|記事はありません|記事が見つかりません|下書きはありません|表示できません|読み込みに失敗)/.test(
+      normalize(root.textContent).slice(0, 10000))) structure |= (1 << 14);
+  if (hasVisible('iframe')) structure |= (1 << 15);
+  if (hasVisible('ul,ol,section,[role="list"],table')) structure |= (1 << 16);
+  if (controls.some(el => el.tagName === 'A' && visible(el) && (() => {
+    try {
+      const raw = el.getAttribute('href');
+      if (!raw) return false;
+      const u = new URL(raw, location.origin);
+      return u.protocol === 'https:' &&
+        (u.hostname === 'note.com' || u.hostname === 'editor.note.com') &&
+        /^\/notes\/[^/]+(?:\/edit)?\/?$/.test(u.pathname);
+    } catch (_) {return false;}
+  })())) structure |= (1 << 17);
+  if (hasVisible('[data-testid*="list"],[data-testid*="article"],[data-testid*="draft"]'))
+    structure |= (1 << 18);
+  if (controls.some(el => visible(el) && /^下書き$/.test(label(el))))
+    structure |= (1 << 19);
+  return {mask, structure, next: nextLinks.length === 1 ?
     (nextLinks[0].getAttribute('href') || '') : ''};
 }"""
 
@@ -428,6 +496,7 @@ def _bounded_list_inventory(page, title: str, *, draft: bool) -> dict:
         "coverage": "NOT_VERIFIED", "title_visible": False,
         "untitled_visible": False, "entries_visible": False,
         "load_more_visible": False, "pages_followed": False,
+        "structure_signals": [],
     }
     try:
         page.goto(base_url, wait_until="domcontentloaded", timeout=60000)
@@ -444,10 +513,18 @@ def _bounded_list_inventory(page, title: str, *, draft: bool) -> dict:
                 data = page.evaluate(_LIST_SNAPSHOT_JS, str(title))
                 if (not isinstance(data, dict) or type(data.get("mask")) is not int
                         or not 0 <= data["mask"] < 512
-                        or not isinstance(data.get("next"), str)):
+                        or not isinstance(data.get("next"), str)
+                        or type(data.get("structure")) is not int
+                        or not 0 <= data["structure"] < (1 << len(_LIST_STRUCTURE_SIGNALS))):
                     result["coverage"] = "UNINSPECTABLE"
                     return result
                 mask = data["mask"]
+                observed = set(result["structure_signals"])
+                observed.update(
+                    name for i, name in enumerate(_LIST_STRUCTURE_SIGNALS)
+                    if data["structure"] & (1 << i)
+                )
+                result["structure_signals"] = sorted(observed)
                 result["title_visible"] |= bool(mask & 2)
                 result["untitled_visible"] |= bool(mask & 4)
                 result["load_more_visible"] |= bool(mask & 8)
@@ -540,6 +617,8 @@ def _read_only_browser_probe(title: str) -> dict:
                     "note_list_entries_visible": (
                         owner["entries_visible"] or draft["entries_visible"]
                     ),
+                    "owner_list_structure": owner["structure_signals"],
+                    "draft_list_structure": draft["structure_signals"],
                 }
             finally:
                 context.close()
@@ -600,6 +679,7 @@ def inspect_existing_attempt(
         "draft_list_coverage", "draft_list_view_verified",
         "untitled_candidate_visible", "list_load_more_observed",
         "list_pagination_followed", "note_list_entries_visible",
+        "owner_list_structure", "draft_list_structure",
     }
     if set(probe) - allowed_probe_keys:
         raise ValueError("V04_BRIDGE_INSPECT_PROBE_INVALID")
@@ -616,6 +696,14 @@ def inspect_existing_attempt(
     ):
         if key in probe and type(probe[key]) is not bool:
             raise ValueError("V04_BRIDGE_INSPECT_COVERAGE_INVALID")
+    for key in ("owner_list_structure", "draft_list_structure"):
+        if key in probe:
+            values = probe[key]
+            if (type(values) is not list or len(values) > len(_LIST_STRUCTURE_SIGNALS)
+                    or any(type(value) is not str or
+                           value not in _LIST_STRUCTURE_SIGNALS for value in values)
+                    or values != sorted(set(values))):
+                raise ValueError("V04_BRIDGE_INSPECT_STRUCTURE_INVALID")
     evidence.update(probe)
     history = history_probe(record.get("started_at") if record else None)
     if history not in {
