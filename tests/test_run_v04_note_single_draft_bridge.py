@@ -259,6 +259,144 @@ class SingleNoteBridgeTests(unittest.TestCase):
         self.assertIn('print("V04_NOTE_STAGE=ARTICLE_LIST_CONFIRMED"', script)
         self.assertNotIn("except Exception as exc:\\n        print(exc)", script)
 
+    def test_bounded_inventory_is_only_partial_read_only_evidence(self):
+        class SafeLocator:
+            def count(self):
+                return 0
+
+        class FakeNotePage:
+            def __init__(self):
+                self.url = ""
+                self.nav = []
+                self.evaluate_calls = []
+                self.snapshots = [
+                    {"mask": 1 | 64 | 256, "next": "?page=2"},
+                    {"mask": 1 | 2 | 4 | 64, "next": ""},
+                ]
+            def goto(self, url, **kwargs):
+                self.url = url
+                self.nav.append(url)
+            def wait_for_timeout(self, *args):
+                return None
+            def locator(self, *args):
+                return SafeLocator()
+            def evaluate(self, script, *args):
+                self.evaluate_calls.append(script)
+                if script == bridge._LIST_SNAPSHOT_JS:
+                    return self.snapshots[0] if len(self.nav) == 1 else self.snapshots[1]
+                if script == bridge._LIST_SCROLL_JS:
+                    return 0
+                raise AssertionError("An unexpected DOM action was attempted")
+
+        page = FakeNotePage()
+        result = bridge._bounded_list_inventory(page, "expected", draft=False)
+        self.assertEqual(result["coverage"], "BOUNDED_ONLY")
+        self.assertTrue(result["title_visible"])
+        self.assertTrue(result["untitled_visible"])
+        self.assertTrue(result["entries_visible"])
+        self.assertTrue(result["pages_followed"])
+        self.assertEqual(page.nav, [
+            "https://note.com/notes", "https://note.com/notes?page=2"
+        ])
+        self.assertTrue(all(
+            call in (bridge._LIST_SNAPSHOT_JS, bridge._LIST_SCROLL_JS)
+            for call in page.evaluate_calls
+        ))
+
+    def test_strict_list_pagination_rejects_non_list_and_cross_site(self):
+        self.assertEqual(bridge._next_verified_list_url(
+            "?page=2", draft=False
+        ), "https://note.com/notes?page=2")
+        self.assertEqual(bridge._next_verified_list_url(
+            "?kind=draft&page=4", draft=True
+        ), "https://note.com/notes?kind=draft&page=4")
+        for unsafe in (
+            "https://evil.example/notes?page=2",
+            "https://evil.example@note.com/notes?page=2",
+            "https://note.com/notes/nprivate/edit",
+            "https://note.com/notes?page=2&action=save",
+            "https://note.com/notes?page=1",
+            "https://note.com/notes?page=501",
+            "https://note.com/notes?page=2#fragment",
+            "?kind=draft&page=2",
+        ):
+            self.assertIsNone(bridge._next_verified_list_url(unsafe, draft=False))
+        self.assertIsNone(bridge._next_verified_list_url(
+            "https://note.com/notes?page=3", draft=True))
+        self.assertTrue(bridge._verified_list_route(
+            "https://note.com/notes?kind=draft", draft=True))
+        self.assertFalse(bridge._verified_list_route(
+            "https://note.com/notes?kind=published", draft=True))
+
+    def test_incomplete_inventory_is_not_authority_to_retry(self):
+        class UninspectablePage:
+            url = ""
+            def goto(self, url, **_):
+                self.url = url
+            def wait_for_timeout(self, *_):
+                pass
+            def locator(self, *_):
+                class Locator:
+                    def count(self): return 0
+                return Locator()
+            def evaluate(self, *_):
+                return {"mask": True, "next": ""}
+
+        scan = bridge._bounded_list_inventory(
+            UninspectablePage(), "private title", draft=True
+        )
+        self.assertEqual(scan["coverage"], "UNINSPECTABLE")
+        self.assertFalse(scan["title_visible"])
+
+        with TemporaryDirectory() as td:
+            report = bridge.inspect_existing_attempt(
+                204, SHA, "title",
+                ledger_path=Path(td) / "nonexistent.json",
+                browser_probe=lambda _title: {
+                    "note_account": "VERIFIED",
+                    "matching_title": "NONE_VISIBLE",
+                    "owner_list_coverage": "BOUNDED_ONLY",
+                    "draft_list_coverage": "UNINSPECTABLE",
+                    "draft_list_view_verified": False,
+                    "untitled_candidate_visible": False,
+                    "list_load_more_observed": False,
+                    "list_pagination_followed": False,
+                    "note_list_entries_visible": False,
+                },
+                history_probe=lambda _: "NO_ATTEMPT_TIMESTAMP",
+            )
+            self.assertFalse(report["automatic_retry_allowed"])
+            self.assertEqual(report["note_mutations"], 0)
+            self.assertEqual(report["draft_list_coverage"], "UNINSPECTABLE")
+
+    def test_inspection_rejects_secret_or_unapproved_scan_evidence(self):
+        with TemporaryDirectory() as td:
+            path = Path(td)/"none.json"
+            def invalid_probe(_):
+                return {
+                    "note_account": "VERIFIED",
+                    "matching_title": "POSSIBLE_MATCH_VISIBLE",
+                    "draft_list_coverage": "COMPLETE",
+                }
+            with self.assertRaisesRegex(ValueError, "COVERAGE_INVALID"):
+                bridge.inspect_existing_attempt(
+                    204, SHA, "title", ledger_path=path,
+                    browser_probe=invalid_probe,
+                    history_probe=lambda _: "NO_ATTEMPT_TIMESTAMP",
+                )
+            def secret_probe(_):
+                return {
+                    "note_account": "VERIFIED",
+                    "matching_title": "NONE_VISIBLE",
+                    "private_draft_url": "https://editor.note.com/notes/private/edit",
+                }
+            with self.assertRaisesRegex(ValueError, "PROBE_INVALID"):
+                bridge.inspect_existing_attempt(
+                    204, SHA, "title", ledger_path=path,
+                    browser_probe=secret_probe,
+                    history_probe=lambda _: "NO_ATTEMPT_TIMESTAMP",
+                )
+
     def test_workflow_is_one_off_no_auto_or_publication(self):
         s = WORKFLOW.read_text("utf-8")
         for piece in (
