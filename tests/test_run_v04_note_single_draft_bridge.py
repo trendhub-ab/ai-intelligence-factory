@@ -447,11 +447,32 @@ class SingleNoteBridgeTests(unittest.TestCase):
                             browser_probe=browser(flags),
                             history_probe=lambda _: "NO_ATTEMPT_TIMESTAMP",
                         )
-            self.assertEqual(len(bridge._LIST_STRUCTURE_SIGNALS), 20)
+            self.assertEqual(len(bridge._LIST_STRUCTURE_SIGNALS), 24)
             self.assertTrue(all(
                 isinstance(code, str) and code.isidentifier()
                 for code in bridge._LIST_STRUCTURE_SIGNALS
             ))
+
+    def test_document_wide_read_only_list_fallback_is_bounded(self):
+        """A portal or nonsemantic title is not silently missed by main-only selectors."""
+        script = bridge._LIST_SNAPSHOT_JS
+        scroll = bridge._LIST_SCROLL_JS
+        self.assertIn("const root = document.body || main;", script)
+        self.assertIn("const bodyTitleVisible", script)
+        self.assertIn("normalize(el.textContent) === target", script)
+        self.assertIn("bodyTitleVisible\n    )) mask |= 2;", script)
+        self.assertIn("!main.contains(el)", script)
+        self.assertIn("document.body || document.querySelector", scroll)
+        self.assertIn("slice(0, 2000)", script)
+        self.assertEqual(bridge._LIST_STRUCTURE_SIGNALS[-4:], (
+            "outside_main_article_visible",
+            "outside_main_edit_control_visible",
+            "outside_main_note_route_link_visible",
+            "body_exact_title_visible",
+        ))
+        # The scanner must not click, post, save, publish or log raw DOM.
+        for forbidden in ("fetch(", ".click(", "outerHTML", "innerHTML", "console.log"):
+            self.assertNotIn(forbidden, script)
 
     def test_structure_shape_is_not_content_or_retry_proof(self):
         class WrongStructurePage:
