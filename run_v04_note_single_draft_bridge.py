@@ -315,14 +315,20 @@ _LIST_STRUCTURE_SIGNALS = (
     "note_route_link_visible",
     "generic_testid_list_visible",
     "draft_filter_visible",
+    "outside_main_article_visible",
+    "outside_main_edit_control_visible",
+    "outside_main_note_route_link_visible",
+    "body_exact_title_visible",
 )
 
 # Only non-content evidence can escape this module. Even a settled bounded scan
 # is NOT proof that all note drafts were indexed, or that an unnamed draft is absent.
 _LIST_SNAPSHOT_JS = r"""(targetTitle) => {
   const main = document.querySelector('main,[role="main"]');
-  const root = main || document.body;
-  if (!root) return {mask: 0, next: ""};
+  // Note may render article cards in a portal *outside* <main>.
+  // Inspect the whole current document, never a network/private API endpoint.
+  const root = document.body || main;
+  if (!root) return {mask: 0, structure: 0, next: ""};
   const visible = el => {
     const r = el.getBoundingClientRect(), s = getComputedStyle(el);
     return r.width > 0 && r.height > 0 &&
@@ -339,13 +345,21 @@ _LIST_SNAPSHOT_JS = r"""(targetTitle) => {
   const elements = Array.from(root.querySelectorAll(
     'h1,h2,h3,h4,[role="heading"],button,a[href],[role="listitem"],article'
   )).slice(0, 800);
+  // Titles in div/span-based virtual lists have no semantic article or edit
+  // button. Exact match is computed inside Chrome and never printed.
+  const bodyTitleVisible = !!(target && Array.from(root.querySelectorAll(
+    'h1,h2,h3,h4,h5,span,p,div,a,button,[role="heading"],[role="listitem"]'
+  )).slice(0, 2000).some(el =>
+    visible(el) && el.children.length <= 2 && normalize(el.textContent) === target
+  ));
   let mask = 0;
   if (main && main.children.length > 0) mask |= 1;
   if (target && (
       controls.some(el => visible(el) && label(el) === target + 'を編集') ||
       elements.some(el => visible(el) &&
         (normalize(el.textContent) === target ||
-         label(el) === target) && el.children.length <= 2)
+         label(el) === target) && el.children.length <= 2) ||
+      bodyTitleVisible
     )) mask |= 2;
   if (elements.some(el => visible(el) &&
     /^(無題|タイトル未設定|タイトルなし|Untitled)(?:を編集)?$/i.test(
@@ -419,6 +433,16 @@ _LIST_SNAPSHOT_JS = r"""(targetTitle) => {
     structure |= (1 << 18);
   if (controls.some(el => visible(el) && /^下書き$/.test(label(el))))
     structure |= (1 << 19);
+  const outsideMainVisible = selector => Array.from(
+    root.querySelectorAll(selector)
+  ).slice(0, 500).some(el => (!main || !main.contains(el)) && visible(el));
+  if (outsideMainVisible('article,[role="listitem"]')) structure |= (1 << 20);
+  if (controls.some(el => (!main || !main.contains(el)) && visible(el) &&
+      /を編集$/.test(label(el)))) structure |= (1 << 21);
+  if (controls.some(el => (!main || !main.contains(el)) && visible(el) &&
+      el.tagName === 'A' && /\/notes\//.test(el.getAttribute('href') || '')))
+    structure |= (1 << 22);
+  if (bodyTitleVisible) structure |= (1 << 23);
   return {mask, structure, next: nextLinks.length === 1 ?
     (nextLinks[0].getAttribute('href') || '') : ''};
 }"""
@@ -431,7 +455,7 @@ _LIST_SCROLL_JS = r"""() => {
     root.scrollTop = Math.min(root.scrollHeight, before + 1150);
     moved = moved || root.scrollTop > before;
   }
-  const container = document.querySelector('main,[role="main"]') || document.body;
+  const container = document.body || document.querySelector('main,[role="main"]');
   if (container) {
     for (const el of Array.from(container.querySelectorAll('*')).slice(0, 450)) {
       const overflow = getComputedStyle(el).overflowY;
