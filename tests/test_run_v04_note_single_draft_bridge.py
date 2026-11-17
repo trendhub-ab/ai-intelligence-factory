@@ -1,8 +1,10 @@
 """Zero-provider regression tests for isolated v0.4 private note draft bridge."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from hashlib import sha256
 import json
+import sqlite3
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -177,6 +179,85 @@ class SingleNoteBridgeTests(unittest.TestCase):
         self.assertIn("--mode inspect", s)
         self.assertIn("options: [create, inspect]", s)
         self.assertIn("needs: [verify-private-input, start-note-vm, create-exact-draft, inspect-draft-state]", s)
+
+    def test_history_probe_reads_visit_times_without_exposing_draft_urls(self):
+        import run190_note_persistent_cloud as cloud
+        with TemporaryDirectory() as td:
+            home = Path(td)
+            profile = home / "Default"
+            profile.mkdir()
+            db = sqlite3.connect(str(profile / "History"))
+            db.executescript(
+                "CREATE TABLE urls (id INTEGER PRIMARY KEY, url TEXT);"
+                "CREATE TABLE visits (url INTEGER, visit_time INTEGER);"
+            )
+            db.execute(
+                "INSERT INTO urls VALUES (?, ?)",
+                (1, "https://editor.note.com/notes/nprivate123/edit"),
+            )
+            db.execute(
+                "INSERT INTO urls VALUES (?, ?)",
+                (2, "https://note.com/notes/new"),
+            )
+            when = "2026-11-16T17:40:46+00:00"
+            epoch = datetime(1601, 1, 1, tzinfo=timezone.utc)
+            tick = int((datetime.fromisoformat(when) - epoch).total_seconds() * 1e6)
+            db.execute("INSERT INTO visits VALUES (?, ?)", (1, tick))
+            db.commit()
+            with patch.object(cloud, "_profile_dir", return_value=home):
+                first = bridge._historical_editor_navigation(when)
+                self.assertEqual(first, "EDIT_ROUTE_VISITED")
+                self.assertNotIn("nprivate123", first)
+                db.execute("INSERT INTO visits VALUES (?, ?)", (2, tick))
+                db.commit()
+                second = bridge._historical_editor_navigation(when)
+                self.assertEqual(second, "NEW_AND_EDIT_ROUTES_VISITED")
+                db.execute("DELETE FROM visits")
+                db.commit()
+                empty = bridge._historical_editor_navigation(when)
+                self.assertEqual(empty, "NO_EDITOR_NAVIGATION_SEEN")
+            db.close()
+
+    def test_inspection_history_is_only_evidence_not_retry_authority(self):
+        with TemporaryDirectory() as td:
+            path = Path(td)/"ledger.json"
+            path.write_text(json.dumps({
+                f"{bridge.NEXT_REPO}#204:{SHA}": {
+                    "issue_number": 204, "manuscript_sha256": SHA,
+                    "status": "ATTEMPTING",
+                    "started_at": "2026-11-16T17:40:46+00:00",
+                }
+            }), encoding="utf-8")
+            report = bridge.inspect_existing_attempt(
+                204, SHA, "title", ledger_path=path,
+                browser_probe=lambda _: {
+                    "note_account": "VERIFIED",
+                    "matching_title": "NONE_VISIBLE",
+                },
+                history_probe=lambda _: "EDIT_ROUTE_VISITED",
+            )
+            self.assertEqual(report["historical_editor_navigation"], "EDIT_ROUTE_VISITED")
+            self.assertFalse(report["automatic_retry_allowed"])
+            self.assertEqual(report["ledger"], "ATTEMPTING")
+            self.assertEqual(report["note_mutations"], 0)
+            with self.assertRaisesRegex(ValueError, "HISTORY_INVALID"):
+                bridge.inspect_existing_attempt(
+                    204, SHA, "title", ledger_path=path,
+                    browser_probe=lambda _: {
+                        "note_account": "VERIFIED",
+                        "matching_title": "NONE_VISIBLE",
+                    },
+                    history_probe=lambda _: "secret title or URL",
+                )
+
+    def test_create_uses_existing_browser_contract_and_safe_stage_markers(self):
+        script = Path(bridge.__file__).read_text("utf-8")
+        self.assertIn("cloud.install()", script)
+        self.assertIn('print("V04_NOTE_STAGE=ACCOUNT_VERIFIED"', script)
+        self.assertIn('print("V04_NOTE_STAGE=EDITOR_READY"', script)
+        self.assertIn('print("V04_NOTE_STAGE=BODY_VERIFIED"', script)
+        self.assertIn('print("V04_NOTE_STAGE=ARTICLE_LIST_CONFIRMED"', script)
+        self.assertNotIn("except Exception as exc:\\n        print(exc)", script)
 
     def test_workflow_is_one_off_no_auto_or_publication(self):
         s = WORKFLOW.read_text("utf-8")
