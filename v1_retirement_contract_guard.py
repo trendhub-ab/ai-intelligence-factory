@@ -21,6 +21,8 @@ V04_NOTE_BRIDGE_JOBS = [
     "verify-private-input", "start-note-vm",
     "create-exact-draft", "inspect-draft-state", "stop-note-vm",
 ]
+# Independent inspect-only ChatOps ingress; never a V1 reactivation.
+V04_CHATOPS_BRIDGE = "v04-owner-chatops-inspect.yml"
 
 
 
@@ -45,11 +47,12 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
     files = sorted((p for p in (root / ".github/workflows").iterdir()
                     if p.is_file() and p.suffix in {".yml", ".yaml"}),
                    key=lambda p: p.name)
-    assert len(files) == 86, f"WORKFLOW_COUNT_DRIFT: {len(files)}"
+    assert len(files) == 87, f"WORKFLOW_COUNT_DRIFT: {len(files)}"
     assert set(RETAINED_CI) <= {f.name for f in files}, "OFFLINE_CI_MISSING"
     disabled_count = 0
     job_count = 0
     one_draft_bridge_count = 0
+    inspect_chatops_count = 0
     for path in files:
         src = path.read_text(encoding="utf-8")
         jobs = _jobs(src, path.name)
@@ -88,6 +91,49 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
             )
             one_draft_bridge_count += 1
             continue
+        if path.name == V04_CHATOPS_BRIDGE:
+            assert [name for name, _ in jobs] == ["authorize-and-dispatch"], (
+                "V04_CHATOPS_JOB_DRIFT"
+            )
+            assert src.count("issue_comment:") == 1, "V04_CHATOPS_TRIGGER_INVALID"
+            for forbidden in (
+                "schedule:", "push:", "workflow_dispatch:", "pull_request:",
+                '"operation":"create"', "daily-one-shot.yml/dispatches",
+                "note-create-draft.yml/dispatches",
+                "AIIF_NEXT_GEMINI_API_KEY", "production_pipeline.py",
+                "publish_note", "note-publication", "secrets.NOTION_API_KEY",
+            ):
+                assert forbidden not in src, f"V04_CHATOPS_FORBIDDEN: {forbidden}"
+            for required in (
+                "github.repository == 'trendhub-ab/ai-intelligence-factory'",
+                "github.actor == 'trendhub-ab'",
+                "github.ref == 'refs/heads/main'",
+                "github.event.issue.number == 71",
+                "github.event.comment.user.login == 'trendhub-ab'",
+                "github.event.comment.body == '/aiif v04 inspect 204'",
+                "github.run_attempt == 1",
+                "issues: write", "actions: write",
+                "run_v04_chatops_control.py",
+                "tests.test_run_v04_chatops_control",
+                "content=eyes",
+                "GH_TOKEN: ${{ secrets.GH_PAT }}",
+                "v04-single-note-draft-bridge.yml/dispatches",
+                '"operation":"inspect"',
+                '"source_issue_number":"204"',
+                "1f39788f6c1c9dc9e9ca93af5c260e0c396374f76b5dc33c3ece0def3cffb690",
+            ):
+                assert required in src, (
+                    f"V04_CHATOPS_SAFETY_CONTRACT_MISSING: {required}"
+                )
+            for dependency in (
+                "run_v04_chatops_control.py",
+                "tests/test_run_v04_chatops_control.py",
+            ):
+                assert (root / dependency).is_file(), (
+                    f"V04_CHATOPS_DEPENDENCY_MISSING: {dependency}"
+                )
+            inspect_chatops_count += 1
+            continue
         if path.name in RETAINED_CI:
             assert [name for name, _ in jobs] == [RETAINED_CI[path.name]], (
                 f"UNEXPECTED_CI_JOB: {path.name}"
@@ -112,6 +158,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
             job_count += 1
         disabled_count += 1
     assert one_draft_bridge_count == 1, "V04_NOTE_BRIDGE_MISSING_OR_DUPLICATED"
+    assert inspect_chatops_count == 1, "V04_CHATOPS_BRIDGE_MISSING_OR_DUPLICATED"
     assert disabled_count == 81, f"UNEXPECTED_OPERATIONAL_WORKFLOWS: {disabled_count}"
     assert job_count >= 81, f"OPERATIONAL_JOBS_NOT_DISABLED: {job_count}"
 
@@ -138,6 +185,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
         "operational_jobs_disabled": job_count,
         "retained_offline_ci": len(RETAINED_CI),
         "owner_manual_private_note_draft_exception": one_draft_bridge_count,
+        "owner_v04_read_only_chatops_exception": inspect_chatops_count,
         "entrypoints_blocked": 2,
         "model_calls": 0,
         "publication_mutations": 0,

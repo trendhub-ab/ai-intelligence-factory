@@ -4,7 +4,7 @@ Owner directive: V1 is obsolete. Prevent any V1 production run while keeping the
 
 ## Runtime deactivation
 
-- All **81 non-required-CI GitHub Actions workflows** are preserved for history/tests but **every job** has a job-level `if: ${{ false }}` fail-closed guard on the default branch. These include Daily, manual ONE-SHOT, ChatOps, issue reservation, provider/model calls, note drafts, Notion/DB synchronizations, publication reconciliation, member workflows and maintenance jobs. No V1 operational job can run via the default-branch configuration.
+- All **81 legacy V1 operational GitHub Actions workflows** are preserved for history/tests but **every job** has a job-level `if: ${{ false }}` fail-closed guard on the default branch. These include Daily, manual ONE-SHOT, ChatOps, issue reservation, provider/model calls, note drafts, Notion/DB synchronizations, publication reconciliation, member workflows and maintenance jobs. No V1 operational job can run via the default-branch configuration.
 - Four **strictly offline safety/CI workflows** stay usable for the protected branch's required status checks:
   `integration-reconciliation-ci.yml`, `p0b-offline-verification.yml`,
   `repository-falsification.yml`, `notion-access-policy-guard.yml`.
@@ -20,4 +20,10 @@ Owner directive: V1 is obsolete. Prevent any V1 production run while keeping the
 - For defense-in-depth, disable GitHub Actions in this V1 repository's Settings → Actions → General → Actions permissions (and review all branches) and cancel outstanding V1 runs as appropriate. Stop any external scheduler/webhook, then revoke V1-only credentials once their independence from Next is verified.
 - There must be no automatic migration to Next; its production readiness remains a separate decision.
 
-Do not restore any V1 runtime without a fresh explicit owner directive. Treat the V1 repository as legacy read-only history.
+## Isolated v0.4 exceptions (not a V1 revival)
+
+- `v04-single-note-draft-bridge.yml` remains the independently authorized, single-owner manual private-draft workflow. It retains strict `ATTEMPTING` anti-replay authority, account verification and no public release.
+- `v04-owner-chatops-inspect.yml` is the *one* separately authorized owner-only `issue_comment` exception on control Issue #71. It accepts only `/aiif v04 inspect 204`, checks the event again in Python, claims the comment once, and dispatches the existing private bridge using **`operation=inspect` only**, pinned to exact source Issue #204 and SHA256. It cannot create, publish, clear the ledger, use Gemini, or dispatch V1 Production.
+- V1's three legacy ChatOps workflows remain disabled with `if: ${{ false }}`. This v0.4 ingress requires its own focused zero-model tests and explicit acceptance into the retirement guard. All 81 historical V1 operational jobs remain disabled.
+
+Do not restore any V1 runtime without a fresh explicit owner directive. Treat all historical V1 operations as retired; only the separately enumerated v0.4 owner-only exceptions remain executable.
