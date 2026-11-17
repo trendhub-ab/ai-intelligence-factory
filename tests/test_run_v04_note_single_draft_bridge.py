@@ -330,6 +330,52 @@ class SingleNoteBridgeTests(unittest.TestCase):
                 self.assertFalse(receipt["automatic_retry_allowed"])
                 self.assertEqual(receipt["matching_title"], "NONE_VISIBLE")
 
+    def test_recovery_failed_title_stage_still_allows_read_only_inspection(self):
+        with TemporaryDirectory() as td:
+            path = Path(td) / "ledger.json"
+            key = f"{bridge.NEXT_REPO}#204:{SHA}"
+            record = {
+                "status": "OWNER_RECOVERY_ATTEMPTING",
+                "issue_number": 204, "manuscript_sha256": SHA,
+                "recovery_attempt_started_at": "2026-11-17T22:25:18+00:00",
+                "recovery_approved": True,
+                "recovery_owner_list_evidence": "VISIBLE_ABSENT_BOUNDED",
+            }
+            path.write_text(json.dumps({key: record}), encoding="utf-8")
+            report = bridge.inspect_existing_attempt(
+                204, SHA, "test title", ledger_path=path,
+                browser_probe=lambda _: {
+                    "note_account": "VERIFIED",
+                    "matching_title": "POSSIBLE_MATCH_VISIBLE",
+                    "owner_list_coverage": "BOUNDED_ONLY",
+                    "draft_list_coverage": "BOUNDED_ONLY",
+                    "draft_list_view_verified": True,
+                },
+                history_probe=lambda _: "NO_ATTEMPT_TIMESTAMP",
+            )
+            self.assertEqual(report["ledger"], "OWNER_RECOVERY_ATTEMPTING")
+            self.assertEqual(report["matching_title"], "POSSIBLE_MATCH_VISIBLE")
+            self.assertFalse(report["automatic_retry_allowed"])
+            self.assertFalse(report["stable_draft_url_recorded"])
+            self.assertEqual(report["note_mutations"], 0)
+            self.assertFalse(report["publication_approved"])
+            self.assertEqual(
+                json.loads(path.read_text(encoding="utf-8"))[key], record
+            )
+            for change in (
+                {"recovery_approved": False},
+                {"recovery_owner_list_evidence": "UNVERIFIED"},
+                {"recovery_attempt_started_at": ""},
+            ):
+                with self.subTest(change=change):
+                    altered = {**record, **change}
+                    path.write_text(json.dumps({key: altered}), encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, "LEDGER_INVALID"):
+                        bridge.inspect_existing_attempt(
+                            204, SHA, "test title", ledger_path=path,
+                            browser_probe=lambda _: self.fail("must refuse before scan"),
+                        )
+
     def test_read_only_inspection_rejects_corrupt_ledger_or_probe(self):
         with TemporaryDirectory() as td:
             path = Path(td)/"ledger.json"
