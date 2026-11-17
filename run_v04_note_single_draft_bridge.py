@@ -26,6 +26,11 @@ NEXT_REPO = "trendhub-ab/ai-intelligence-factory-next"
 NOTE_IDENTITY = "trendhub_biz"
 NEXT_API = "https://api.github.com/repos/" + NEXT_REPO
 CONFIRM = "CREATE_V04_SINGLE_PRIVATE_NOTE_DRAFT"
+# A single explicitly owner-approved recovery of the ambiguous November attempt.
+# This approval never turns read-only evidence into automatic retry authority.
+RECOVERY_APPROVAL = "OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_RETRY_ONCE"
+RECOVERY_ISSUE = 204
+RECOVERY_SHA256 = "1f39788f6c1c9dc9e9ca93af5c260e0c396374f76b5dc33c3ece0def3cffb690"
 SHA_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 DRAFT_LEDGER = Path.home() / ".aiif-note" / "v04-private-drafts-v1.json"
 MAX_SOURCE_BYTES = 65536
@@ -170,6 +175,28 @@ def _draft_from_browser(
             context.close()
 
 
+def _finish_reserved_draft(ledger: dict, identity: str, ledger_path: Path,
+                           title: str, manuscript: str, runner) -> dict:
+    """Finish an *already durably reserved* attempt; never independently retry."""
+    import note_publication_reconcile as reconcile
+
+    def record_url(url: str):
+        draft_id = reconcile.draft_identity_from_url(url, error_type=ValueError)
+        if not draft_id:
+            raise ValueError("V04_BRIDGE_DRAFT_ID_INVALID")
+        ledger[identity]["draft_url"] = url
+        ledger[identity]["status"] = "CREATED_PENDING_PERSISTENCE_PROOF"
+        _write_ledger(ledger_path, ledger)
+
+    result_url = runner(title, manuscript, on_url=record_url)
+    if result_url != ledger[identity].get("draft_url"):
+        raise ValueError("V04_BRIDGE_STABLE_DRAFT_URL_DRIFT")
+    ledger[identity]["status"] = "DRAFT_SAVED"
+    ledger[identity]["completed_at"] = datetime.now(timezone.utc).isoformat()
+    _write_ledger(ledger_path, ledger)
+    return {"status": "DRAFT_SAVED", "draft_url": result_url}
+
+
 def save_once(
     issue_number: int, expected_sha256: str, manuscript: str, title: str,
     *, runner=_draft_from_browser, ledger_path: Path = DRAFT_LEDGER,
@@ -197,25 +224,83 @@ def save_once(
         }
         _write_ledger(ledger_path, ledger)
 
-        def record_url(url: str):
-            draft_id = reconcile.draft_identity_from_url(
-                url, error_type=ValueError
-            )
-            if not draft_id:
-                raise ValueError("V04_BRIDGE_DRAFT_ID_INVALID")
-            ledger[identity]["draft_url"] = url
-            ledger[identity]["status"] = "CREATED_PENDING_PERSISTENCE_PROOF"
-            _write_ledger(ledger_path, ledger)
-
-        result_url = runner(title, manuscript, on_url=record_url)
-        if result_url != ledger[identity].get("draft_url"):
-            raise ValueError("V04_BRIDGE_STABLE_DRAFT_URL_DRIFT")
-        ledger[identity]["status"] = "DRAFT_SAVED"
-        ledger[identity]["completed_at"] = datetime.now(timezone.utc).isoformat()
-        _write_ledger(ledger_path, ledger)
-        return {"status": "DRAFT_SAVED", "draft_url": result_url}
+        return _finish_reserved_draft(
+            ledger, identity, ledger_path, title, manuscript, runner
+        )
 
 
+
+
+def recover_owner_confirmed_once(
+    issue_number: int, expected_sha256: str, manuscript: str, title: str,
+    *, recovery_approval: str, runner=_draft_from_browser,
+    ledger_path: Path = DRAFT_LEDGER,
+    browser_probe=None, history_probe=None,
+) -> dict:
+    """One explicit owner-controlled recovery after absent-draft confirmation.
+
+    A bounded note list alone never proves nonexistence. This operation requires
+    independent owner approval, a known ambiguous ledger, exactly one recovery
+    opportunity, a verified note account and a fresh negative list inspection.
+    It irrevocably reserves the recovery BEFORE browser mutation. A failed
+    second attempt is not retried or unreserved.
+    """
+    if (issue_number != RECOVERY_ISSUE or expected_sha256 != RECOVERY_SHA256
+            or recovery_approval != RECOVERY_APPROVAL):
+        raise ValueError("V04_BRIDGE_RECOVERY_OWNER_APPROVAL_REQUIRED")
+    if browser_probe is None:
+        browser_probe = _read_only_browser_probe
+    if history_probe is None:
+        history_probe = _historical_editor_navigation
+    identity = f"{NEXT_REPO}#{issue_number}:{expected_sha256}"
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    with ledger_path.with_suffix(".lock").open("a+", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        data = json.loads(ledger_path.read_text("utf-8")) if ledger_path.exists() else {}
+        if type(data) is not dict:
+            raise ValueError("V04_BRIDGE_RECOVERY_LEDGER_INVALID")
+        record = data.get(identity)
+        if (type(record) is not dict or record.get("status") != "ATTEMPTING"
+                or record.get("issue_number") != issue_number
+                or record.get("manuscript_sha256") != expected_sha256
+                or record.get("draft_url")
+                or "recovery_attempt_started_at" in record):
+            raise ValueError("V04_BRIDGE_RECOVERY_NOT_ELIGIBLE")
+        # Reject fabricated/future/unknown old attempts; do not reset other keys.
+        try:
+            began = datetime.fromisoformat(record["started_at"])
+            age = datetime.now(timezone.utc) - began.astimezone(timezone.utc)
+        except (KeyError, ValueError, TypeError, OverflowError):
+            raise ValueError("V04_BRIDGE_RECOVERY_ATTEMPT_TIMESTAMP_INVALID") from None
+        if not timedelta(minutes=5) < age < timedelta(days=30):
+            raise ValueError("V04_BRIDGE_RECOVERY_ATTEMPT_AGE_INVALID")
+        # Old route evidence can support triage, but a known edit route blocks
+        # recovery since it may identify a previously persisted draft.
+        history = history_probe(record["started_at"])
+        if history not in ("NEW_ROUTE_VISITED", "NO_EDITOR_NAVIGATION_SEEN"):
+            raise ValueError("V04_BRIDGE_RECOVERY_HISTORY_UNCERTAIN")
+        probe = browser_probe(title)
+        if (type(probe) is not dict
+                or probe.get("note_account") != "VERIFIED"
+                or probe.get("matching_title") != "NONE_VISIBLE"
+                or probe.get("owner_list_coverage") != "BOUNDED_ONLY"
+                or probe.get("draft_list_coverage") != "BOUNDED_ONLY"
+                or probe.get("draft_list_view_verified") is not True
+                or probe.get("note_list_entries_visible") is not True
+                or probe.get("untitled_candidate_visible") is not False
+                or probe.get("list_load_more_observed") is not False):
+            raise ValueError("V04_BRIDGE_RECOVERY_NOTE_LIST_UNCERTAIN")
+        # Save the irreversible once-only claim before invoking any note editor.
+        record["status"] = "OWNER_RECOVERY_ATTEMPTING"
+        record["recovery_attempt_started_at"] = datetime.now(timezone.utc).isoformat()
+        record["recovery_approved"] = True
+        record["recovery_owner_list_evidence"] = "VISIBLE_ABSENT_BOUNDED"
+        data[identity] = record
+        _write_ledger(ledger_path, data)
+        print("V04_NOTE_STAGE=OWNER_RECOVERY_RESERVED", flush=True)
+        return _finish_reserved_draft(
+            data, identity, ledger_path, title, manuscript, runner
+        )
 
 
 def _historical_editor_navigation(started_at: str | None) -> str:
@@ -743,7 +828,8 @@ def inspect_existing_attempt(
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=("preflight", "create", "inspect"), required=True)
+    parser.add_argument("--mode", choices=("preflight", "create", "inspect", "recover"), required=True)
+    parser.add_argument("--recovery-approval", default="")
     parser.add_argument("--confirm", required=True)
     parser.add_argument("--issue-number", type=int, required=True)
     parser.add_argument("--sha256", required=True)
@@ -767,7 +853,15 @@ def main() -> None:
                 args.issue_number, args.sha256, title
             ), ensure_ascii=False, sort_keys=True))
             return
-        result = save_once(args.issue_number, args.sha256, manuscript, title)
+        if args.mode == "recover":
+            result = recover_owner_confirmed_once(
+                args.issue_number, args.sha256, manuscript, title,
+                recovery_approval=args.recovery_approval,
+            )
+        else:
+            if args.recovery_approval:
+                raise ValueError("V04_BRIDGE_RECOVERY_APPROVAL_NOT_FOR_CREATE")
+            result = save_once(args.issue_number, args.sha256, manuscript, title)
         try:
             _api("POST", f"{NEXT_API}/issues/{args.issue_number}/comments",
                  token, {"body":
