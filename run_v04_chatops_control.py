@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Owner-only ChatOps authorization for one v0.4 read-only note inspection.
+"""Owner-only ChatOps authorization for bounded v0.4 note inspect/recovery.
 
 The retired V1 ChatOps workflows remain disabled. This is an independent,
 exactly scoped bridge to the existing v04-single-note-draft-bridge.yml.
@@ -17,6 +17,7 @@ CONTROL_ISSUE = 71
 CONTROL_TITLE = "AIIF ChatOps Control"
 OWNER = "trendhub-ab"
 COMMAND = "/aiif v04 inspect 204"
+RECOVERY_COMMAND = "/aiif v04 recover 204"
 
 
 def authorize_event(
@@ -52,12 +53,13 @@ def authorize_event(
         or (comment.get("user") or {}).get("login") != OWNER
         or sender.get("login") != OWNER
         or comment.get("author_association") != "OWNER"
-        or comment.get("body") != COMMAND
+        or comment.get("body") not in (COMMAND, RECOVERY_COMMAND)
         or type(comment.get("id")) is not int
         or comment["id"] <= 0
     ):
         return denied
-    return {"authorized": True, "operation": "inspect", "comment_id": comment["id"]}
+    operation = "recover" if comment["body"] == RECOVERY_COMMAND else "inspect"
+    return {"authorized": True, "operation": operation, "comment_id": comment["id"]}
 
 
 def main() -> int:
@@ -79,9 +81,9 @@ def main() -> int:
         raise SystemExit("V04_CHATOPS_OUTPUT_MISSING")
     with Path(output).open("a", encoding="utf-8") as writer:
         writer.write("authorized=true\n")
-        writer.write("operation=inspect\n")
+        writer.write(f"operation={result['operation']}\n")
         writer.write(f"comment_id={result['comment_id']}\n")
-    print("V04_CHATOPS_OWNER_INSPECT_AUTHORIZED")
+    print("V04_CHATOPS_OWNER_OPERATION_AUTHORIZED")
     return 0
 
 
