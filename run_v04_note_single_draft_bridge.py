@@ -519,7 +519,7 @@ def _read_only_browser_probe(title: str) -> dict:
                 return {
                     "note_account": "VERIFIED",
                     "matching_title": (
-                        "ONE_VISIBLE" if owner["title_visible"] or draft["title_visible"]
+                        "POSSIBLE_MATCH_VISIBLE" if owner["title_visible"] or draft["title_visible"]
                         else "NONE_VISIBLE" if (
                             owner["coverage"] != "NOT_VERIFIED" and
                             draft["coverage"] != "NOT_VERIFIED"
@@ -592,8 +592,16 @@ def inspect_existing_attempt(
         )
         or probe.get("matching_title") not in (
             "NOT_CHECKED", "LIST_NOT_VERIFIED", "NONE_VISIBLE",
-            "ONE_VISIBLE", "MULTIPLE_VISIBLE"
+            "ONE_VISIBLE", "MULTIPLE_VISIBLE", "POSSIBLE_MATCH_VISIBLE"
         )):
+        raise ValueError("V04_BRIDGE_INSPECT_PROBE_INVALID")
+    allowed_probe_keys = {
+        "note_account", "matching_title", "owner_list_coverage",
+        "draft_list_coverage", "draft_list_view_verified",
+        "untitled_candidate_visible", "list_load_more_observed",
+        "list_pagination_followed", "note_list_entries_visible",
+    }
+    if set(probe) - allowed_probe_keys:
         raise ValueError("V04_BRIDGE_INSPECT_PROBE_INVALID")
     for key in ("owner_list_coverage", "draft_list_coverage"):
         if key in probe and probe[key] not in {
