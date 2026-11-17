@@ -1,0 +1,89 @@
+name: AIIF V04 - Owner ChatOps Inspect (Manual Comment Only)
+
+# Independent v0.4 exception: never re-enable retired V1 ChatOps/Daily.
+# This bridge is read-only: no note draft create, publish or ledger reset.
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  actions: write
+  issues: write
+
+concurrency:
+  group: aiif-v04-owner-chatops-inspect
+  cancel-in-progress: false
+
+jobs:
+  authorize-and-dispatch:
+    if: >-
+      ${{ github.repository == 'trendhub-ab/ai-intelligence-factory' &&
+          github.ref == 'refs/heads/main' &&
+          github.actor == 'trendhub-ab' &&
+          github.event_name == 'issue_comment' &&
+          github.event.action == 'created' &&
+          github.event.issue.number == 71 &&
+          github.event.issue.title == 'AIIF ChatOps Control' &&
+          github.event.issue.state == 'open' &&
+          github.event.issue.pull_request == null &&
+          github.event.comment.user.login == 'trendhub-ab' &&
+          github.event.comment.author_association == 'OWNER' &&
+          github.event.comment.body == '/aiif v04 inspect 204' &&
+          github.run_attempt == 1 }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Run owner ChatOps adversarial tests (zero model)
+        run: python -m unittest tests.test_run_v04_chatops_control -v
+      - name: Reauthorize the exact signed GitHub issue-comment event
+        id: auth
+        run: python run_v04_chatops_control.py
+      - name: Verify owner dispatch credential before claiming the comment
+        env:
+          OWNER_PAT: ${{ secrets.GH_PAT }}
+        run: test -n "$OWNER_PAT"
+      - name: Claim this issue comment exactly once
+        id: claim
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT_ID: ${{ steps.auth.outputs.comment_id }}
+        run: |
+          set -euo pipefail
+          endpoint="/repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}/reactions"
+          prior="$(gh api -H 'Accept: application/vnd.github+json' "$endpoint" --paginate \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and .content == "eyes") | .id' | head -n 1)"
+          if [ -n "$prior" ]; then
+            echo 'dispatch=false' >> "$GITHUB_OUTPUT"
+            echo 'Duplicate comment delivery skipped' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh api --method POST -H 'Accept: application/vnd.github+json' \
+            "$endpoint" -f content=eyes >/dev/null
+          echo 'dispatch=true' >> "$GITHUB_OUTPUT"
+      - name: Dispatch only the pinned v0.4 read-only inspect
+        if: ${{ steps.auth.outputs.authorized == 'true' && steps.claim.outputs.dispatch == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          cat <<'JSON' | gh api --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/actions/workflows/v04-single-note-draft-bridge.yml/dispatches" \
+            --input -
+          {"ref":"main","inputs":{"operation":"inspect","confirm":"CREATE_V04_SINGLE_PRIVATE_NOTE_DRAFT","source_issue_number":"204","manuscript_sha256":"1f39788f6c1c9dc9e9ca93af5c260e0c396374f76b5dc33c3ece0def3cffb690"}}
+          JSON
+          {
+            echo '### v0.4 owner-only ChatOps inspect'
+            echo '- Source: private Next Issue #204, pinned SHA256'
+            echo '- Target: v04-single-note-draft-bridge.yml on main'
+            echo '- Operation: inspect (read-only)'
+            echo '- No draft create, ledger reset, Gemini call or public release'
+            echo '- The existing v0.4 workflow validates its own owner identity and private source'
+          } >> "$GITHUB_STEP_SUMMARY"
