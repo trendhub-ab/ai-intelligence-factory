@@ -772,12 +772,22 @@ def inspect_existing_attempt(
     if record is not None and (
         type(record) is not dict
         or record.get("status") not in (
-            "ATTEMPTING", "CREATED_PENDING_PERSISTENCE_PROOF", "DRAFT_SAVED"
+            "ATTEMPTING", "OWNER_RECOVERY_ATTEMPTING",
+            "CREATED_PENDING_PERSISTENCE_PROOF", "DRAFT_SAVED"
         )
         or record.get("manuscript_sha256") != expected_sha256
         or record.get("issue_number") != issue_number
     ):
         raise ValueError("V04_BRIDGE_INSPECT_LEDGER_INVALID")
+    # The owner-approved recovery may fail after title insertion and before a
+    # durable note URL. The ledger must remain blocked, but read-only inspection
+    # must still be able to inventory the resulting note article list.
+    if record is not None and record.get("status") == "OWNER_RECOVERY_ATTEMPTING":
+        if (record.get("recovery_approved") is not True
+                or record.get("recovery_owner_list_evidence") != "VISIBLE_ABSENT_BOUNDED"
+                or not isinstance(record.get("recovery_attempt_started_at"), str)
+                or not record["recovery_attempt_started_at"]):
+            raise ValueError("V04_BRIDGE_INSPECT_LEDGER_INVALID")
     evidence = {
         "status": "READ_ONLY_INSPECTION_COMPLETE",
         "ledger": record["status"] if record is not None else "NO_RECORD",
