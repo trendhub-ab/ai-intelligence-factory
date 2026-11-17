@@ -7,10 +7,10 @@ on:
     inputs:
       operation:
         type: choice
-        description: "create = one draft; inspect = read-only existing attempt diagnostic"
+        description: "inspect = read-only; create = original; recover = owner-approved single retry"
         required: true
-        default: create
-        options: [create, inspect]
+        default: inspect
+        options: [create, inspect, recover]
       confirm:
         type: string
         description: "Type CREATE_V04_SINGLE_PRIVATE_NOTE_DRAFT"
@@ -23,6 +23,10 @@ on:
         type: string
         description: "Exact SHA256 of the whole private issue body"
         required: true
+      recovery_approval:
+        type: string
+        description: "Owner absence confirmation token for recover ONLY; never used for create/inspect"
+        required: false
 
 permissions:
   contents: read
@@ -48,6 +52,17 @@ jobs:
           persist-credentials: false
       - name: Install lightweight existing note identity dependency
         run: python -m pip install requests
+      - name: Require pinned owner-approved recovery inputs before VM start
+        if: ${{ inputs.operation == 'recover' }}
+        env:
+          INPUT_ISSUE: ${{ inputs.source_issue_number }}
+          INPUT_SHA: ${{ inputs.manuscript_sha256 }}
+          INPUT_RECOVERY_APPROVAL: ${{ inputs.recovery_approval }}
+        run: |
+          set -euo pipefail
+          test "$INPUT_ISSUE" = "204"
+          test "$INPUT_SHA" = "1f39788f6c1c9dc9e9ca93af5c260e0c396374f76b5dc33c3ece0def3cffb690"
+          test "$INPUT_RECOVERY_APPROVAL" = "OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_RETRY_ONCE"
       - name: Ensure manifest is authentic and private (no browser)
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
@@ -120,7 +135,7 @@ jobs:
 
   create-exact-draft:
     needs: [verify-private-input, start-note-vm]
-    if: ${{ needs.start-note-vm.result == 'success' && inputs.operation == 'create' }}
+    if: ${{ needs.start-note-vm.result == 'success' && (inputs.operation == 'create' || inputs.operation == 'recover') }}
     runs-on: [self-hosted, linux, x64, aiif-note-cloud]
     timeout-minutes: 25
     steps:
@@ -147,12 +162,15 @@ jobs:
           INPUT_CONFIRM: ${{ inputs.confirm }}
           INPUT_ISSUE: ${{ inputs.source_issue_number }}
           INPUT_SHA: ${{ inputs.manuscript_sha256 }}
+          INPUT_OPERATION: ${{ inputs.operation }}
+          INPUT_RECOVERY_APPROVAL: ${{ inputs.recovery_approval }}
         run: |
           set -euo pipefail
           umask 077
           xvfb-run -a python run_v04_note_single_draft_bridge.py \
-            --mode create --confirm "$INPUT_CONFIRM" \
-            --issue-number "$INPUT_ISSUE" --sha256 "$INPUT_SHA"
+            --mode "$INPUT_OPERATION" --confirm "$INPUT_CONFIRM" \
+            --issue-number "$INPUT_ISSUE" --sha256 "$INPUT_SHA" \
+            --recovery-approval "$INPUT_RECOVERY_APPROVAL"
 
   inspect-draft-state:
     needs: [verify-private-input, start-note-vm]

@@ -1,7 +1,7 @@
 """Zero-provider regression tests for isolated v0.4 private note draft bridge."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import json
 import sqlite3
@@ -119,6 +119,186 @@ class SingleNoteBridgeTests(unittest.TestCase):
                     ledger_path=path,
                 )
 
+    def _recover_ledger(self, path):
+        key = f"{bridge.NEXT_REPO}#204:{bridge.RECOVERY_SHA256}"
+        record = {
+            "status": "ATTEMPTING",
+            "issue_number": 204,
+            "manuscript_sha256": bridge.RECOVERY_SHA256,
+            "started_at": (datetime.now(timezone.utc) - timedelta(hours=6)).isoformat(),
+        }
+        path.write_text(json.dumps({key: record}), encoding="utf-8")
+        return key
+
+    @staticmethod
+    def _recovery_probe(_title):
+        return {
+            "note_account": "VERIFIED",
+            "matching_title": "NONE_VISIBLE",
+            "owner_list_coverage": "BOUNDED_ONLY",
+            "draft_list_coverage": "BOUNDED_ONLY",
+            "draft_list_view_verified": True,
+            "note_list_entries_visible": True,
+            "untitled_candidate_visible": False,
+            "list_load_more_observed": False,
+        }
+
+    def test_owner_recovery_saves_once_and_preserves_original_attempt(self):
+        with TemporaryDirectory() as td:
+            path = Path(td) / "ledger.json"
+            key = self._recover_ledger(path)
+            events = []
+            def writer(title, body, *, on_url):
+                events.append(title)
+                on_url("https://editor.note.com/notes/nabc1234/edit")
+                return "https://editor.note.com/notes/nabc1234/edit"
+            with patch("note_publication_reconcile.draft_identity_from_url", return_value="nabc1234"):
+                result = bridge.recover_owner_confirmed_once(
+                    204, bridge.RECOVERY_SHA256, SAMPLE,
+                    "AIと一緒に作業を進めていく方法",
+                    recovery_approval=bridge.RECOVERY_APPROVAL,
+                    ledger_path=path, runner=writer,
+                    browser_probe=self._recovery_probe,
+                    history_probe=lambda _time: "NEW_ROUTE_VISITED",
+                )
+            self.assertEqual(result["status"], "DRAFT_SAVED")
+            record = json.loads(path.read_text("utf-8"))[key]
+            self.assertEqual(record["status"], "DRAFT_SAVED")
+            self.assertTrue(record["recovery_approved"])
+            self.assertIn("recovery_attempt_started_at", record)
+            self.assertEqual(len(events), 1)
+            with self.assertRaisesRegex(ValueError, "RECOVERY_NOT_ELIGIBLE"):
+                bridge.recover_owner_confirmed_once(
+                    204, bridge.RECOVERY_SHA256, SAMPLE,
+                    "AIと一緒に作業を進めていく方法",
+                    recovery_approval=bridge.RECOVERY_APPROVAL,
+                    ledger_path=path,
+                    runner=lambda *_a, **_kw: self.fail("DUPLICATE"),
+                    browser_probe=self._recovery_probe,
+                    history_probe=lambda _: "NEW_ROUTE_VISITED",
+                )
+
+    def test_owner_recovery_prebrowser_failure_keeps_original_attempt_eligible(self):
+        with TemporaryDirectory() as td:
+            path = Path(td) / "ledger.json"
+            key = self._recover_ledger(path)
+            with patch("run190_note_persistent_cloud.install",
+                       side_effect=RuntimeError("selector patch invalid")):
+                with self.assertRaisesRegex(RuntimeError, "selector patch invalid"):
+                    bridge.recover_owner_confirmed_once(
+                        204, bridge.RECOVERY_SHA256, SAMPLE,
+                        "AIと一緒に作業を進めていく方法",
+                        recovery_approval=bridge.RECOVERY_APPROVAL,
+                        ledger_path=path,
+                        runner=lambda *_a, **_kw: self.fail("UNSAFE_MUTATION"),
+                        browser_probe=self._recovery_probe,
+                        history_probe=lambda _: "NEW_ROUTE_VISITED",
+                    )
+            record = json.loads(path.read_text("utf-8"))[key]
+            self.assertEqual(record["status"], "ATTEMPTING")
+            self.assertNotIn("recovery_attempt_started_at", record)
+
+    def test_owner_recovery_failure_consumes_attempt_without_retry(self):
+        with TemporaryDirectory() as td:
+            path = Path(td) / "ledger.json"
+            key = self._recover_ledger(path)
+            def failed_writer(*_args, **_kwargs):
+                raise RuntimeError("simulated before-browser failure")
+            with self.assertRaisesRegex(RuntimeError, "simulated"):
+                bridge.recover_owner_confirmed_once(
+                    204, bridge.RECOVERY_SHA256, SAMPLE,
+                    "AIと一緒に作業を進めていく方法",
+                    recovery_approval=bridge.RECOVERY_APPROVAL,
+                    ledger_path=path, runner=failed_writer,
+                    browser_probe=self._recovery_probe,
+                    history_probe=lambda _: "NEW_ROUTE_VISITED",
+                )
+            record = json.loads(path.read_text("utf-8"))[key]
+            self.assertEqual(record["status"], "OWNER_RECOVERY_ATTEMPTING")
+            with self.assertRaisesRegex(ValueError, "RECOVERY_NOT_ELIGIBLE"):
+                bridge.recover_owner_confirmed_once(
+                    204, bridge.RECOVERY_SHA256, SAMPLE,
+                    "AIと一緒に作業を進めていく方法",
+                    recovery_approval=bridge.RECOVERY_APPROVAL,
+                    ledger_path=path,
+                    runner=lambda *_a, **_kw: self.fail("DUPLICATE"),
+                    browser_probe=self._recovery_probe,
+                    history_probe=lambda _: "NEW_ROUTE_VISITED",
+                )
+
+    def test_owner_recovery_rejects_uncertain_history_and_unverified_lists(self):
+        with TemporaryDirectory() as td:
+            path = Path(td) / "ledger.json"
+            key = self._recover_ledger(path)
+            def reject(*_args, **_kwargs):
+                self.fail("Never attempt draft mutation")
+            base = dict(self._recovery_probe("t"))
+            for history in ("EDIT_ROUTE_VISITED", "NEW_AND_EDIT_ROUTES_VISITED",
+                            "HISTORY_UNAVAILABLE", "NO_ATTEMPT_TIMESTAMP"):
+                with self.subTest(history=history):
+                    with self.assertRaisesRegex(ValueError, "RECOVERY_HISTORY_UNCERTAIN"):
+                        bridge.recover_owner_confirmed_once(
+                            204, bridge.RECOVERY_SHA256, SAMPLE,
+                            "AIと一緒に作業を進めていく方法",
+                            recovery_approval=bridge.RECOVERY_APPROVAL,
+                            ledger_path=path, runner=reject,
+                            browser_probe=self._recovery_probe,
+                            history_probe=lambda _date, h=history: h,
+                        )
+            for change in (
+                {"note_account": "NOT_VERIFIED"},
+                {"matching_title": "POSSIBLE_MATCH_VISIBLE"},
+                {"untitled_candidate_visible": True},
+                {"note_list_entries_visible": False},
+                {"draft_list_coverage": "SCROLL_LIMIT"},
+                {"list_load_more_observed": True},
+            ):
+                with self.subTest(change=change):
+                    with self.assertRaisesRegex(ValueError, "RECOVERY_NOTE_LIST_UNCERTAIN"):
+                        bridge.recover_owner_confirmed_once(
+                            204, bridge.RECOVERY_SHA256, SAMPLE,
+                            "AIと一緒に作業を進めていく方法",
+                            recovery_approval=bridge.RECOVERY_APPROVAL,
+                            ledger_path=path, runner=reject,
+                            browser_probe=lambda _: {**base, **change},
+                            history_probe=lambda _: "NEW_ROUTE_VISITED",
+                        )
+            self.assertEqual(json.loads(path.read_text("utf-8"))[key]["status"], "ATTEMPTING")
+
+    def test_owner_recovery_requires_explicit_token_exact_source_and_timestamp(self):
+        with TemporaryDirectory() as td:
+            path = Path(td) / "ledger.json"
+            key = self._recover_ledger(path)
+            for issue, source_sha, approval in (
+                (204, bridge.RECOVERY_SHA256, ""),
+                (204, bridge.RECOVERY_SHA256, "approve"),
+                (204, "0"*64, bridge.RECOVERY_APPROVAL),
+                (205, bridge.RECOVERY_SHA256, bridge.RECOVERY_APPROVAL),
+            ):
+                with self.subTest(issue=issue, approval=approval):
+                    with self.assertRaisesRegex(ValueError, "OWNER_APPROVAL_REQUIRED"):
+                        bridge.recover_owner_confirmed_once(
+                            issue, source_sha, SAMPLE, "title",
+                            recovery_approval=approval, ledger_path=path,
+                            runner=lambda *_a, **_kw: self.fail("unsafe"),
+                        )
+            original = json.loads(path.read_text("utf-8"))
+            for timestamp in (
+                datetime.now(timezone.utc).isoformat(),
+                (datetime.now(timezone.utc) - timedelta(days=32)).isoformat(),
+                "2026-11-16T17:40:46",
+            ):
+                test_data = json.loads(json.dumps(original))
+                test_data[key]["started_at"] = timestamp
+                path.write_text(json.dumps(test_data), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "RECOVERY_ATTEMPT_"):
+                    bridge.recover_owner_confirmed_once(
+                        204, bridge.RECOVERY_SHA256, SAMPLE, "title",
+                        recovery_approval=bridge.RECOVERY_APPROVAL,
+                        ledger_path=path,
+                        runner=lambda *_a, **_kw: self.fail("unsafe"),
+                    )
+
     def test_read_only_inspection_never_authorizes_retry(self):
         with TemporaryDirectory() as td:
             path = Path(td)/"ledger.json"
@@ -177,7 +357,7 @@ class SingleNoteBridgeTests(unittest.TestCase):
         self.assertIn("inputs.operation == 'inspect'", s)
         self.assertIn("inspect-draft-state:", s)
         self.assertIn("--mode inspect", s)
-        self.assertIn("options: [create, inspect]", s)
+        self.assertIn("options: [create, inspect, recover]", s)
         self.assertIn("needs: [verify-private-input, start-note-vm, create-exact-draft, inspect-draft-state]", s)
 
     def test_history_probe_reads_visit_times_without_exposing_draft_urls(self):
