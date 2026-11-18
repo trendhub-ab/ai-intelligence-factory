@@ -208,6 +208,10 @@ class V04EditHistoryProofTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, source)
         self.assertIn('service_workers="block"', source)
+        self.assertIn('playwright.chromium.launch(', source)
+        self.assertNotIn('browser = persistent.browser', source)
+        self.assertIn('storage_state=state', source)
+        self.assertIn('browser.close()', source)
         self.assertIn('temporary.route("**/*", _only_get)', source)
         self.assertIn("history_edit_body", source)
 
