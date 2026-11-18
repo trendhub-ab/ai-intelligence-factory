@@ -327,6 +327,54 @@ def recover_owner_confirmed_once(
         )
 
 
+def _final_recovery_ledger_gate(
+    record: dict | None, issue_number: int, expected_sha256: str,
+    *, checked_at: datetime | None = None,
+) -> str:
+    """Shared pure final-recovery gate. Only fixed reason codes leave this function."""
+    if (type(record) is not dict
+            or record.get("status") != "OWNER_RECOVERY_ATTEMPTING"
+            or record.get("issue_number") != issue_number
+            or record.get("manuscript_sha256") != expected_sha256
+            or record.get("draft_url")
+            or record.get("recovery_approved") is not True
+            or record.get("recovery_owner_list_evidence") != "VISIBLE_ABSENT_BOUNDED"
+            or "final_recovery_started_at" in record):
+        return "FINAL_NOT_ELIGIBLE"
+    try:
+        started = datetime.fromisoformat(record["started_at"])
+        began = datetime.fromisoformat(record["recovery_attempt_started_at"])
+        if (started.tzinfo is None or began.tzinfo is None
+                or started >= began):
+            return "FINAL_TIMESTAMP_INVALID"
+        current = checked_at if checked_at is not None else datetime.now(timezone.utc)
+        if current.tzinfo is None:
+            return "FINAL_TIMESTAMP_INVALID"
+        age = current.astimezone(timezone.utc) - began.astimezone(timezone.utc)
+    except (KeyError, ValueError, TypeError, OverflowError):
+        return "FINAL_TIMESTAMP_INVALID"
+    if not timedelta(minutes=5) < age < timedelta(days=14):
+        return "FINAL_AGE_INVALID"
+    return "READY"
+
+
+def _final_recovery_browser_gate(history: str, probe: dict | None) -> str:
+    """Shared history/list decision, never authorizing writes by itself."""
+    if history not in ("NEW_ROUTE_VISITED", "NO_EDITOR_NAVIGATION_SEEN"):
+        return "FINAL_HISTORY_UNCERTAIN"
+    if (type(probe) is not dict
+            or probe.get("note_account") != "VERIFIED"
+            or probe.get("matching_title") != "NONE_VISIBLE"
+            or probe.get("owner_list_coverage") != "BOUNDED_ONLY"
+            or probe.get("draft_list_coverage") != "BOUNDED_ONLY"
+            or probe.get("draft_list_view_verified") is not True
+            or probe.get("note_list_entries_visible") is not True
+            or probe.get("untitled_candidate_visible") is not False
+            or probe.get("list_load_more_observed") is not False):
+        return "FINAL_NOTE_LIST_UNCERTAIN"
+    return "READY"
+
+
 def recover_after_title_failure_once(
     issue_number: int, expected_sha256: str, manuscript: str, title: str,
     *, recovery_approval: str, runner=_draft_from_browser,
@@ -355,40 +403,14 @@ def recover_after_title_failure_once(
         if type(data) is not dict:
             raise ValueError("V04_BRIDGE_FINAL_LEDGER_INVALID")
         record = data.get(identity)
-        if (type(record) is not dict
-                or record.get("status") != "OWNER_RECOVERY_ATTEMPTING"
-                or record.get("issue_number") != issue_number
-                or record.get("manuscript_sha256") != expected_sha256
-                or record.get("draft_url")
-                or record.get("recovery_approved") is not True
-                or record.get("recovery_owner_list_evidence") != "VISIBLE_ABSENT_BOUNDED"
-                or "final_recovery_started_at" in record):
-            raise ValueError("V04_BRIDGE_FINAL_NOT_ELIGIBLE")
-        try:
-            started = datetime.fromisoformat(record["started_at"])
-            began = datetime.fromisoformat(record["recovery_attempt_started_at"])
-            if (started.tzinfo is None or began.tzinfo is None
-                    or started >= began):
-                raise ValueError("bad sequence")
-            age = datetime.now(timezone.utc) - began.astimezone(timezone.utc)
-        except (KeyError, ValueError, TypeError, OverflowError):
-            raise ValueError("V04_BRIDGE_FINAL_TIMESTAMP_INVALID") from None
-        if not timedelta(minutes=5) < age < timedelta(days=14):
-            raise ValueError("V04_BRIDGE_FINAL_AGE_INVALID")
+        first_gate = _final_recovery_ledger_gate(record, issue_number, expected_sha256)
+        if first_gate != "READY":
+            raise ValueError("V04_BRIDGE_" + first_gate)
         history = history_probe(record["recovery_attempt_started_at"])
-        if history not in ("NEW_ROUTE_VISITED", "NO_EDITOR_NAVIGATION_SEEN"):
-            raise ValueError("V04_BRIDGE_FINAL_HISTORY_UNCERTAIN")
         probe = browser_probe(title)
-        if (type(probe) is not dict
-                or probe.get("note_account") != "VERIFIED"
-                or probe.get("matching_title") != "NONE_VISIBLE"
-                or probe.get("owner_list_coverage") != "BOUNDED_ONLY"
-                or probe.get("draft_list_coverage") != "BOUNDED_ONLY"
-                or probe.get("draft_list_view_verified") is not True
-                or probe.get("note_list_entries_visible") is not True
-                or probe.get("untitled_candidate_visible") is not False
-                or probe.get("list_load_more_observed") is not False):
-            raise ValueError("V04_BRIDGE_FINAL_NOTE_LIST_UNCERTAIN")
+        browser_gate = _final_recovery_browser_gate(history, probe)
+        if browser_gate != "READY":
+            raise ValueError("V04_BRIDGE_" + browser_gate)
 
         # Pure checks precede consuming the last recovery opportunity.
         import note_draft_automation as base
@@ -848,7 +870,7 @@ def _read_only_browser_probe(title: str) -> dict:
 def inspect_existing_attempt(
     issue_number: int, expected_sha256: str, title: str,
     *, ledger_path: Path = DRAFT_LEDGER, browser_probe=_read_only_browser_probe,
-    history_probe=_historical_editor_navigation,
+    history_probe=_historical_editor_navigation, manuscript: str | None = None,
 ) -> dict:
     """Read-only reconciliation; never clears the ledger or authorizes a retry."""
     if (type(issue_number) is not int or issue_number < 1
@@ -948,6 +970,37 @@ def inspect_existing_attempt(
     }:
         raise ValueError("V04_BRIDGE_INSPECT_HISTORY_INVALID")
     evidence["historical_editor_navigation"] = history
+
+    # Diagnose the *same* ledger/history/list gates as final recovery using
+    # fixed non-content codes, without reserving another attempt or editing note.
+    # This never grants retry authority, even if every read-only gate passes.
+    reason = "NOT_APPLICABLE"
+    if (issue_number == RECOVERY_ISSUE and expected_sha256 == RECOVERY_SHA256):
+        reason = _final_recovery_ledger_gate(record, issue_number, expected_sha256)
+        if reason == "READY":
+            final_history = history_probe(record["recovery_attempt_started_at"])
+            if final_history not in {
+                "NO_ATTEMPT_TIMESTAMP", "HISTORY_UNAVAILABLE",
+                "NEW_AND_EDIT_ROUTES_VISITED", "EDIT_ROUTE_VISITED",
+                "NEW_ROUTE_VISITED", "NO_EDITOR_NAVIGATION_SEEN",
+            }:
+                raise ValueError("V04_BRIDGE_INSPECT_HISTORY_INVALID")
+            evidence["final_recovery_history_category"] = final_history
+            reason = _final_recovery_browser_gate(final_history, probe)
+        if reason == "READY":
+            if manuscript is None:
+                reason = "BODY_NOT_CHECKED"
+            else:
+                try:
+                    import note_draft_automation as base
+                    body_text = base._body_manuscript_for_note(title, manuscript)
+                    if not body_text.strip() or not base._markdown_to_safe_html(body_text).strip():
+                        reason = "FINAL_BODY_INVALID"
+                except Exception:
+                    reason = "FINAL_BODY_INVALID"
+        if reason == "READY":
+            reason = "READ_ONLY_GATES_PASS_NO_WRITE_AUTHORITY"
+    evidence["final_recovery_preflight_reason"] = reason
     return evidence
 
 
@@ -976,7 +1029,7 @@ def main() -> None:
             return
         if args.mode == "inspect":
             print(json.dumps(inspect_existing_attempt(
-                args.issue_number, args.sha256, title
+                args.issue_number, args.sha256, title, manuscript=manuscript
             ), ensure_ascii=False, sort_keys=True))
             return
         if args.mode == "recover":
