@@ -31,6 +31,7 @@ CONFIRM = "CREATE_V04_SINGLE_PRIVATE_NOTE_DRAFT"
 RECOVERY_APPROVAL = "OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_RETRY_ONCE"
 RECOVERY_ISSUE = 204
 RECOVERY_SHA256 = "1f39788f6c1c9dc9e9ca93af5c260e0c396374f76b5dc33c3ece0def3cffb690"
+FINAL_RECOVERY_APPROVAL = "OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_FINAL_ONCE"
 SHA_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 DRAFT_LEDGER = Path.home() / ".aiif-note" / "v04-private-drafts-v1.json"
 MAX_SOURCE_BYTES = 65536
@@ -321,6 +322,91 @@ def recover_owner_confirmed_once(
         data[identity] = record
         _write_ledger(ledger_path, data)
         print("V04_NOTE_STAGE=OWNER_RECOVERY_RESERVED", flush=True)
+        return _finish_reserved_draft(
+            data, identity, ledger_path, title, manuscript, runner
+        )
+
+
+def recover_after_title_failure_once(
+    issue_number: int, expected_sha256: str, manuscript: str, title: str,
+    *, recovery_approval: str, runner=_draft_from_browser,
+    ledger_path: Path = DRAFT_LEDGER,
+    browser_probe=None, history_probe=None,
+) -> dict:
+    """Final owner-approved retry after a title-only failure; no implicit replay.
+
+    This is a separate one-use authority from the consumed first recovery.
+    The user's confirmation that no draft appeared is supporting evidence, not
+    proof. A fresh account-bound official note inventory and local route evidence
+    must pass before taking another irreversible ledger reservation.
+    """
+    if (issue_number != RECOVERY_ISSUE or expected_sha256 != RECOVERY_SHA256
+            or recovery_approval != FINAL_RECOVERY_APPROVAL):
+        raise ValueError("V04_BRIDGE_FINAL_OWNER_APPROVAL_REQUIRED")
+    if browser_probe is None:
+        browser_probe = _read_only_browser_probe
+    if history_probe is None:
+        history_probe = _historical_editor_navigation
+    identity = f"{NEXT_REPO}#{issue_number}:{expected_sha256}"
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    with ledger_path.with_suffix(".lock").open("a+", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        data = json.loads(ledger_path.read_text("utf-8")) if ledger_path.exists() else {}
+        if type(data) is not dict:
+            raise ValueError("V04_BRIDGE_FINAL_LEDGER_INVALID")
+        record = data.get(identity)
+        if (type(record) is not dict
+                or record.get("status") != "OWNER_RECOVERY_ATTEMPTING"
+                or record.get("issue_number") != issue_number
+                or record.get("manuscript_sha256") != expected_sha256
+                or record.get("draft_url")
+                or record.get("recovery_approved") is not True
+                or record.get("recovery_owner_list_evidence") != "VISIBLE_ABSENT_BOUNDED"
+                or "final_recovery_started_at" in record):
+            raise ValueError("V04_BRIDGE_FINAL_NOT_ELIGIBLE")
+        try:
+            started = datetime.fromisoformat(record["started_at"])
+            began = datetime.fromisoformat(record["recovery_attempt_started_at"])
+            if (started.tzinfo is None or began.tzinfo is None
+                    or started >= began):
+                raise ValueError("bad sequence")
+            age = datetime.now(timezone.utc) - began.astimezone(timezone.utc)
+        except (KeyError, ValueError, TypeError, OverflowError):
+            raise ValueError("V04_BRIDGE_FINAL_TIMESTAMP_INVALID") from None
+        if not timedelta(minutes=5) < age < timedelta(days=14):
+            raise ValueError("V04_BRIDGE_FINAL_AGE_INVALID")
+        history = history_probe(record["recovery_attempt_started_at"])
+        if history not in ("NEW_ROUTE_VISITED", "NO_EDITOR_NAVIGATION_SEEN"):
+            raise ValueError("V04_BRIDGE_FINAL_HISTORY_UNCERTAIN")
+        probe = browser_probe(title)
+        if (type(probe) is not dict
+                or probe.get("note_account") != "VERIFIED"
+                or probe.get("matching_title") != "NONE_VISIBLE"
+                or probe.get("owner_list_coverage") != "BOUNDED_ONLY"
+                or probe.get("draft_list_coverage") != "BOUNDED_ONLY"
+                or probe.get("draft_list_view_verified") is not True
+                or probe.get("note_list_entries_visible") is not True
+                or probe.get("untitled_candidate_visible") is not False
+                or probe.get("list_load_more_observed") is not False):
+            raise ValueError("V04_BRIDGE_FINAL_NOTE_LIST_UNCERTAIN")
+
+        # Pure checks precede consuming the last recovery opportunity.
+        import note_draft_automation as base
+        import run190_note_persistent_cloud as cloud
+        body_text = base._body_manuscript_for_note(title, manuscript)
+        if not body_text.strip() or not base._markdown_to_safe_html(body_text).strip():
+            raise ValueError("V04_BRIDGE_FINAL_BODY_INVALID")
+        print("V04_NOTE_STAGE=FINAL_PRE_BROWSER_CHECK", flush=True)
+        cloud.install()
+        print("V04_NOTE_STAGE=FINAL_PRE_BROWSER_READY", flush=True)
+
+        record["status"] = "OWNER_FINAL_RECOVERY_ATTEMPTING"
+        record["final_recovery_started_at"] = datetime.now(timezone.utc).isoformat()
+        record["final_recovery_approved"] = True
+        record["final_owner_list_evidence"] = "VISIBLE_ABSENT_BOUNDED"
+        data[identity] = record
+        _write_ledger(ledger_path, data)
+        print("V04_NOTE_STAGE=OWNER_FINAL_RECOVERY_RESERVED", flush=True)
         return _finish_reserved_draft(
             data, identity, ledger_path, title, manuscript, runner
         )
@@ -782,6 +868,7 @@ def inspect_existing_attempt(
         type(record) is not dict
         or record.get("status") not in (
             "ATTEMPTING", "OWNER_RECOVERY_ATTEMPTING",
+            "OWNER_FINAL_RECOVERY_ATTEMPTING",
             "CREATED_PENDING_PERSISTENCE_PROOF", "DRAFT_SAVED"
         )
         or record.get("manuscript_sha256") != expected_sha256
@@ -796,6 +883,12 @@ def inspect_existing_attempt(
                 or record.get("recovery_owner_list_evidence") != "VISIBLE_ABSENT_BOUNDED"
                 or not isinstance(record.get("recovery_attempt_started_at"), str)
                 or not record["recovery_attempt_started_at"]):
+            raise ValueError("V04_BRIDGE_INSPECT_LEDGER_INVALID")
+    if record is not None and record.get("status") == "OWNER_FINAL_RECOVERY_ATTEMPTING":
+        if (record.get("final_recovery_approved") is not True
+                or record.get("final_owner_list_evidence") != "VISIBLE_ABSENT_BOUNDED"
+                or not isinstance(record.get("final_recovery_started_at"), str)
+                or not record["final_recovery_started_at"]):
             raise ValueError("V04_BRIDGE_INSPECT_LEDGER_INVALID")
     evidence = {
         "status": "READ_ONLY_INSPECTION_COMPLETE",
@@ -861,7 +954,7 @@ def inspect_existing_attempt(
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=("preflight", "create", "inspect", "recover"), required=True)
+    parser.add_argument("--mode", choices=("preflight", "create", "inspect", "recover", "recover-final"), required=True)
     parser.add_argument("--recovery-approval", default="")
     parser.add_argument("--confirm", required=True)
     parser.add_argument("--issue-number", type=int, required=True)
@@ -888,6 +981,11 @@ def main() -> None:
             return
         if args.mode == "recover":
             result = recover_owner_confirmed_once(
+                args.issue_number, args.sha256, manuscript, title,
+                recovery_approval=args.recovery_approval,
+            )
+        elif args.mode == "recover-final":
+            result = recover_after_title_failure_once(
                 args.issue_number, args.sha256, manuscript, title,
                 recovery_approval=args.recovery_approval,
             )
