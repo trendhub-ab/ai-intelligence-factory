@@ -537,6 +537,38 @@ class SingleNoteBridgeTests(unittest.TestCase):
                             browser_probe=lambda _: self.fail("must refuse before scan"),
                         )
 
+    def test_final_recovery_pending_remains_read_only_inspectable(self):
+        with TemporaryDirectory() as td:
+            path = Path(td) / "ledger.json"
+            key = f"{bridge.NEXT_REPO}#204:{SHA}"
+            record = {
+                "status": "OWNER_FINAL_RECOVERY_ATTEMPTING",
+                "issue_number": 204, "manuscript_sha256": SHA,
+                "final_recovery_approved": True,
+                "final_owner_list_evidence": "VISIBLE_ABSENT_BOUNDED",
+                "final_recovery_started_at": "2026-11-18T09:00:00+00:00",
+            }
+            path.write_text(json.dumps({key: record}), encoding="utf-8")
+            result = bridge.inspect_existing_attempt(
+                204, SHA, "test title", ledger_path=path,
+                browser_probe=lambda _: {
+                    "note_account": "VERIFIED",
+                    "matching_title": "NONE_VISIBLE",
+                },
+                history_probe=lambda _: "NO_ATTEMPT_TIMESTAMP",
+            )
+            self.assertEqual(result["ledger"], "OWNER_FINAL_RECOVERY_ATTEMPTING")
+            self.assertFalse(result["automatic_retry_allowed"])
+            self.assertEqual(result["note_mutations"], 0)
+            self.assertEqual(json.loads(path.read_text("utf-8"))[key], record)
+            path.write_text(json.dumps({key: {**record, "final_recovery_approved": False}}),
+                            encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "INSPECT_LEDGER_INVALID"):
+                bridge.inspect_existing_attempt(
+                    204, SHA, "test title", ledger_path=path,
+                    browser_probe=lambda _: self.fail("unsafe scan"),
+                )
+
     def test_read_only_inspection_rejects_corrupt_ledger_or_probe(self):
         with TemporaryDirectory() as td:
             path = Path(td)/"ledger.json"
