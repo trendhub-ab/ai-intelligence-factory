@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import os
 import re
 import shutil
 import sqlite3
@@ -145,15 +146,27 @@ def _read_only_editor_view(candidate_url: str, title: str, manuscript: str) -> d
         with sync_playwright() as playwright:
             persistent = cloud._launch_persistent_context(playwright)
             try:
-                browser = persistent.browser
-                if browser is None:
-                    return result
-                # Copy authentication into a temporary isolated context. Never
-                # navigate historical edits in the owner persistent tab.
-                temporary = browser.new_context(
-                    storage_state=persistent.storage_state(),
-                    service_workers="block", locale="ja-JP",
+                # Persistent Playwright contexts have browser == None by API
+                # contract. Launch a separate ephemeral Chrome browser with
+                # only a transient storage-state copy. Never open a historical
+                # note edit route inside the owner's persistent profile.
+                state = persistent.storage_state()
+                browser = playwright.chromium.launch(
+                    channel=os.environ.get("NOTE_CHROME_CHANNEL", "chrome"),
+                    headless=os.environ.get(
+                        "NOTE_CHROME_HEADLESS", "false"
+                    ).lower() in ("1", "true", "yes"),
+                    args=["--no-first-run", "--disable-dev-shm-usage"],
                 )
+                try:
+                    temporary = browser.new_context(
+                        storage_state=state,
+                        service_workers="block", locale="ja-JP",
+                        timezone_id="Asia/Tokyo",
+                    )
+                except Exception:
+                    browser.close()
+                    raise
                 try:
                     temporary.route("**/*", _only_get)
                     page = temporary.new_page()
@@ -197,6 +210,7 @@ def _read_only_editor_view(candidate_url: str, title: str, manuscript: str) -> d
                         return result
                 finally:
                     temporary.close()
+                    browser.close()
             finally:
                 persistent.close()
     except Exception:
