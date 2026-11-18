@@ -40,7 +40,7 @@ def _candidate(item: Any, title_bottom: float) -> tuple[int, tuple[int, ...], An
         width = float(box.get("width", 0))
         height = float(box.get("height", 0))
         # Require a visible, nontrivial editor entirely below the title field.
-        if x < 0 or y < max(0, title_bottom - 4) or width < 120 or height < 8:
+        if x < 0 or y < max(0, title_bottom + 8) or width < 120 or height < 8:
             return None
         tag = str(item.evaluate("el => el.tagName.toLowerCase()")).lower()
         if tag in {"h1", "input"}:
