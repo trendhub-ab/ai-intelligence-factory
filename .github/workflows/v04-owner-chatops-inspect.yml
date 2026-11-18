@@ -31,7 +31,8 @@ jobs:
           github.event.comment.user.login == 'trendhub-ab' &&
           github.event.comment.author_association == 'OWNER' &&
           (github.event.comment.body == '/aiif v04 inspect 204' ||
-           github.event.comment.body == '/aiif v04 recover 204') &&
+           github.event.comment.body == '/aiif v04 recover 204' ||
+           github.event.comment.body == '/aiif v04 recover-final 204') &&
           github.run_attempt == 1 }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -82,6 +83,9 @@ jobs:
               ;;
             recover)
               payload='{"ref":"main","inputs":{"operation":"recover","confirm":"CREATE_V04_SINGLE_PRIVATE_NOTE_DRAFT","source_issue_number":"204","manuscript_sha256":"1f39788f6c1c9dc9e9ca93af5c260e0c396374f76b5dc33c3ece0def3cffb690","recovery_approval":"OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_RETRY_ONCE"}}'
+              ;;
+            recover-final)
+              payload='{"ref":"main","inputs":{"operation":"recover-final","confirm":"CREATE_V04_SINGLE_PRIVATE_NOTE_DRAFT","source_issue_number":"204","manuscript_sha256":"1f39788f6c1c9dc9e9ca93af5c260e0c396374f76b5dc33c3ece0def3cffb690","recovery_approval":"OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_FINAL_ONCE"}}'
               ;;
             *)
               echo "::error::Invalid v0.4 ChatOps mode"; exit 1
