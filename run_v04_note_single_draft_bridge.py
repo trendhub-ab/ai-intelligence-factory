@@ -871,6 +871,7 @@ def inspect_existing_attempt(
     issue_number: int, expected_sha256: str, title: str,
     *, ledger_path: Path = DRAFT_LEDGER, browser_probe=_read_only_browser_probe,
     history_probe=_historical_editor_navigation, manuscript: str | None = None,
+    editor_history_probe=None,
 ) -> dict:
     """Read-only reconciliation; never clears the ledger or authorizes a retry."""
     if (type(issue_number) is not int or issue_number < 1
@@ -1001,6 +1002,42 @@ def inspect_existing_attempt(
         if reason == "READY":
             reason = "READ_ONLY_GATES_PASS_NO_WRITE_AUTHORITY"
     evidence["final_recovery_preflight_reason"] = reason
+
+    # The previous write attempt may have visited an existing edit route.
+    # A visit is not proof of persistence: inspect exactly one candidate in an
+    # isolated GET-only browser, outputting only fixed non-content enums.
+    if (manuscript is not None and record is not None
+            and record.get("status") == "OWNER_RECOVERY_ATTEMPTING"
+            and issue_number == RECOVERY_ISSUE and expected_sha256 == RECOVERY_SHA256):
+        if editor_history_probe is None and browser_probe is _read_only_browser_probe:
+            import run_v04_historical_edit_proof as historical
+            editor_history_probe = historical.investigate
+        if editor_history_probe is not None:
+            try:
+                diagnostic = editor_history_probe(
+                    record["recovery_attempt_started_at"], title, manuscript
+                )
+            except Exception:
+                diagnostic = {
+                    "history_edit_candidate": "UNAVAILABLE",
+                    "history_edit_route": "NOT_CHECKED",
+                    "history_edit_title": "NOT_CHECKED",
+                    "history_edit_body": "NOT_CHECKED",
+                }
+            enums = {
+                "history_edit_candidate": {"UNAVAILABLE", "NONE", "ONE", "MULTIPLE"},
+                "history_edit_route": {"NOT_CHECKED", "UNINSPECTABLE", "ACCOUNT_UNVERIFIED",
+                                       "NO_VERIFIED_EDITOR", "EDITOR_ROUTE_OPENED"},
+                "history_edit_title": {"NOT_CHECKED", "EMPTY", "OTHER", "MATCH"},
+                "history_edit_body": {"NOT_CHECKED", "EMPTY", "OTHER", "EXACT",
+                                      "PREFIX_ONLY", "UNINSPECTABLE"},
+            }
+            if type(diagnostic) is not dict or set(diagnostic) != set(enums):
+                raise ValueError("V04_BRIDGE_EDIT_HISTORY_PROBE_INVALID")
+            if any(type(diagnostic[k]) is not str or diagnostic[k] not in allowed
+                   for k, allowed in enums.items()):
+                raise ValueError("V04_BRIDGE_EDIT_HISTORY_PROBE_INVALID")
+            evidence.update(diagnostic)
     return evidence
 
 
