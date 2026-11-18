@@ -288,14 +288,15 @@ class SingleNoteBridgeTests(unittest.TestCase):
                             ledger_path=path,
                             runner=lambda *_a, **_kw: self.fail("unsafe"),
                         )
-            for timestamp in (
-                datetime.now(timezone.utc).isoformat(),
-                (datetime.now(timezone.utc) - timedelta(days=18)).isoformat(),
+            for timestamp, expected_error in (
+                (datetime.now(timezone.utc).isoformat(), "FINAL_AGE_INVALID"),
+                ((datetime.now(timezone.utc) - timedelta(days=18)).isoformat(),
+                 "FINAL_TIMESTAMP_INVALID"),
             ):
                 payload = json.loads(json.dumps(original))
                 payload[key]["recovery_attempt_started_at"] = timestamp
                 path.write_text(json.dumps(payload), encoding="utf-8")
-                with self.assertRaisesRegex(ValueError, "FINAL_AGE_INVALID"):
+                with self.assertRaisesRegex(ValueError, expected_error):
                     bridge.recover_after_title_failure_once(
                         204, bridge.RECOVERY_SHA256, SAMPLE, "title",
                         recovery_approval=bridge.FINAL_RECOVERY_APPROVAL,
