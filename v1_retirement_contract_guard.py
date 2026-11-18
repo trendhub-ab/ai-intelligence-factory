@@ -83,6 +83,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
                 "inputs.operation == 'recover-final'",
                 "OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_FINAL_ONCE",
                 "tests.test_run_v04_note_body_locator",
+                "tests.test_run_v04_historical_edit_proof",
                 "OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_RETRY_ONCE",
                 "GCP_WORKLOAD_IDENTITY_PROVIDER",
                 "NOTE_STORAGE_STATE_B64",
@@ -98,6 +99,8 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
             for dependency in (
                 "run_v04_note_body_locator.py",
                 "tests/test_run_v04_note_body_locator.py",
+                "run_v04_historical_edit_proof.py",
+                "tests/test_run_v04_historical_edit_proof.py",
             ):
                 assert (root / dependency).is_file(), (
                     f"V04_BODY_LOCATOR_DEPENDENCY_MISSING: {dependency}"
