@@ -304,6 +304,98 @@ class SingleNoteBridgeTests(unittest.TestCase):
                         runner=lambda *_a, **_kw: self.fail("unsafe"),
                     )
 
+    def test_read_only_final_recovery_diagnoses_exact_failed_gate_without_mutation(self):
+        with TemporaryDirectory() as td:
+            ledger = Path(td) / "ledger.json"
+            key = self._final_recovery_ledger(ledger)
+            original = json.loads(ledger.read_text(encoding="utf-8"))[key]
+            title = "AIと一緒に作業を進めていく方法"
+            old = original["started_at"]
+            recovered = original["recovery_attempt_started_at"]
+
+            def examine(history_code, browser_change=None, manuscript=SAMPLE):
+                events = []
+                def history(timestamp):
+                    events.append(timestamp)
+                    return history_code if timestamp == recovered else "NEW_ROUTE_VISITED"
+                browser = {**self._recovery_probe(title), **(browser_change or {})}
+                report = bridge.inspect_existing_attempt(
+                    204, bridge.RECOVERY_SHA256, title, ledger_path=ledger,
+                    browser_probe=lambda _: browser, history_probe=history,
+                    manuscript=manuscript,
+                )
+                self.assertEqual(report["note_mutations"], 0)
+                self.assertFalse(report["automatic_retry_allowed"])
+                self.assertFalse(report["publication_approved"])
+                self.assertEqual(json.loads(ledger.read_text(encoding="utf-8"))[key], original)
+                self.assertEqual(events[0], old)
+                self.assertEqual(events[1], recovered)
+                return report
+
+            good = examine("NEW_ROUTE_VISITED")
+            self.assertEqual(good["final_recovery_preflight_reason"],
+                             "READ_ONLY_GATES_PASS_NO_WRITE_AUTHORITY")
+            self.assertEqual(good["final_recovery_history_category"], "NEW_ROUTE_VISITED")
+
+            for history in ("EDIT_ROUTE_VISITED", "NEW_AND_EDIT_ROUTES_VISITED",
+                            "HISTORY_UNAVAILABLE"):
+                with self.subTest(history=history):
+                    report = examine(history)
+                    self.assertEqual(report["final_recovery_preflight_reason"],
+                                     "FINAL_HISTORY_UNCERTAIN")
+                    self.assertEqual(report["final_recovery_history_category"], history)
+                    with self.assertRaisesRegex(ValueError, "FINAL_HISTORY_UNCERTAIN"):
+                        bridge.recover_after_title_failure_once(
+                            204, bridge.RECOVERY_SHA256, SAMPLE, title,
+                            recovery_approval=bridge.FINAL_RECOVERY_APPROVAL,
+                            ledger_path=ledger, browser_probe=lambda _: self._recovery_probe(title),
+                            history_probe=lambda _: history,
+                            runner=lambda *_a, **_kw: self.fail("UNSAFE NOTE MUTATION"),
+                        )
+
+            mismatch = examine("NEW_ROUTE_VISITED", {"matching_title": "POSSIBLE_MATCH_VISIBLE"})
+            self.assertEqual(mismatch["final_recovery_preflight_reason"],
+                             "FINAL_NOTE_LIST_UNCERTAIN")
+            bad_body = examine("NEW_ROUTE_VISITED", manuscript="# mismatched title\nsecret body")
+            self.assertEqual(bad_body["final_recovery_preflight_reason"],
+                             "FINAL_BODY_INVALID")
+            self.assertNotIn("secret body", json.dumps(bad_body, ensure_ascii=False))
+            self.assertNotIn(title, json.dumps(bad_body, ensure_ascii=False))
+
+    def test_final_ledger_reason_codes_are_shared_and_safe(self):
+        with TemporaryDirectory() as td:
+            ledger = Path(td) / "ledger.json"
+            key = self._final_recovery_ledger(ledger)
+            original = json.loads(ledger.read_text(encoding="utf-8"))
+            title = "AIと一緒に作業を進めていく方法"
+            for changes, expected in (
+                ({"status": "DRAFT_SAVED"}, "FINAL_NOT_ELIGIBLE"),
+                ({"draft_url": "https://editor.note.com/notes/nprivate/edit"},
+                 "FINAL_NOT_ELIGIBLE"),
+                ({"started_at": "not-a-timestamp"}, "FINAL_TIMESTAMP_INVALID"),
+                ({"recovery_attempt_started_at": datetime.now(timezone.utc).isoformat()},
+                 "FINAL_AGE_INVALID"),
+            ):
+                with self.subTest(changes=changes):
+                    altered = json.loads(json.dumps(original))
+                    altered[key].update(changes)
+                    ledger.write_text(json.dumps(altered), encoding="utf-8")
+                    reason = bridge._final_recovery_ledger_gate(
+                        altered[key], 204, bridge.RECOVERY_SHA256
+                    )
+                    self.assertEqual(reason, expected)
+                    # The diagnostic does not attempt to run the real browser.
+                    if expected != "FINAL_NOT_ELIGIBLE":
+                        diag = bridge.inspect_existing_attempt(
+                            204, bridge.RECOVERY_SHA256, title, ledger_path=ledger,
+                            browser_probe=lambda _: self._recovery_probe(title),
+                            history_probe=lambda _: "NEW_ROUTE_VISITED",
+                        )
+                        self.assertEqual(diag["final_recovery_preflight_reason"], expected)
+                        self.assertFalse(diag["automatic_retry_allowed"])
+                    self.assertEqual(json.loads(ledger.read_text(encoding="utf-8")),
+                                     altered)
+
     def test_owner_recovery_saves_once_and_preserves_original_attempt(self):
         with TemporaryDirectory() as td:
             path = Path(td) / "ledger.json"
