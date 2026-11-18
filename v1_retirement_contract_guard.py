@@ -79,7 +79,10 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
                 "note-draft-create-v2",
                 "run_v04_note_single_draft_bridge.py",
                 "inputs.operation == 'recover'",
-                "options: [create, inspect, recover]",
+                "options: [create, inspect, recover, recover-final]",
+                "inputs.operation == 'recover-final'",
+                "OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_FINAL_ONCE",
+                "tests.test_run_v04_note_body_locator",
                 "OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_RETRY_ONCE",
                 "GCP_WORKLOAD_IDENTITY_PROVIDER",
                 "NOTE_STORAGE_STATE_B64",
@@ -92,6 +95,13 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
             assert (root / "tests/test_run_v04_note_single_draft_bridge.py").is_file(), (
                 "V04_NOTE_BRIDGE_TESTS_MISSING"
             )
+            for dependency in (
+                "run_v04_note_body_locator.py",
+                "tests/test_run_v04_note_body_locator.py",
+            ):
+                assert (root / dependency).is_file(), (
+                    f"V04_BODY_LOCATOR_DEPENDENCY_MISSING: {dependency}"
+                )
             one_draft_bridge_count += 1
             continue
         if path.name == V04_CHATOPS_BRIDGE:
@@ -115,6 +125,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
                 "github.event.comment.user.login == 'trendhub-ab'",
                 "github.event.comment.body == '/aiif v04 inspect 204'",
                 "github.event.comment.body == '/aiif v04 recover 204'",
+                "github.event.comment.body == '/aiif v04 recover-final 204'",
                 "github.run_attempt == 1",
                 "issues: write", "actions: write",
                 "run_v04_chatops_control.py",
@@ -124,6 +135,8 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
                 "v04-single-note-draft-bridge.yml/dispatches",
                 '"operation":"inspect"',
                 '"operation":"recover"',
+                '"operation":"recover-final"',
+                '"recovery_approval":"OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_FINAL_ONCE"',
                 '"recovery_approval":"OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_RETRY_ONCE"',
                 '"source_issue_number":"204"',
                 "1f39788f6c1c9dc9e9ca93af5c260e0c396374f76b5dc33c3ece0def3cffb690",
