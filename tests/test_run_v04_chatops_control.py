@@ -54,6 +54,13 @@ class V04ChatOpsControlTests(unittest.TestCase):
             "authorized": True, "operation": "recover", "comment_id": 987654321,
         })
 
+    def test_final_recovery_command_is_exact_and_owner_only(self):
+        sample = event()
+        sample["comment"]["body"] = control.FINAL_RECOVERY_COMMAND
+        self.assertEqual(control.authorize_event(sample, **ENV), {
+            "authorized": True, "operation": "recover-final", "comment_id": 987654321,
+        })
+
     def test_wrong_event_envelope_fails_closed(self):
         for key, value in (
             ("repository", "another/repo"), ("event_name", "issues"),
@@ -97,6 +104,9 @@ class V04ChatOpsControlTests(unittest.TestCase):
             "/aiif v04 recover 205", "/aiif v04 recover",
             "/aiif v04 recover 204 ", " /aiif v04 recover 204",
             "/aiif v04 recover 204\n",
+            "/aiif v04 recover-final", "/aiif v04 recover-final 205",
+            "/aiif v04 recover-final 204 ", " /aiif v04 recover-final 204",
+            "/aiif v04 recover-final 204\n",
         ):
             with self.subTest(command=command):
                 sample = event()
@@ -138,6 +148,13 @@ class V04ChatOpsControlTests(unittest.TestCase):
                 self.assertEqual(output_path.read_text(encoding="utf-8"),
                                  "authorized=true\noperation=recover\ncomment_id=987654321\n")
                 output_path.unlink()
+                final = event()
+                final["comment"]["body"] = control.FINAL_RECOVERY_COMMAND
+                input_path.write_text(json.dumps(final), encoding="utf-8")
+                self.assertEqual(control.main(), 0)
+                self.assertEqual(output_path.read_text(encoding="utf-8"),
+                                 "authorized=true\noperation=recover-final\ncomment_id=987654321\n")
+                output_path.unlink()
                 bad = event()
                 bad["comment"]["body"] = "/aiif v04 create 204"
                 input_path.write_text(json.dumps(bad), encoding="utf-8")
@@ -156,6 +173,7 @@ class V04ChatOpsControlTests(unittest.TestCase):
         self.assertIn("github.run_attempt == 1", text)
         self.assertIn("github.event.comment.body == '/aiif v04 inspect 204'", text)
         self.assertIn("github.event.comment.body == '/aiif v04 recover 204'", text)
+        self.assertIn("github.event.comment.body == '/aiif v04 recover-final 204'", text)
         self.assertIn("python run_v04_chatops_control.py", text)
         self.assertIn("python -m unittest tests.test_run_v04_chatops_control -v", text)
         self.assertIn("GH_TOKEN: ${{ secrets.GH_PAT }}", text)
@@ -167,6 +185,8 @@ class V04ChatOpsControlTests(unittest.TestCase):
         self.assertIn("v04-single-note-draft-bridge.yml/dispatches", text)
         self.assertIn('"operation":"inspect"', text)
         self.assertIn('"operation":"recover"', text)
+        self.assertIn('"operation":"recover-final"', text)
+        self.assertIn('"recovery_approval":"OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_FINAL_ONCE"', text)
         self.assertIn('"recovery_approval":"OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_RETRY_ONCE"', text)
         self.assertIn('"source_issue_number":"204"', text)
         self.assertIn(expected_sha, text)
@@ -181,6 +201,7 @@ class V04ChatOpsControlTests(unittest.TestCase):
         self.assertIn("inputs.operation == 'inspect'", text)
         self.assertIn("inputs.operation == 'create'", text)
         self.assertIn("inputs.operation == 'recover'", text)
+        self.assertIn("inputs.operation == 'recover-final'", text)
         self.assertIn("github.run_attempt == 1", text)
         self.assertIn("note-draft-create-v2", text)
         self.assertIn("stop-note-vm:", text)
