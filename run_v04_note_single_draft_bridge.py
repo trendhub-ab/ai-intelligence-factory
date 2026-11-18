@@ -126,12 +126,16 @@ def _draft_from_browser(
     import run190_note_persistent_cloud as cloud
     import run189_note_editor_route_gate as route
     import run187_note_editor_readiness as readiness
+    import run_v04_note_body_locator as body_locator
     from playwright.sync_api import sync_playwright
 
     # The old note production browser path explicitly installed these UI/DOM
     # selectors and persistence guards. The isolated bridge must not bypass them.
     print("V04_NOTE_STAGE=RUNNER_ENTERED", flush=True)
     cloud.install()
+    # Isolated v0.4 runner only: legacy V1 pipeline remains disabled.
+    # Keep the same safe body resolution after save/reopen verification.
+    base._find_body = body_locator.find_body
     print("V04_NOTE_STAGE=BROWSER_SETUP", flush=True)
     body_text = base._body_manuscript_for_note(title, manuscript)
     with sync_playwright() as playwright:
@@ -159,9 +163,14 @@ def _draft_from_browser(
             print("V04_NOTE_STAGE=EDITOR_READY", flush=True)
             title_field = base._set_title(page, title)
             print("V04_NOTE_STAGE=TITLE_INSERTED", flush=True)
+            print("V04_NOTE_STAGE=BODY_LOOKUP_BEGIN", flush=True)
             body = base._find_body(page, title_field)
+            print("V04_NOTE_STAGE=BODY_LOCATED", flush=True)
+            print("V04_NOTE_STAGE=BODY_PASTE_BEGIN", flush=True)
             base._paste_manuscript(page, body, body_text)
+            print("V04_NOTE_STAGE=BODY_PASTE_RETURNED", flush=True)
             body = base._find_body(page, title_field)
+            print("V04_NOTE_STAGE=BODY_RELOCATED", flush=True)
             base._verify_body_content(body, body_text)
             print("V04_NOTE_STAGE=BODY_VERIFIED", flush=True)
             url = base._save_draft_and_verify(
