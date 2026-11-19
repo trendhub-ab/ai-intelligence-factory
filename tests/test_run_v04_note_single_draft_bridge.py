@@ -47,6 +47,120 @@ class SingleNoteBridgeTests(unittest.TestCase):
             bridge.validated_owner_manuscript(
                 204, "0"*64, "x"*32, get=source_api)
 
+    def test_fresh_205_owner_source_is_exact_and_immutable(self):
+        fresh_title = "新規記事の安全な下書き配送"
+        fresh_sample = SAMPLE.replace(
+            "# AIと一緒に作業を進めていく方法", "# " + fresh_title, 1
+        )
+        fresh_sha = sha256(fresh_sample.encode("utf-8")).hexdigest()
+
+        def fresh_source(method, url, token, payload=None):
+            if url == bridge.NEXT_API:
+                return {"full_name": bridge.NEXT_REPO, "private": True, "archived": False}
+            if url == bridge.NEXT_API + "/issues/205":
+                return {
+                    "number": 205, "state": "open",
+                    "user": {"login": "trendhub-ab"},
+                    "title": bridge.FRESH_ISSUE_TITLE,
+                    "body": fresh_sample,
+                }
+            raise AssertionError("Unexpected source " + url)
+
+        self.assertEqual(bridge.FRESH_ISSUE, 205)
+        self.assertEqual(
+            bridge.FRESH_SHA256,
+            "d65a7e9a798f86a31980686483870a1bd6a651ac8f58b12a4fe9ea62427a6650",
+        )
+        with patch.object(bridge, "FRESH_SHA256", fresh_sha):
+            self.assertEqual(
+                bridge.validated_owner_manuscript(205, fresh_sha, "x"*32, get=fresh_source),
+                (fresh_title, fresh_sample)
+            )
+            with self.assertRaisesRegex(ValueError, "OWNER_ISSUE_REQUIRED"):
+                bridge.validated_owner_manuscript(
+                    205, "0"*64, "x"*32, get=fresh_source
+                )
+
+            def bad_title(method, url, token, payload=None):
+                data = fresh_source(method, url, token, payload)
+                if "title" in data:
+                    data["title"] = "untrusted swapped source"
+                return data
+            with self.assertRaisesRegex(ValueError, "OWNER_ISSUE_REQUIRED"):
+                bridge.validated_owner_manuscript(
+                    205, fresh_sha, "x"*32, get=bad_title
+                )
+            with self.assertRaisesRegex(ValueError, "OWNER_ISSUE_REQUIRED"):
+                bridge.validated_owner_manuscript(
+                    204, fresh_sha, "x"*32,
+                    get=lambda m, u, t: (
+                        {"full_name": bridge.NEXT_REPO, "private": True, "archived": False}
+                        if u == bridge.NEXT_API else {
+                            "number": 204, "state": "open", "user": {"login": "trendhub-ab"},
+                            "title": bridge.FRESH_ISSUE_TITLE, "body": fresh_sample
+                        }
+                    )
+                )
+
+    def test_fresh_source_uses_new_ledger_identity_and_never_retries(self):
+        with TemporaryDirectory() as td:
+            path = Path(td) / "ledger.json"
+            old = f"{bridge.NEXT_REPO}#204:{bridge.RECOVERY_SHA256}"
+            new = f"{bridge.NEXT_REPO}#205:{bridge.FRESH_SHA256}"
+            original = {
+                old: {
+                    "status": "OWNER_RECOVERY_ATTEMPTING",
+                    "issue_number": 204,
+                    "manuscript_sha256": bridge.RECOVERY_SHA256,
+                }
+            }
+            path.write_text(json.dumps(original), encoding="utf-8")
+            calls = []
+            def writer(title, manuscript, *, on_url):
+                calls.append(title)
+                on_url("https://editor.note.com/notes/nfresh1234/edit")
+                return "https://editor.note.com/notes/nfresh1234/edit"
+
+            with patch("note_publication_reconcile.draft_identity_from_url",
+                       return_value="nfresh1234"):
+                saved = bridge.save_once(
+                    205, bridge.FRESH_SHA256, SAMPLE, "title",
+                    runner=writer, ledger_path=path,
+                )
+                again = bridge.save_once(
+                    205, bridge.FRESH_SHA256, SAMPLE, "title",
+                    runner=lambda *_a, **_kw: self.fail("Duplicate save"),
+                    ledger_path=path,
+                )
+            content = json.loads(path.read_text("utf-8"))
+            self.assertEqual(saved["status"], "DRAFT_SAVED")
+            self.assertEqual(again["status"], "ALREADY_SAVED")
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(content[old], original[old])
+            self.assertEqual(content[new]["status"], "DRAFT_SAVED")
+
+    def test_fresh_source_failed_first_attempt_cannot_recreate(self):
+        with TemporaryDirectory() as td:
+            path = Path(td) / "ledger.json"
+            with self.assertRaisesRegex(RuntimeError, "simulate"):
+                bridge.save_once(
+                    205, bridge.FRESH_SHA256, SAMPLE, "title",
+                    runner=lambda *_a, **_kw: (_ for _ in ()).throw(
+                        RuntimeError("simulate browser failure")
+                    ),
+                    ledger_path=path,
+                )
+            self.assertEqual(
+                next(iter(json.loads(path.read_text("utf-8")).values()))["status"],
+                "ATTEMPTING",
+            )
+            with self.assertRaisesRegex(ValueError, "AMBIGUOUS_PRIOR_ATTEMPT"):
+                bridge.save_once(
+                    205, bridge.FRESH_SHA256, SAMPLE, "title",
+                    runner=lambda *_a, **_kw: self.fail("Unsafe second attempt"),
+                    ledger_path=path,
+                )
+
     def test_untrusted_repo_issue_or_short_manuscript_rejected(self):
         def wrong_repo(*args):
             obj = source_api(*args)
