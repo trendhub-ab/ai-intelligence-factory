@@ -18,5 +18,6 @@ jobs:
           persist-credentials: false
       - name: Verify durable owner business north star and PR alignment
         run: |
+          python v1_retirement_contract_guard.py
           python business_north_star_guard.py
           python -m unittest tests.test_business_north_star_guard -v
