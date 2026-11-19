@@ -22,4 +22,5 @@ jobs:
           python -m pip install requests
           python -m unittest tests.test_run_v04_note_single_draft_bridge -v
           python -m unittest tests.test_run_v04_note_body_locator -v
+          python -m unittest tests.test_run_v04_historical_edit_proof -v
           python -m unittest tests.test_run_v04_chatops_control -v
