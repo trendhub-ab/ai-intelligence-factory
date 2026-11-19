@@ -11,6 +11,7 @@ RETAINED_CI = {
     "p0b-offline-verification.yml": "offline-verification",
     "repository-falsification.yml": "falsify-all-tracked-surfaces",
     "notion-access-policy-guard.yml": "notion-access-policy",
+    "business-north-star-guard.yml": "north-star",
 }
 JOB = re.compile(r"^  ([A-Za-z][A-Za-z0-9_-]*):\s*(?:#.*)?$")
 JOBS = re.compile(r"^jobs:\s*(?:#.*)?$")
@@ -47,7 +48,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
     files = sorted((p for p in (root / ".github/workflows").iterdir()
                     if p.is_file() and p.suffix in {".yml", ".yaml"}),
                    key=lambda p: p.name)
-    assert len(files) == 87, f"WORKFLOW_COUNT_DRIFT: {len(files)}"
+    assert len(files) == 88, f"WORKFLOW_COUNT_DRIFT: {len(files)}"
     assert set(RETAINED_CI) <= {f.name for f in files}, "OFFLINE_CI_MISSING"
     disabled_count = 0
     job_count = 0
