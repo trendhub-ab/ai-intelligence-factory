@@ -1,5 +1,8 @@
 # AI Intelligence Factory
 
+> **事業開発の最優先正本:** [AIIF Business North Star](docs/AIIF_BUSINESS_NORTH_STAR.md) ｜ [有料商品正本（Run307）](PAID_PRODUCT_CONTRACT.md)。すべての開発・PRレビューは [AGENTS.md](AGENTS.md) を先に参照する。無料note→固定LP→有料会員向け判断情報→継続収益が目的。
+
+
 ## Production baseline
 
 - **Current functional baseline:** Run209 — Gemini timeout RPD fail-closed
