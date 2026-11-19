@@ -1,0 +1,22 @@
+# Guard the business purpose independently from retired V1 runtime.
+# No Gemini, Notion, note, secret, VM or publication side effects.
+name: AIIF Business North Star Guard
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  north-star:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify durable owner business north star and PR alignment
+        run: |
+          python business_north_star_guard.py
+          python -m unittest tests.test_business_north_star_guard -v
