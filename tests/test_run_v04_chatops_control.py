@@ -105,7 +105,7 @@ class V04ChatOpsControlTests(unittest.TestCase):
         for command in (
             "/aiif v04 create 204", "/aiif v04 create 206",
             "/aiif v04 create 205 ", " /aiif v04 create 205",
-            "/aiif v04 create 205\\n", "/aiif note draft",
+            "/aiif v04 create 205\n", "/aiif note draft",
             "/aiif run full", "/aiif v04 inspect",
             "/aiif v04 inspect 205",
             "/aiif v04 inspect 204 ",
@@ -172,7 +172,7 @@ class V04ChatOpsControlTests(unittest.TestCase):
                 input_path.write_text(json.dumps(fresh), encoding="utf-8")
                 self.assertEqual(control.main(), 0)
                 self.assertEqual(output_path.read_text(encoding="utf-8"),
-                                 "authorized=true\\noperation=create-fresh\\ncomment_id=987654321\\n")
+                                 "authorized=true\noperation=create-fresh\ncomment_id=987654321\n")
                 output_path.unlink()
                 bad = event()
                 bad["comment"]["body"] = "/aiif v04 create 204"
