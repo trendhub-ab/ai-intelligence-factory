@@ -184,7 +184,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
                 "github.event_name == 'workflow_dispatch'",
                 "github.run_attempt == 1",
                 "AUDIT_P15_PERSISTENT_NOTE_LEDGERS",
-                "aiif-note-p15-readonly-audit",
+                "note-draft-create-v2",
                 "actions/checkout@v4",
                 "persist-credentials: false",
                 "ref: bbf7b49cc4eae1975d3dc838d560c12ccccc3a61",
