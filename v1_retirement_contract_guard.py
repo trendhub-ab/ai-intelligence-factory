@@ -23,6 +23,12 @@ V04_NOTE_BRIDGE_JOBS = [
 ]
 # Independent inspect-only ChatOps ingress; never a V1 reactivation.
 V04_CHATOPS_BRIDGE = "v04-owner-chatops-inspect.yml"
+# Third manually dispatched exception: fixed Next P1.5 read-only ledger audit.
+P15_LEDGER_AUDIT_BRIDGE = "p15-persistent-note-ledger-audit.yml"
+P15_LEDGER_AUDIT_JOBS = [
+    "preflight", "start-note-vm", "verify-note-runner",
+    "audit-persistent-ledgers", "stop-note-vm",
+]
 
 
 
@@ -47,12 +53,13 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
     files = sorted((p for p in (root / ".github/workflows").iterdir()
                     if p.is_file() and p.suffix in {".yml", ".yaml"}),
                    key=lambda p: p.name)
-    assert len(files) == 87, f"WORKFLOW_COUNT_DRIFT: {len(files)}"
+    assert len(files) == 88, f"WORKFLOW_COUNT_DRIFT: {len(files)}"
     assert set(RETAINED_CI) <= {f.name for f in files}, "OFFLINE_CI_MISSING"
     disabled_count = 0
     job_count = 0
     one_draft_bridge_count = 0
     inspect_chatops_count = 0
+    p15_readonly_count = 0
     for path in files:
         src = path.read_text(encoding="utf-8")
         jobs = _jobs(src, path.name)
@@ -156,6 +163,50 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
                 )
             inspect_chatops_count += 1
             continue
+        if path.name == P15_LEDGER_AUDIT_BRIDGE:
+            assert [name for name, _ in jobs] == P15_LEDGER_AUDIT_JOBS, (
+                "P15_WORKFLOW_JOB_DRIFT"
+            )
+            assert src.count("workflow_dispatch:") == 1, "P15_TRIGGER_INVALID"
+            for forbidden in (
+                "schedule:", "issue_comment:", "pull_request:", "push:",
+                "workflow_call:", "workflow_run:", "secrets.NOTION_API_KEY",
+                "secrets.NOTE_STORAGE_STATE_B64", "NOTE_CHROME_CHANNEL",
+                "run_v04_note_single_draft_bridge.py", "production_pipeline.py",
+                "publish_note", "note-create-draft", "AIIF_NEXT_GEMINI_API_KEY",
+                "pip install playwright", "actions/upload-artifact",
+            ):
+                assert forbidden not in src, f"P15_FORBIDDEN: {forbidden}"
+            for required in (
+                "github.repository == 'trendhub-ab/ai-intelligence-factory'",
+                "github.ref == 'refs/heads/main'",
+                "github.actor == 'trendhub-ab'",
+                "github.event_name == 'workflow_dispatch'",
+                "github.run_attempt == 1",
+                "AUDIT_P15_PERSISTENT_NOTE_LEDGERS",
+                "note-draft-create-v2",
+                "actions/checkout@v4",
+                "persist-credentials: false",
+                "ref: bbf7b49cc4eae1975d3dc838d560c12ccccc3a61",
+                "test_p15_local_ledger_readonly_audit.py",
+                "P15_BLOCKED_CONCURRENT_V04",
+                "TERMINATED",
+                "GCP_WORKLOAD_IDENTITY_PROVIDER",
+                "google-github-actions/auth@v3",
+                "google-github-actions/setup-gcloud@v3",
+                "runs-on: [self-hosted, linux, x64, aiif-note-cloud]",
+                "p15_local_ledger_readonly_audit.py --ledger-dir",
+                "stop-note-vm:",
+                "needs.start-note-vm.result == 'success'",
+                "gcloud compute instances stop",
+                "PYTHONDONTWRITEBYTECODE",
+            ):
+                assert required in src, f"P15_SAFETY_CONTRACT_MISSING: {required}"
+            assert (root / "tests/test_run_p15_vm_audit_bridge.py").is_file(), (
+                "P15_OFFLINE_TESTS_MISSING"
+            )
+            p15_readonly_count += 1
+            continue
         if path.name in RETAINED_CI:
             assert [name for name, _ in jobs] == [RETAINED_CI[path.name]], (
                 f"UNEXPECTED_CI_JOB: {path.name}"
@@ -181,6 +232,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
         disabled_count += 1
     assert one_draft_bridge_count == 1, "V04_NOTE_BRIDGE_MISSING_OR_DUPLICATED"
     assert inspect_chatops_count == 1, "V04_CHATOPS_BRIDGE_MISSING_OR_DUPLICATED"
+    assert p15_readonly_count == 1, "P15_READONLY_BRIDGE_MISSING_OR_DUPLICATED"
     assert disabled_count == 81, f"UNEXPECTED_OPERATIONAL_WORKFLOWS: {disabled_count}"
     assert job_count >= 81, f"OPERATIONAL_JOBS_NOT_DISABLED: {job_count}"
 
@@ -208,6 +260,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
         "retained_offline_ci": len(RETAINED_CI),
         "owner_manual_private_note_draft_exception": one_draft_bridge_count,
         "owner_v04_read_only_chatops_exception": inspect_chatops_count,
+        "owner_p15_vm_readonly_audit_exception": p15_readonly_count,
         "entrypoints_blocked": 2,
         "model_calls": 0,
         "publication_mutations": 0,

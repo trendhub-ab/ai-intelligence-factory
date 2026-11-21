@@ -1,0 +1,179 @@
+# Isolated owner-only P1.5 audit exception; V1 remains retired.
+# No note/browser/Notion mutations, models, API calls or publication.
+name: AIIF Next P1.5 - Persistent Note Ledger Readonly Audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type AUDIT_P15_PERSISTENT_NOTE_LEDGERS (VM read-only audit)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: note-draft-create-v2
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: >-
+      ${{ github.repository == 'trendhub-ab/ai-intelligence-factory' &&
+          github.ref == 'refs/heads/main' &&
+          github.actor == 'trendhub-ab' &&
+          github.event_name == 'workflow_dispatch' &&
+          github.run_attempt == 1 &&
+          inputs.confirm == 'AUDIT_P15_PERSISTENT_NOTE_LEDGERS' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Check existing v0.4 private draft workflow is not running
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          for status in queued in_progress waiting pending requested; do
+            count="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/v04-single-note-draft-bridge.yml/runs?status=$status&per_page=1" --jq '.total_count')"
+            if [ "$count" != "0" ]; then
+              echo "::error::P15_BLOCKED_CONCURRENT_V04"
+              exit 1
+            fi
+          done
+      - name: Checkout immutable AIIF Next P1.5 source
+        uses: actions/checkout@v4
+        with:
+          repository: trendhub-ab/ai-intelligence-factory-next
+          ref: bbf7b49cc4eae1975d3dc838d560c12ccccc3a61
+          token: ${{ secrets.GH_PAT }}
+          path: next-p15
+          persist-credentials: false
+      - name: Verify exact source and synthetic no-API regression
+        run: |
+          set -euo pipefail
+          test "$(git -C next-p15 rev-parse HEAD)" = "bbf7b49cc4eae1975d3dc838d560c12ccccc3a61"
+          PYTHONPATH=next-p15/src python -B -m unittest discover -s next-p15/tests -p test_p15_local_ledger_readonly_audit.py -v
+
+  start-note-vm:
+    needs: preflight
+    if: ${{ needs.preflight.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - name: Validate existing GCP note VM configuration
+        env:
+          WIF_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          WIF_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          for value in GCP_PROJECT_ID GCP_NOTE_VM_ZONE GCP_NOTE_VM_NAME WIF_PROVIDER WIF_ACCOUNT; do
+            test -n "${!value:-}" || { echo "::error::P15_GCP_CONFIG_MISSING"; exit 1; }
+          done
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start only an initially stopped VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" != "TERMINATED" ]; then
+            echo "::error::P15_VM_NOT_TERMINATED_NO_OWNERSHIP"
+            exit 1
+          fi
+          gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+
+  verify-note-runner:
+    needs: start-note-vm
+    if: ${{ needs.start-note-vm.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    permissions:
+      contents: read
+    steps:
+      - name: Require one authenticated aiif-note-cloud runner
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          for _ in $(seq 1 48); do
+            count="$(gh api "repos/$GITHUB_REPOSITORY/actions/runners?per_page=100" --jq '[.runners[] | select(.status == "online") | select(any(.labels[]?; .name == "aiif-note-cloud"))] | length')"
+            if [ "$count" = "1" ]; then exit 0; fi
+            if [ "$count" != "0" ]; then
+              echo "::error::P15_MULTIPLE_NOTE_RUNNERS"
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "::error::P15_NO_ONLINE_NOTE_RUNNER"
+          exit 1
+
+  audit-persistent-ledgers:
+    needs: verify-note-runner
+    if: ${{ needs.verify-note-runner.result == 'success' }}
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout immutable Next audit module only
+        uses: actions/checkout@v4
+        with:
+          repository: trendhub-ab/ai-intelligence-factory-next
+          ref: bbf7b49cc4eae1975d3dc838d560c12ccccc3a61
+          token: ${{ secrets.GH_PAT }}
+          path: next-p15
+          persist-credentials: false
+      - name: Use existing Python 3.11 runtime contract
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Verify immutable source and audit existing files only
+        run: |
+          set -euo pipefail
+          umask 077
+          test "$(git -C next-p15 rev-parse HEAD)" = "bbf7b49cc4eae1975d3dc838d560c12ccccc3a61"
+          python3 -B next-p15/src/aiif_next/p15_local_ledger_readonly_audit.py --ledger-dir "$HOME/.aiif-note"
+      - name: Mark only local-ledger read as complete
+        run: |
+          echo "P15_VM_LEDGER_READONLY_RUN=PASS"
+          echo "Notion/Public API lineage, note writes and public release remain unauthorized."
+
+  stop-note-vm:
+    needs: [preflight, start-note-vm, verify-note-runner, audit-persistent-ledgers]
+    if: ${{ always() && needs.start-note-vm.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Stop VM started by this audit
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
