@@ -65,7 +65,11 @@ class P15VmAuditBridgeTests(unittest.TestCase):
                 self.assertNotIn(token, self.audit)
 
     def test_fails_closed_when_vm_busy_and_stops_only_own_start(self):
-        self.assertIn("P15_BLOCKED_CONCURRENT_V04", self.audit)
+        self.assertNotIn("P15_BLOCKED_CONCURRENT_V04", self.audit)
+        self.assertNotIn("actions/workflows/v04-single-note-draft-bridge.yml/runs", self.audit)
+        self.assertNotIn("/runs?status=", self.audit)
+        self.assertIn("group: note-draft-create-v2", self.audit)
+        self.assertIn("cancel-in-progress: false", self.audit)
         self.assertIn('if [ "$state" != "TERMINATED" ]; then', self.audit)
         self.assertIn("P15_VM_NOT_TERMINATED_NO_OWNERSHIP", self.audit)
         self.assertIn('needs.start-note-vm.result == \'success\'', self.audit)
