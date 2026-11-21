@@ -14,7 +14,7 @@
 
 `.github/workflows/p15-persistent-note-ledger-audit.yml` は上記GCP vars/GH_PAT/OIDCを従来の**旧ホスト側**で使う、owner-only `workflow_dispatch`。`ref=main`、`github.actor=trendhub-ab`、1回目のRun、正確な確認文字列 `AUDIT_P15_PERSISTENT_NOTE_LEDGERS` を要求。手動のみでschedule/push/issue_commentによる起動はない。
 
-1. 旧v0.4の実行中・キュー中を拒否し、**v0.4と同じGitHub concurrency group `note-draft-create-v2`**でVM lifecycle全体を排他にする。
+1. **v0.4と同じGitHub concurrency group `note-draft-create-v2`**でVM lifecycle全体を排他にする。旧いGitHub Actionsのステータス集計（`queued`/`in_progress`等）は重複チェックしない。共有 concurrency が監査・v0.4の同時実行を制御する。
 2. 既存PATで**Nextの特定コミットSHA** `bbf7b49cc4eae1975d3dc838d560c12ccccc3a61` のソースだけをcheckoutし、sha一致とNextの無API擬似台帳テストを検証。失敗ならVMは起動しない。
 3. GCP WIF認証。既に起動中のVMは「この監査の所有物」と見なさず停止・乗っ取りを拒否。TERMINATEDの場合に限り起動する。
 4. 起動済みの`aiif-note-cloud`が**1台のみ**と確認できた場合、既存runner上で Python 3.11 により `~/.aiif-note/delivery-ledger-v1.sqlite3` と `~/.aiif-note/v04-private-drafts-v1.json` を読み取る。常に固定エラーコード/件数以外を外へ出さない。
@@ -35,4 +35,4 @@
 
 `python -m unittest tests.test_run_p15_vm_audit_bridge -v` は起動条件、排他、固定SHA、read-only、停止jobなどを検証し、existing Integration Reconciliation CIで必ず実行する。実VMではNext P1.5の独立テスト10件もstart前に走らせる。
 
-**安全なライブ試験のチェック:** 事前にmain SHA・必要CI・既存v0.4 runがいないこと・VMが停止中であること・利用するPAT/WIFが有効であることを確認。ワークフロー入力は`confirm=AUDIT_P15_PERSISTENT_NOTE_LEDGERS`のみ。run後、両台帳のaggregate結果とVM停止成功を確認。Note/Notion/Productionへの操作は承認しない。
+**安全なライブ試験のチェック:** 事前にmain SHA・必要CI・VMが停止中であること・利用するPAT/WIFが有効であることを確認。GitHub concurrencyによる実行排他とVM自身のTERMINATEDチェックが競合を防ぐ。ワークフロー入力は`confirm=AUDIT_P15_PERSISTENT_NOTE_LEDGERS`のみ。run後、両台帳のaggregate結果とVM停止成功を確認。Note/Notion/Productionへの操作は承認しない。

@@ -189,7 +189,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
                 "persist-credentials: false",
                 "ref: bbf7b49cc4eae1975d3dc838d560c12ccccc3a61",
                 "test_p15_local_ledger_readonly_audit.py",
-                "P15_BLOCKED_CONCURRENT_V04",
+                "group: note-draft-create-v2",
                 "TERMINATED",
                 "GCP_WORKLOAD_IDENTITY_PROVIDER",
                 "google-github-actions/auth@v3",
