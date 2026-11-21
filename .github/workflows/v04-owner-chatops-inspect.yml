@@ -32,7 +32,8 @@ jobs:
           github.event.comment.author_association == 'OWNER' &&
           (github.event.comment.body == '/aiif v04 inspect 204' ||
            github.event.comment.body == '/aiif v04 recover 204' ||
-           github.event.comment.body == '/aiif v04 recover-final 204') &&
+           github.event.comment.body == '/aiif v04 recover-final 204' ||
+           github.event.comment.body == '/aiif v04 create 205') &&
           github.run_attempt == 1 }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -87,6 +88,9 @@ jobs:
             recover-final)
               payload='{"ref":"main","inputs":{"operation":"recover-final","confirm":"CREATE_V04_SINGLE_PRIVATE_NOTE_DRAFT","source_issue_number":"204","manuscript_sha256":"1f39788f6c1c9dc9e9ca93af5c260e0c396374f76b5dc33c3ece0def3cffb690","recovery_approval":"OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_FINAL_ONCE"}}'
               ;;
+            create-fresh)
+              payload='{"ref":"main","inputs":{"operation":"create","confirm":"CREATE_V04_SINGLE_PRIVATE_NOTE_DRAFT","source_issue_number":"205","manuscript_sha256":"d65a7e9a798f86a31980686483870a1bd6a651ac8f58b12a4fe9ea62427a6650"}}'
+              ;;
             *)
               echo "::error::Invalid v0.4 ChatOps mode"; exit 1
               ;;
@@ -97,10 +101,10 @@ jobs:
             --input -
           {
             echo '### v0.4 owner-only ChatOps operation'
-            echo '- Source: private Next Issue #204, pinned SHA256'
+            echo '- Source: exact pinned private Next Issue #204 (recovery) or #205 (fresh create)'
             echo '- Target: v04-single-note-draft-bridge.yml on main'
             echo "- Operation: \`$OPERATION\` (owner-authorized)"
-            echo '- inspect is read-only; recover is owner-approved, once-only, with fresh note UI proof'
+            echo '- inspect is read-only; create-fresh permits only one exact new private draft; recover is owner-approved, once-only'
             echo '- No blind ledger reset, Gemini call or public release'
             echo '- The existing v0.4 workflow validates its own owner identity and private source'
           } >> "$GITHUB_STEP_SUMMARY"

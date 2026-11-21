@@ -61,6 +61,16 @@ class V04ChatOpsControlTests(unittest.TestCase):
             "authorized": True, "operation": "recover-final", "comment_id": 987654321,
         })
 
+    def test_fresh_create_command_is_exact_owner_only(self):
+        sample = event()
+        sample["comment"]["body"] = control.FRESH_CREATE_COMMAND
+        self.assertEqual(control.authorize_event(sample, **ENV), {
+            "authorized": True, "operation": "create-fresh",
+            "comment_id": 987654321,
+        })
+        sample["comment"]["user"] = {"login": "not-owner"}
+        self.assertFalse(control.authorize_event(sample, **ENV)["authorized"])
+
     def test_wrong_event_envelope_fails_closed(self):
         for key, value in (
             ("repository", "another/repo"), ("event_name", "issues"),
@@ -93,7 +103,9 @@ class V04ChatOpsControlTests(unittest.TestCase):
 
     def test_only_exact_inspect_or_recovery_operation_can_be_invoked(self):
         for command in (
-            "/aiif v04 create 204", "/aiif note draft",
+            "/aiif v04 create 204", "/aiif v04 create 206",
+            "/aiif v04 create 205 ", " /aiif v04 create 205",
+            "/aiif v04 create 205\n", "/aiif note draft",
             "/aiif run full", "/aiif v04 inspect",
             "/aiif v04 inspect 205",
             "/aiif v04 inspect 204 ",
@@ -155,6 +167,13 @@ class V04ChatOpsControlTests(unittest.TestCase):
                 self.assertEqual(output_path.read_text(encoding="utf-8"),
                                  "authorized=true\noperation=recover-final\ncomment_id=987654321\n")
                 output_path.unlink()
+                fresh = event()
+                fresh["comment"]["body"] = control.FRESH_CREATE_COMMAND
+                input_path.write_text(json.dumps(fresh), encoding="utf-8")
+                self.assertEqual(control.main(), 0)
+                self.assertEqual(output_path.read_text(encoding="utf-8"),
+                                 "authorized=true\noperation=create-fresh\ncomment_id=987654321\n")
+                output_path.unlink()
                 bad = event()
                 bad["comment"]["body"] = "/aiif v04 create 204"
                 input_path.write_text(json.dumps(bad), encoding="utf-8")
@@ -174,6 +193,7 @@ class V04ChatOpsControlTests(unittest.TestCase):
         self.assertIn("github.event.comment.body == '/aiif v04 inspect 204'", text)
         self.assertIn("github.event.comment.body == '/aiif v04 recover 204'", text)
         self.assertIn("github.event.comment.body == '/aiif v04 recover-final 204'", text)
+        self.assertIn("github.event.comment.body == '/aiif v04 create 205'", text)
         self.assertIn("python run_v04_chatops_control.py", text)
         self.assertIn("python -m unittest tests.test_run_v04_chatops_control -v", text)
         self.assertIn("GH_TOKEN: ${{ secrets.GH_PAT }}", text)
@@ -190,7 +210,11 @@ class V04ChatOpsControlTests(unittest.TestCase):
         self.assertIn('"recovery_approval":"OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_RETRY_ONCE"', text)
         self.assertIn('"source_issue_number":"204"', text)
         self.assertIn(expected_sha, text)
-        self.assertNotIn('"operation":"create"', text)
+        self.assertIn('"operation":"create"', text)
+        self.assertIn('"source_issue_number":"205"', text)
+        self.assertIn("d65a7e9a798f86a31980686483870a1bd6a651ac8f58b12a4fe9ea62427a6650", text)
+        self.assertIn("case \"$OPERATION\" in", text)
+        self.assertIn("create-fresh)", text)
         self.assertNotIn("daily-one-shot.yml/dispatches", text)
         self.assertNotIn("note-create-draft.yml/dispatches", text)
         self.assertLess(text.index("id: claim"), text.index("v04-single-note-draft-bridge.yml/dispatches"))
@@ -204,6 +228,8 @@ class V04ChatOpsControlTests(unittest.TestCase):
         self.assertIn("inputs.operation == 'recover-final'", text)
         self.assertIn("github.run_attempt == 1", text)
         self.assertIn("note-draft-create-v2", text)
+        self.assertIn("test \"$INPUT_ISSUE\" = \"205\"", text)
+        self.assertIn("test \"$INPUT_SHA\" = \"d65a7e9a798f86a31980686483870a1bd6a651ac8f58b12a4fe9ea62427a6650\"", text)
         self.assertIn("stop-note-vm:", text)
 
     def test_retired_v1_chatops_remain_disabled(self):

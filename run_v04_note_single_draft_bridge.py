@@ -31,6 +31,9 @@ CONFIRM = "CREATE_V04_SINGLE_PRIVATE_NOTE_DRAFT"
 RECOVERY_APPROVAL = "OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_RETRY_ONCE"
 RECOVERY_ISSUE = 204
 RECOVERY_SHA256 = "1f39788f6c1c9dc9e9ca93af5c260e0c396374f76b5dc33c3ece0def3cffb690"
+FRESH_ISSUE = 205
+FRESH_SHA256 = "d65a7e9a798f86a31980686483870a1bd6a651ac8f58b12a4fe9ea62427a6650"
+FRESH_ISSUE_TITLE = "AIIF V04 PRIVATE NOTE DRAFT SOURCE — GPT-6.2 Astra Sol"
 FINAL_RECOVERY_APPROVAL = "OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_FINAL_ONCE"
 SHA_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 DRAFT_LEDGER = Path.home() / ".aiif-note" / "v04-private-drafts-v1.json"
@@ -87,7 +90,11 @@ def validated_owner_manuscript(
             or issue.get("state") != "open"
             or type(user) is not dict or user.get("login") != "trendhub-ab"
             or "pull_request" in issue
-            or issue.get("title") != "AIIF V04 PRIVATE NOTE DRAFT SOURCE — Agent Skills"
+            or (issue_number, issue.get("title")) not in {
+                (RECOVERY_ISSUE, "AIIF V04 PRIVATE NOTE DRAFT SOURCE — Agent Skills"),
+                (FRESH_ISSUE, FRESH_ISSUE_TITLE),
+            }
+            or (issue_number == FRESH_ISSUE and expected_sha256 != FRESH_SHA256)
             or type(issue.get("body")) is not str):
         raise ValueError("V04_BRIDGE_OWNER_ISSUE_REQUIRED")
     manuscript = issue["body"]

@@ -19,6 +19,7 @@ OWNER = "trendhub-ab"
 COMMAND = "/aiif v04 inspect 204"
 RECOVERY_COMMAND = "/aiif v04 recover 204"
 FINAL_RECOVERY_COMMAND = "/aiif v04 recover-final 204"
+FRESH_CREATE_COMMAND = "/aiif v04 create 205"
 
 
 def authorize_event(
@@ -54,12 +55,16 @@ def authorize_event(
         or (comment.get("user") or {}).get("login") != OWNER
         or sender.get("login") != OWNER
         or comment.get("author_association") != "OWNER"
-        or comment.get("body") not in (COMMAND, RECOVERY_COMMAND, FINAL_RECOVERY_COMMAND)
+        or comment.get("body") not in (
+            COMMAND, RECOVERY_COMMAND, FINAL_RECOVERY_COMMAND,
+            FRESH_CREATE_COMMAND,
+        )
         or type(comment.get("id")) is not int
         or comment["id"] <= 0
     ):
         return denied
     operation = (
+        "create-fresh" if comment["body"] == FRESH_CREATE_COMMAND else
         "recover-final" if comment["body"] == FINAL_RECOVERY_COMMAND else
         "recover" if comment["body"] == RECOVERY_COMMAND else "inspect"
     )
