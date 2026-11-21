@@ -137,6 +137,10 @@ jobs:
           token: ${{ secrets.GH_PAT }}
           path: next-p15
           persist-credentials: false
+      - name: Use existing Python 3.11 runtime contract
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
       - name: Verify immutable source and audit existing files only
         run: |
           set -euo pipefail
