@@ -225,6 +225,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
                 "workflow_call:", "workflow_run:", "publish_note",
                 "note-publication", "AIIF_NEXT_GEMINI_API_KEY",
                 "actions/upload-artifact", "actions/download-artifact",
+                "AIIF_NEXT_OWNER_REVIEW_KEY_B64", "AIIF_NEXT_OWNER_REVIEW_KEY_ID",
                 "run_v04_note_single_draft_bridge.py",
                 "workflow_dispatch.yml", "gemini",
             ):
@@ -243,7 +244,8 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
                 "validate_sealed_blob",
                 "ONEPATH_ENCRYPTED_PACKET_METADATA_VERIFIED",
                 "AIIF_ONEPATH_RECIPIENT_PRIVATE_KEY_B64",
-                "AIIF_NEXT_OWNER_REVIEW_KEY_B64",
+                "AIIF_ONEPATH_OWNER_POLICY_PUBLIC_KEY_B64",
+                "AIIF_ONEPATH_OWNER_POLICY_KEY_ID",
                 "secrets.NOTION_API_KEY",
                 "secrets.GH_PAT",
                 "private_dir",
