@@ -29,6 +29,13 @@ P15_LEDGER_AUDIT_JOBS = [
     "preflight", "start-note-vm", "verify-note-runner",
     "audit-persistent-ledgers", "stop-note-vm",
 ]
+# Fourth specifically scoped exception; Next owner-signed encrypted reviewed
+# artifact becomes a PRIVATE note draft via the old GCP VM. V1 stays retired.
+ONEPATH_REVIEWED_BRIDGE = "onepath-next-reviewed-note-draft.yml"
+ONEPATH_REVIEWED_JOBS = [
+    "preflight", "start-note-vm", "verify-note-runner",
+    "deliver-private-note", "stop-note-vm",
+]
 
 
 
@@ -53,13 +60,14 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
     files = sorted((p for p in (root / ".github/workflows").iterdir()
                     if p.is_file() and p.suffix in {".yml", ".yaml"}),
                    key=lambda p: p.name)
-    assert len(files) == 88, f"WORKFLOW_COUNT_DRIFT: {len(files)}"
+    assert len(files) == 89, f"WORKFLOW_COUNT_DRIFT: {len(files)}"
     assert set(RETAINED_CI) <= {f.name for f in files}, "OFFLINE_CI_MISSING"
     disabled_count = 0
     job_count = 0
     one_draft_bridge_count = 0
     inspect_chatops_count = 0
     p15_readonly_count = 0
+    onepath_reviewed_count = 0
     for path in files:
         src = path.read_text(encoding="utf-8")
         jobs = _jobs(src, path.name)
@@ -207,6 +215,60 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
             )
             p15_readonly_count += 1
             continue
+        if path.name == ONEPATH_REVIEWED_BRIDGE:
+            assert [name for name, _ in jobs] == ONEPATH_REVIEWED_JOBS, (
+                "ONEPATH_WORKFLOW_JOB_DRIFT"
+            )
+            assert src.count("workflow_dispatch:") == 1, "ONEPATH_DISPATCH_INVALID"
+            for forbidden in (
+                "schedule:", "issue_comment:", "pull_request:", "push:",
+                "workflow_call:", "workflow_run:", "publish_note",
+                "note-publication", "AIIF_NEXT_GEMINI_API_KEY",
+                "actions/upload-artifact", "actions/download-artifact",
+                "AIIF_NEXT_OWNER_REVIEW_KEY_B64", "AIIF_NEXT_OWNER_REVIEW_KEY_ID",
+                "run_v04_note_single_draft_bridge.py",
+                "workflow_dispatch.yml", "gemini",
+            ):
+                assert forbidden not in src, (
+                    "ONEPATH_FORBIDDEN_TRIGGER_OR_API:" + forbidden
+                )
+            for required in (
+                "github.repository == 'trendhub-ab/ai-intelligence-factory'",
+                "github.actor == 'trendhub-ab'",
+                "github.ref == 'refs/heads/main'",
+                "github.run_attempt == 1",
+                "RUN_ONEPATH_REVIEWED_PRIVATE_NOTE_DRAFT",
+                "group: note-draft-create-v2",
+                "ref: main",
+                "NEXT_MAIN_SHA",
+                "validate_sealed_blob",
+                "ONEPATH_ENCRYPTED_PACKET_METADATA_VERIFIED",
+                "AIIF_ONEPATH_RECIPIENT_PRIVATE_KEY_B64",
+                "AIIF_ONEPATH_OWNER_POLICY_PUBLIC_KEY_B64",
+                "AIIF_ONEPATH_OWNER_POLICY_KEY_ID",
+                "secrets.NOTION_API_KEY",
+                "secrets.GH_PAT",
+                "private_dir",
+                "shred -u",
+                "onepath_reviewed_delivery.py",
+                "onepath_packet_exchange.py",
+                "--mode deliver",
+                "TERMINATED",
+                "runs-on: [self-hosted, linux, x64, aiif-note-cloud]",
+                "needs.start-note-vm.result == 'success'",
+                "GCP_WORKLOAD_IDENTITY_PROVIDER",
+                "gcloud compute instances stop",
+                "stop-note-vm:",
+                "persist-credentials: false",
+            ):
+                assert required in src, (
+                    "ONEPATH_REQUIRED_SAFETY_FIELD_MISSING:" + required
+                )
+            assert (root / "tests/test_run_onepath_reviewed_note_bridge.py").is_file(), (
+                "ONEPATH_REGRESSION_TESTS_REQUIRED"
+            )
+            onepath_reviewed_count += 1
+            continue
         if path.name in RETAINED_CI:
             assert [name for name, _ in jobs] == [RETAINED_CI[path.name]], (
                 f"UNEXPECTED_CI_JOB: {path.name}"
@@ -233,6 +295,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
     assert one_draft_bridge_count == 1, "V04_NOTE_BRIDGE_MISSING_OR_DUPLICATED"
     assert inspect_chatops_count == 1, "V04_CHATOPS_BRIDGE_MISSING_OR_DUPLICATED"
     assert p15_readonly_count == 1, "P15_READONLY_BRIDGE_MISSING_OR_DUPLICATED"
+    assert onepath_reviewed_count == 1, "ONEPATH_BRIDGE_MISSING_OR_DUPLICATED"
     assert disabled_count == 81, f"UNEXPECTED_OPERATIONAL_WORKFLOWS: {disabled_count}"
     assert job_count >= 81, f"OPERATIONAL_JOBS_NOT_DISABLED: {job_count}"
 
@@ -261,6 +324,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
         "owner_manual_private_note_draft_exception": one_draft_bridge_count,
         "owner_v04_read_only_chatops_exception": inspect_chatops_count,
         "owner_p15_vm_readonly_audit_exception": p15_readonly_count,
+        "owner_onepath_signed_private_note_exception": onepath_reviewed_count,
         "entrypoints_blocked": 2,
         "model_calls": 0,
         "publication_mutations": 0,

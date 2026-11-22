@@ -1,0 +1,242 @@
+# Scoped Next->old AIIF draft only. 81 retired V1 workflows stay disabled.
+# The encrypted private packet is read from the PRIVATE Next repo by exact Git
+# commit, decrypted ONLY in ephemeral 0600 space on the existing cloud note VM.
+# Offline owner Ed25519 private-only policy PUBLIC verification + machine QA,
+# P1.4 remote once-claim and SQLite create-intent remain mandatory.
+# The owner SIGNING SECRET is never sent to GitHub Actions. Never publish, recreate uncertain drafts or run Gemini.
+name: AIIF Next OnePath - Reviewed Article To Private Note Draft
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        type: string
+        description: "Type RUN_ONEPATH_REVIEWED_PRIVATE_NOTE_DRAFT"
+        required: true
+      article_id:
+        type: string
+        description: "Pinned Next ID, news_ plus 24 lowercase hex"
+        required: true
+      sealed_sha256:
+        type: string
+        description: "SHA256 of encrypted packet only (not article text)"
+        required: true
+      packet_commit:
+        type: string
+        description: "Exact 40-hex private Next state-branch packet commit"
+        required: true
+      next_main_sha:
+        type: string
+        description: "Exact 40-hex Next main after E2E PR merge"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: note-draft-create-v2
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: >-
+      ${{ github.repository == 'trendhub-ab/ai-intelligence-factory' &&
+          github.ref == 'refs/heads/main' &&
+          github.actor == 'trendhub-ab' &&
+          github.event_name == 'workflow_dispatch' &&
+          github.run_attempt == 1 &&
+          inputs.confirm == 'RUN_ONEPATH_REVIEWED_PRIVATE_NOTE_DRAFT' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Require exact article, source and encrypted packet identity
+        env:
+          ARTICLE_ID: ${{ inputs.article_id }}
+          SEALED_SHA: ${{ inputs.sealed_sha256 }}
+          PACKET_COMMIT: ${{ inputs.packet_commit }}
+          NEXT_MAIN_SHA: ${{ inputs.next_main_sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, re
+          checks = (
+              ("ARTICLE_ID", r"news_[0-9a-f]{24}"),
+              ("SEALED_SHA", r"[0-9a-f]{64}"),
+              ("PACKET_COMMIT", r"[0-9a-f]{40}"),
+              ("NEXT_MAIN_SHA", r"[0-9a-f]{40}"),
+          )
+          for name, pattern in checks:
+              if not re.fullmatch(pattern, os.environ[name]):
+                  raise SystemExit("::error::ONEPATH_INPUT_INVALID")
+          PY
+      - name: Checkout approved Next main, never unmerged feature code
+        uses: actions/checkout@v4
+        with:
+          repository: trendhub-ab/ai-intelligence-factory-next
+          ref: main
+          token: ${{ secrets.GH_PAT }}
+          path: next-p1
+          persist-credentials: false
+      - name: Verify Next main SHA and pinned private encrypted blob
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          ARTICLE_ID: ${{ inputs.article_id }}
+          SEALED_SHA: ${{ inputs.sealed_sha256 }}
+          PACKET_COMMIT: ${{ inputs.packet_commit }}
+          NEXT_MAIN_SHA: ${{ inputs.next_main_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git -C next-p1 rev-parse HEAD)" = "$NEXT_MAIN_SHA"
+          export PYTHONPATH="$PWD/next-p1/src:$PWD/next-p1"
+          python3 - <<'PY'
+          import os
+          from scripts.onepath_packet_exchange import _get_private_blob
+          from aiif_next.onepath_secure_packet import validate_sealed_blob
+          a, s = os.environ["ARTICLE_ID"], os.environ["SEALED_SHA"]
+          blob = _get_private_blob(a, s, os.environ["PACKET_COMMIT"], os.environ["GH_PAT"])
+          validate_sealed_blob(blob, article_id=a, sealed_sha256=s)
+          print("ONEPATH_ENCRYPTED_PACKET_METADATA_VERIFIED")
+          PY
+
+  start-note-vm:
+    needs: preflight
+    if: ${{ needs.preflight.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - name: Require existing VM identity config
+        env:
+          WIF_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          WIF_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          for name in GCP_PROJECT_ID GCP_NOTE_VM_ZONE GCP_NOTE_VM_NAME WIF_PROVIDER WIF_ACCOUNT; do
+            test -n "${!name:-}" || { echo "::error::ONEPATH_VM_CONFIG_MISSING"; exit 1; }
+          done
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Start ONLY an initially TERMINATED cloud note VM
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" != "TERMINATED" ]; then
+            echo "::error::ONEPATH_VM_NOT_TERMINATED_NO_OWNERSHIP"; exit 1
+          fi
+          gcloud compute instances start "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+
+  verify-note-runner:
+    needs: start-note-vm
+    if: ${{ needs.start-note-vm.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    steps:
+      - name: Verify exact one trusted existing cloud runner online
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          for _ in $(seq 1 48); do
+            count="$(gh api "repos/$GITHUB_REPOSITORY/actions/runners?per_page=100" --jq '[.runners[] | select(.status == "online") | select(any(.labels[]?; .name == "aiif-note-cloud"))] | length')"
+            if [ "$count" = "1" ]; then exit 0; fi
+            if [ "$count" != "0" ]; then echo "::error::ONEPATH_MULTIPLE_RUNNERS"; exit 1; fi
+            sleep 5
+          done
+          echo "::error::ONEPATH_RUNNER_UNAVAILABLE"; exit 1
+
+  deliver-private-note:
+    needs: verify-note-runner
+    if: ${{ needs.verify-note-runner.result == 'success' }}
+    runs-on: [self-hosted, linux, x64, aiif-note-cloud]
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      NOTE_CHROME_CHANNEL: chrome
+      NOTE_CHROME_HEADLESS: "false"
+      AIIF_ONEPATH_OWNER_GO: "OWNER_GO_ONE_REVIEWED_ARTICLE_EXISTING_NOTION_AND_NOTE_PRIVATE"
+      GH_PAT: ${{ secrets.GH_PAT }}
+      NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+      NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
+      AIIF_ONEPATH_OWNER_POLICY_PUBLIC_KEY_B64: ${{ vars.AIIF_ONEPATH_OWNER_POLICY_PUBLIC_KEY_B64 }}
+      AIIF_ONEPATH_OWNER_POLICY_KEY_ID: ${{ vars.AIIF_ONEPATH_OWNER_POLICY_KEY_ID }}
+      AIIF_ONEPATH_RECIPIENT_PRIVATE_KEY_B64: ${{ secrets.AIIF_ONEPATH_RECIPIENT_PRIVATE_KEY_B64 }}
+      ARTICLE_ID: ${{ inputs.article_id }}
+      SEALED_SHA: ${{ inputs.sealed_sha256 }}
+      PACKET_COMMIT: ${{ inputs.packet_commit }}
+      NEXT_MAIN_SHA: ${{ inputs.next_main_sha }}
+    steps:
+      - name: Checkout existing old publication components (not its retired jobs)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          path: legacy
+      - name: Checkout approved immutable Next main
+        uses: actions/checkout@v4
+        with:
+          repository: trendhub-ab/ai-intelligence-factory-next
+          ref: main
+          token: ${{ secrets.GH_PAT }}
+          path: next-p1
+          persist-credentials: false
+      - name: Verify exact reviewed code and existing browser requirements
+        run: |
+          set -euo pipefail
+          test "$(git -C next-p1 rev-parse HEAD)" = "$NEXT_MAIN_SHA"
+          test -n "$GH_PAT"
+          test -n "$NOTION_API_KEY"
+          test -n "$AIIF_ONEPATH_OWNER_POLICY_PUBLIC_KEY_B64"
+          test -n "$AIIF_ONEPATH_OWNER_POLICY_KEY_ID"
+          test -n "$AIIF_ONEPATH_RECIPIENT_PRIVATE_KEY_B64"
+          command -v xvfb-run >/dev/null
+          command -v google-chrome >/dev/null || command -v google-chrome-stable >/dev/null
+          python3 -m pip install -r legacy/requirements.txt 'playwright>=1.45,<2'
+      - name: Decrypt only on VM, verify P0 provenance and create one PRIVATE draft
+        run: |
+          set -euo pipefail
+          umask 077
+          private_dir="$(mktemp -d)"
+          trap 'shred -u "$private_dir/packet.json" 2>/dev/null || rm -f "$private_dir/packet.json"; rmdir "$private_dir" 2>/dev/null || true' EXIT
+          export PYTHONPATH="$PWD/next-p1/src:$PWD/next-p1:$PWD/legacy"
+          python3 -B next-p1/scripts/onepath_packet_exchange.py --mode fetch \
+            --article-id "$ARTICLE_ID" --sealed-sha256 "$SEALED_SHA" \
+            --packet-commit "$PACKET_COMMIT" --output "$private_dir/packet.json"
+          xvfb-run -a python3 -B next-p1/scripts/onepath_reviewed_delivery.py \
+            --mode deliver --packet "$private_dir/packet.json"
+
+  stop-note-vm:
+    needs: [preflight, start-note-vm, verify-note-runner, deliver-private-note]
+    if: ${{ always() && needs.start-note-vm.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_NOTE_VM_ZONE: ${{ vars.GCP_NOTE_VM_ZONE }}
+      GCP_NOTE_VM_NAME: ${{ vars.GCP_NOTE_VM_NAME }}
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Always stop VM started by this OnePath run
+        run: |
+          set -euo pipefail
+          state="$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')"
+          if [ "$state" = "RUNNING" ]; then
+            gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
+          fi
