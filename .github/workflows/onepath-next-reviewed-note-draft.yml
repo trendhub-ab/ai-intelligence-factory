@@ -1,8 +1,9 @@
 # Scoped Next->old AIIF draft only. 81 retired V1 workflows stay disabled.
 # The encrypted private packet is read from the PRIVATE Next repo by exact Git
 # commit, decrypted ONLY in ephemeral 0600 space on the existing cloud note VM.
-# Independent owner P0 signature + remote once-claim + SQLite create-intent
-# remain mandatory. Never publish, recreate uncertain drafts or run Gemini.
+# Offline owner Ed25519 private-only policy PUBLIC verification + machine QA,
+# P1.4 remote once-claim and SQLite create-intent remain mandatory.
+# The owner SIGNING SECRET is never sent to GitHub Actions. Never publish, recreate uncertain drafts or run Gemini.
 name: AIIF Next OnePath - Reviewed Article To Private Note Draft
 
 on:
@@ -168,8 +169,8 @@ jobs:
       GH_PAT: ${{ secrets.GH_PAT }}
       NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
       NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}
-      AIIF_NEXT_OWNER_REVIEW_KEY_B64: ${{ secrets.AIIF_NEXT_OWNER_REVIEW_KEY_B64 }}
-      AIIF_NEXT_OWNER_REVIEW_KEY_ID: ${{ vars.AIIF_NEXT_OWNER_REVIEW_KEY_ID }}
+      AIIF_ONEPATH_OWNER_POLICY_PUBLIC_KEY_B64: ${{ vars.AIIF_ONEPATH_OWNER_POLICY_PUBLIC_KEY_B64 }}
+      AIIF_ONEPATH_OWNER_POLICY_KEY_ID: ${{ vars.AIIF_ONEPATH_OWNER_POLICY_KEY_ID }}
       AIIF_ONEPATH_RECIPIENT_PRIVATE_KEY_B64: ${{ secrets.AIIF_ONEPATH_RECIPIENT_PRIVATE_KEY_B64 }}
       ARTICLE_ID: ${{ inputs.article_id }}
       SEALED_SHA: ${{ inputs.sealed_sha256 }}
@@ -195,8 +196,8 @@ jobs:
           test "$(git -C next-p1 rev-parse HEAD)" = "$NEXT_MAIN_SHA"
           test -n "$GH_PAT"
           test -n "$NOTION_API_KEY"
-          test -n "$AIIF_NEXT_OWNER_REVIEW_KEY_B64"
-          test -n "$AIIF_NEXT_OWNER_REVIEW_KEY_ID"
+          test -n "$AIIF_ONEPATH_OWNER_POLICY_PUBLIC_KEY_B64"
+          test -n "$AIIF_ONEPATH_OWNER_POLICY_KEY_ID"
           test -n "$AIIF_ONEPATH_RECIPIENT_PRIVATE_KEY_B64"
           command -v xvfb-run >/dev/null
           command -v google-chrome >/dev/null || command -v google-chrome-stable >/dev/null
