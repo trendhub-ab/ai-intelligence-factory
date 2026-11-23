@@ -32,6 +32,22 @@ class OnePathOldPatReadOnlyAuditContractTests(unittest.TestCase):
             with self.subTest(required=required):
                 self.assertIn(required, content)
 
+    def test_v1_retirement_guard_whitelists_exact_metadata_only_audit(self):
+        source = (ROOT / "v1_retirement_contract_guard.py").read_text(
+            encoding="utf-8")
+        for required in (
+            'assert len(files) == 90',
+            'ONEPATH_OLD_PAT_AUDIT_BRIDGE = "onepath-old-pat-chat-readonly-audit.yml"',
+            'ONEPATH_OLD_PAT_AUDIT_JOBS = ["audit-old-owner-pat"]',
+            'assert disabled_count == 81',
+            'assert onepath_old_pat_audit_count == 1',
+            '"ONEPATH_OLD_PAT_AUDIT_FORBIDDEN:"',
+            '"gh api --method"',
+            '"ONEPATH_OLD_PAT_AUDIT_REQUIRED_FIELD_MISSING:"',
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, source)
+
     def test_no_write_api_or_vm_model_or_note(self):
         content = PATH.read_text(encoding="utf-8")
         for forbidden in (
