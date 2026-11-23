@@ -1,0 +1,93 @@
+# Read-only audit of existing OLD AIIF PAT as an alternative to creating a new
+# owner's local PAT. Never prints token, secret metadata, variables or responses.
+name: AIIF OnePath - Existing OLD PAT Chat Auth Audit (Read Only)
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: onepath-old-pat-chat-audit
+  cancel-in-progress: false
+
+jobs:
+  audit-old-owner-pat:
+    if: >-
+      ${{ github.repository == 'trendhub-ab/ai-intelligence-factory' &&
+          github.ref == 'refs/heads/main' &&
+          github.event.repository.private == false &&
+          github.event_name == 'issues' &&
+          github.event.action == 'opened' &&
+          github.actor == 'trendhub-ab' &&
+          github.event.issue.user.login == 'trendhub-ab' &&
+          github.event.issue.title == 'AIIF OLD: READ-ONLY ONEPATH EXISTING PAT AUDIT' &&
+          github.event.issue.body == 'VERIFY_OLD_GH_PAT_METADATA_ONLY_NO_WRITES' &&
+          github.run_attempt == 1 }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      OLD_GH_PAT_PRESENT: ${{ secrets.GH_PAT != '' }}
+      OLD_NOTION_PRESENT: ${{ secrets.NOTION_API_KEY != '' }}
+      OLD_NOTE_STORAGE_PRESENT: ${{ secrets.NOTE_STORAGE_STATE_B64 != '' }}
+      OLD_RECIPIENT_PRIVATE_PRESENT: ${{ secrets.AIIF_ONEPATH_RECIPIENT_PRIVATE_KEY_B64 != '' }}
+      OLD_POLICY_PUBLIC_PRESENT: ${{ vars.AIIF_ONEPATH_OWNER_POLICY_PUBLIC_KEY_B64 != '' }}
+      OLD_POLICY_KEY_ID_PRESENT: ${{ vars.AIIF_ONEPATH_OWNER_POLICY_KEY_ID != '' }}
+      OLD_GCP_PROJECT_PRESENT: ${{ vars.GCP_PROJECT_ID != '' }}
+      OLD_GCP_ZONE_PRESENT: ${{ vars.GCP_NOTE_VM_ZONE != '' }}
+      OLD_GCP_VM_PRESENT: ${{ vars.GCP_NOTE_VM_NAME != '' }}
+      OLD_GCP_WIF_PRESENT: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER != '' }}
+      OLD_GCP_ACCOUNT_PRESENT: ${{ vars.GCP_SERVICE_ACCOUNT != '' }}
+    steps:
+      - name: Report presence flags only
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          for n in OLD_GH_PAT_PRESENT OLD_NOTION_PRESENT OLD_NOTE_STORAGE_PRESENT \
+                   OLD_RECIPIENT_PRIVATE_PRESENT OLD_POLICY_PUBLIC_PRESENT \
+                   OLD_POLICY_KEY_ID_PRESENT OLD_GCP_PROJECT_PRESENT \
+                   OLD_GCP_ZONE_PRESENT OLD_GCP_VM_PRESENT OLD_GCP_WIF_PRESENT \
+                   OLD_GCP_ACCOUNT_PRESENT; do
+            if [ "${!n}" = 'true' ]; then
+              echo "$n=CONFIGURED"
+            else
+              echo "$n=MISSING"
+            fi
+          done
+          echo 'ONEPATH_OLD_AUDIT_WRITE_OPERATIONS=0'
+
+      - name: Read repository configuration endpoints through existing owner PAT only
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          set +x
+          if [ "$OLD_GH_PAT_PRESENT" != 'true' ]; then
+            echo 'OLD_GH_PAT_READ_PROBE=SKIPPED_NO_TOKEN'
+            exit 0
+          fi
+          check() {
+            label="$1"
+            path="$2"
+            if gh api "$path" --silent >/dev/null 2>&1; then
+              echo "$label=READ_AVAILABLE"
+            else
+              echo "$label=NOT_VERIFIED"
+            fi
+          }
+          check OLD_PAT_USER 'user'
+          check OLD_PAT_NEXT_REPO 'repos/trendhub-ab/ai-intelligence-factory-next'
+          check OLD_PAT_NEXT_VARIABLES 'repos/trendhub-ab/ai-intelligence-factory-next/actions/variables?per_page=100'
+          check OLD_PAT_NEXT_SECRETS 'repos/trendhub-ab/ai-intelligence-factory-next/actions/secrets?per_page=100'
+          check OLD_PAT_NEXT_SECRET_PUBLIC_KEY 'repos/trendhub-ab/ai-intelligence-factory-next/actions/secrets/public-key'
+          check OLD_PAT_OLD_VARIABLES 'repos/trendhub-ab/ai-intelligence-factory/actions/variables?per_page=100'
+          check OLD_PAT_OLD_SECRETS 'repos/trendhub-ab/ai-intelligence-factory/actions/secrets?per_page=100'
+          check OLD_PAT_OLD_SECRET_PUBLIC_KEY 'repos/trendhub-ab/ai-intelligence-factory/actions/secrets/public-key'
+          echo 'ONEPATH_OLD_AUDIT_READ_SUCCESS_IS_NOT_WRITE_PERMISSION'
+          echo 'ONEPATH_OLD_AUDIT_NO_GEMINI_NO_VM_NO_NOTION_NO_NOTE'

@@ -36,6 +36,10 @@ ONEPATH_REVIEWED_JOBS = [
     "preflight", "start-note-vm", "verify-note-runner",
     "deliver-private-note", "stop-note-vm",
 ]
+# Fifth exception: metadata-only Chat Issue probe of the existing old GitHub PAT.
+# It cannot change repository variables/secrets, start a VM or run a model.
+ONEPATH_OLD_PAT_AUDIT_BRIDGE = "onepath-old-pat-chat-readonly-audit.yml"
+ONEPATH_OLD_PAT_AUDIT_JOBS = ["audit-old-owner-pat"]
 
 
 
@@ -60,7 +64,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
     files = sorted((p for p in (root / ".github/workflows").iterdir()
                     if p.is_file() and p.suffix in {".yml", ".yaml"}),
                    key=lambda p: p.name)
-    assert len(files) == 89, f"WORKFLOW_COUNT_DRIFT: {len(files)}"
+    assert len(files) == 90, f"WORKFLOW_COUNT_DRIFT: {len(files)}"
     assert set(RETAINED_CI) <= {f.name for f in files}, "OFFLINE_CI_MISSING"
     disabled_count = 0
     job_count = 0
@@ -68,6 +72,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
     inspect_chatops_count = 0
     p15_readonly_count = 0
     onepath_reviewed_count = 0
+    onepath_old_pat_audit_count = 0
     for path in files:
         src = path.read_text(encoding="utf-8")
         jobs = _jobs(src, path.name)
@@ -269,6 +274,52 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
             )
             onepath_reviewed_count += 1
             continue
+        if path.name == ONEPATH_OLD_PAT_AUDIT_BRIDGE:
+            assert [name for name, _ in jobs] == ONEPATH_OLD_PAT_AUDIT_JOBS, (
+                "ONEPATH_OLD_PAT_AUDIT_JOB_DRIFT"
+            )
+            assert src.count("on:\n  issues:\n    types: [opened]") == 1, (
+                "ONEPATH_OLD_PAT_AUDIT_TRIGGER_INVALID"
+            )
+            for forbidden in (
+                "schedule:", "issue_comment:", "workflow_dispatch:", "pull_request:",
+                "push:", "workflow_call:", "workflow_run:",
+                "contents: write", "actions: write", "issues: write", "id-token: write",
+                "gh secret set", "gh variable set", "gh api --method",
+                "gh api -X", "gcloud ", "actions/checkout",
+                "google-github-actions/", "actions/upload-artifact",
+                "actions/download-artifact", "production_pipeline.py",
+                "NOTE_CHROME_CHANNEL", "publish_note", "note-publication",
+                "set -x\n", "set -x\r", "echo \"$GH_TOKEN\"",
+                "NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}",
+                "NOTE_STORAGE_STATE_B64: ${{ secrets.NOTE_STORAGE_STATE_B64 }}",
+            ):
+                assert forbidden not in src, (
+                    "ONEPATH_OLD_PAT_AUDIT_FORBIDDEN:" + forbidden
+                )
+            for required in (
+                "github.repository == 'trendhub-ab/ai-intelligence-factory'",
+                "github.ref == 'refs/heads/main'",
+                "github.actor == 'trendhub-ab'",
+                "github.event.repository.private == false",
+                "github.event.issue.user.login == 'trendhub-ab'",
+                "github.event.issue.title == 'AIIF OLD: READ-ONLY ONEPATH EXISTING PAT AUDIT'",
+                "github.event.issue.body == 'VERIFY_OLD_GH_PAT_METADATA_ONLY_NO_WRITES'",
+                "github.run_attempt == 1",
+                "GH_TOKEN: ${{ secrets.GH_PAT }}",
+                "gh api \"$path\" --silent >/dev/null 2>&1",
+                "OLD_PAT_NEXT_VARIABLES", "OLD_PAT_NEXT_SECRETS",
+                "OLD_PAT_OLD_VARIABLES", "OLD_PAT_OLD_SECRETS",
+                "ONEPATH_OLD_AUDIT_READ_SUCCESS_IS_NOT_WRITE_PERMISSION",
+            ):
+                assert required in src, (
+                    "ONEPATH_OLD_PAT_AUDIT_REQUIRED_FIELD_MISSING:" + required
+                )
+            assert (root / "tests/test_onepath_old_pat_chat_readonly_audit.py").is_file(), (
+                "ONEPATH_OLD_PAT_AUDIT_TESTS_MISSING"
+            )
+            onepath_old_pat_audit_count += 1
+            continue
         if path.name in RETAINED_CI:
             assert [name for name, _ in jobs] == [RETAINED_CI[path.name]], (
                 f"UNEXPECTED_CI_JOB: {path.name}"
@@ -296,6 +347,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
     assert inspect_chatops_count == 1, "V04_CHATOPS_BRIDGE_MISSING_OR_DUPLICATED"
     assert p15_readonly_count == 1, "P15_READONLY_BRIDGE_MISSING_OR_DUPLICATED"
     assert onepath_reviewed_count == 1, "ONEPATH_BRIDGE_MISSING_OR_DUPLICATED"
+    assert onepath_old_pat_audit_count == 1, "ONEPATH_OLD_PAT_AUDIT_MISSING_OR_DUPLICATED"
     assert disabled_count == 81, f"UNEXPECTED_OPERATIONAL_WORKFLOWS: {disabled_count}"
     assert job_count >= 81, f"OPERATIONAL_JOBS_NOT_DISABLED: {job_count}"
 
@@ -325,6 +377,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
         "owner_v04_read_only_chatops_exception": inspect_chatops_count,
         "owner_p15_vm_readonly_audit_exception": p15_readonly_count,
         "owner_onepath_signed_private_note_exception": onepath_reviewed_count,
+        "owner_onepath_old_pat_readonly_exception": onepath_old_pat_audit_count,
         "entrypoints_blocked": 2,
         "model_calls": 0,
         "publication_mutations": 0,
