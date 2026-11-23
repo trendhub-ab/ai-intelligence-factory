@@ -40,6 +40,9 @@ ONEPATH_REVIEWED_JOBS = [
 # It cannot change repository variables/secrets, start a VM or run a model.
 ONEPATH_OLD_PAT_AUDIT_BRIDGE = "onepath-old-pat-chat-readonly-audit.yml"
 ONEPATH_OLD_PAT_AUDIT_JOBS = ["audit-old-owner-pat"]
+# Sixth exception: one-time owner-Issue old PAT -> Next private secret.
+ONEPATH_PAT_RELAY_BRIDGE = "onepath-old-pat-next-secret-relay.yml"
+ONEPATH_PAT_RELAY_JOBS = ["onepath-owner-pat-relay"]
 
 
 
@@ -64,7 +67,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
     files = sorted((p for p in (root / ".github/workflows").iterdir()
                     if p.is_file() and p.suffix in {".yml", ".yaml"}),
                    key=lambda p: p.name)
-    assert len(files) == 90, f"WORKFLOW_COUNT_DRIFT: {len(files)}"
+    assert len(files) == 91, f"WORKFLOW_COUNT_DRIFT: {len(files)}"
     assert set(RETAINED_CI) <= {f.name for f in files}, "OFFLINE_CI_MISSING"
     disabled_count = 0
     job_count = 0
@@ -73,6 +76,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
     p15_readonly_count = 0
     onepath_reviewed_count = 0
     onepath_old_pat_audit_count = 0
+    onepath_pat_relay_count = 0
     for path in files:
         src = path.read_text(encoding="utf-8")
         jobs = _jobs(src, path.name)
@@ -274,6 +278,46 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
             )
             onepath_reviewed_count += 1
             continue
+        if path.name == ONEPATH_PAT_RELAY_BRIDGE:
+            assert [name for name, _ in jobs] == ONEPATH_PAT_RELAY_JOBS, (
+                "ONEPATH_PAT_RELAY_JOB_DRIFT"
+            )
+            assert src.count("on:\n  issues:\n    types: [opened]") == 1, (
+                "ONEPATH_PAT_RELAY_TRIGGER_INVALID"
+            )
+            for forbidden in (
+                "schedule:", "workflow_dispatch:", "issue_comment:", "pull_request:",
+                "push:", "workflow_call:", "workflow_run:",
+                "contents: write", "actions: write", "issues: write",
+                "id-token: write", "gcloud ", "google-github-actions/",
+                "secrets.NOTION_API_KEY", "secrets.NOTE_STORAGE_STATE_B64",
+                "AIIF_NEXT_GEMINI_API_KEY", "production_pipeline.py",
+                "publish_note", "note-publication",
+                "actions/upload-artifact", "actions/download-artifact",
+                "set -x\n", "set -x\r", "gh secret set",
+            ):
+                assert forbidden not in src, "ONEPATH_PAT_RELAY_FORBIDDEN:" + forbidden
+            for required in (
+                "github.repository == 'trendhub-ab/ai-intelligence-factory'",
+                "github.event.repository.private == false",
+                "github.ref == 'refs/heads/main'",
+                "github.actor == 'trendhub-ab'",
+                "github.event.issue.user.login == 'trendhub-ab'",
+                "github.event.issue.title == 'AIIF OLD: APPROVE ONEPATH RELAY EXISTING PAT TO NEXT'",
+                "github.event.issue.body == 'OWNER_APPROVES_ENCRYPTED_EXISTING_GH_PAT_RELAY_V1'",
+                "github.run_attempt == 1",
+                "OLD_OWNER_PAT: ${{ secrets.GH_PAT }}",
+                "PYTHONDONTWRITEBYTECODE=1 python -B onepath_relay_existing_pat_to_next.py",
+            ):
+                assert required in src, "ONEPATH_PAT_RELAY_REQUIRED_FIELD_MISSING:" + required
+            assert (root / "onepath_relay_existing_pat_to_next.py").is_file(), (
+                "ONEPATH_PAT_RELAY_SCRIPT_MISSING"
+            )
+            assert (root / "tests/test_onepath_relay_existing_pat_to_next.py").is_file(), (
+                "ONEPATH_PAT_RELAY_TESTS_MISSING"
+            )
+            onepath_pat_relay_count += 1
+            continue
         if path.name == ONEPATH_OLD_PAT_AUDIT_BRIDGE:
             assert [name for name, _ in jobs] == ONEPATH_OLD_PAT_AUDIT_JOBS, (
                 "ONEPATH_OLD_PAT_AUDIT_JOB_DRIFT"
@@ -348,6 +392,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
     assert p15_readonly_count == 1, "P15_READONLY_BRIDGE_MISSING_OR_DUPLICATED"
     assert onepath_reviewed_count == 1, "ONEPATH_BRIDGE_MISSING_OR_DUPLICATED"
     assert onepath_old_pat_audit_count == 1, "ONEPATH_OLD_PAT_AUDIT_MISSING_OR_DUPLICATED"
+    assert onepath_pat_relay_count == 1, "ONEPATH_PAT_RELAY_MISSING_OR_DUPLICATED"
     assert disabled_count == 81, f"UNEXPECTED_OPERATIONAL_WORKFLOWS: {disabled_count}"
     assert job_count >= 81, f"OPERATIONAL_JOBS_NOT_DISABLED: {job_count}"
 
@@ -378,6 +423,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
         "owner_p15_vm_readonly_audit_exception": p15_readonly_count,
         "owner_onepath_signed_private_note_exception": onepath_reviewed_count,
         "owner_onepath_old_pat_readonly_exception": onepath_old_pat_audit_count,
+        "owner_onepath_old_pat_relay_exception": onepath_pat_relay_count,
         "entrypoints_blocked": 2,
         "model_calls": 0,
         "publication_mutations": 0,
