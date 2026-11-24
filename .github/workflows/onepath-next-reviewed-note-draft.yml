@@ -190,6 +190,9 @@ jobs:
           token: ${{ secrets.GH_PAT }}
           path: next-p1
           persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
       - name: Verify exact reviewed code and existing browser requirements
         run: |
           set -euo pipefail
@@ -201,7 +204,11 @@ jobs:
           test -n "$AIIF_ONEPATH_RECIPIENT_PRIVATE_KEY_B64"
           command -v xvfb-run >/dev/null
           command -v google-chrome >/dev/null || command -v google-chrome-stable >/dev/null
-          python3 -m pip install -r legacy/requirements.txt 'playwright>=1.45,<2'
+          venv_dir="$RUNNER_TEMP/onepath-venv-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          test ! -e "$venv_dir"
+          python -m venv "$venv_dir"
+          "$venv_dir/bin/python" -m pip install -r legacy/requirements.txt 'playwright>=1.45,<2'
+          "$venv_dir/bin/python" -c 'import cryptography, playwright, PIL, requests'
       - name: Decrypt only on VM, verify P0 provenance and create one PRIVATE draft
         run: |
           set -euo pipefail
@@ -209,11 +216,21 @@ jobs:
           private_dir="$(mktemp -d)"
           trap 'shred -u "$private_dir/packet.json" 2>/dev/null || rm -f "$private_dir/packet.json"; rmdir "$private_dir" 2>/dev/null || true' EXIT
           export PYTHONPATH="$PWD/next-p1/src:$PWD/next-p1:$PWD/legacy"
-          python3 -B next-p1/scripts/onepath_packet_exchange.py --mode fetch \
+          venv_dir="$RUNNER_TEMP/onepath-venv-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          "$venv_dir/bin/python" -B next-p1/scripts/onepath_packet_exchange.py --mode fetch \
             --article-id "$ARTICLE_ID" --sealed-sha256 "$SEALED_SHA" \
             --packet-commit "$PACKET_COMMIT" --output "$private_dir/packet.json"
-          xvfb-run -a python3 -B next-p1/scripts/onepath_reviewed_delivery.py \
+          xvfb-run -a "$venv_dir/bin/python" -B next-p1/scripts/onepath_reviewed_delivery.py \
             --mode deliver --packet "$private_dir/packet.json"
+
+      - name: Clean isolated Python runtime for this attempt
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          test -n "$RUNNER_TEMP"
+          [[ "$GITHUB_RUN_ID" =~ ^[0-9]+$ && "$GITHUB_RUN_ATTEMPT" =~ ^[0-9]+$ ]]
+          venv_dir="$RUNNER_TEMP/onepath-venv-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          rm -rf -- "$venv_dir"
 
   stop-note-vm:
     needs: [preflight, start-note-vm, verify-note-runner, deliver-private-note]
