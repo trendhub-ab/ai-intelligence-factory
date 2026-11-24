@@ -58,10 +58,28 @@ class OnePathReviewedNoteBridgeTests(unittest.TestCase):
         self.assertNotIn("body: ${{", text)
         self.assertNotIn("manuscript: ${{", text)
 
+    def test_vm_uses_isolated_python_for_install_decrypt_and_delivery(self):
+        workflow = WORKFLOW.read_text("utf-8")
+        job = workflow.split("  deliver-private-note:", 1)[1].split("  stop-note-vm:", 1)[0]
+        for required in (
+            "uses: actions/setup-python@v6", "python-version: '3.11'",
+            'python -m venv "$venv_dir"',
+            '"$venv_dir/bin/python" -m pip install -r legacy/requirements.txt',
+            '"$venv_dir/bin/python" -B next-p1/scripts/onepath_packet_exchange.py --mode fetch',
+            'xvfb-run -a "$venv_dir/bin/python" -B next-p1/scripts/onepath_reviewed_delivery.py',
+            'venv_dir="$RUNNER_TEMP/onepath-venv-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"',
+            'if: ${{ always() }}', 'rm -rf -- "$venv_dir"',
+        ):
+            self.assertIn(required, job)
+        self.assertLess(job.index("actions/setup-python@v6"), job.index("python -m venv"))
+        self.assertLess(job.index("python -m venv"), job.index("onepath_packet_exchange.py --mode fetch"))
+        for forbidden in ("--break-system-packages", "sudo ", "python3 -m pip install"):
+            self.assertNotIn(forbidden, job)
+
     def test_no_v1_reactivation(self):
         src = WORKFLOW.read_text("utf-8")
         self.assertEqual(src.count("workflow_dispatch:"), 1)
-        for piece in ("python3 -m pip install -r legacy/requirements.txt",
+        for piece in ('"$venv_dir/bin/python" -m pip install -r legacy/requirements.txt',
                       'NOTE_CHROME_HEADLESS: "false"',
                       "AIIF_ONEPATH_OWNER_GO"):
             self.assertIn(piece, src)
