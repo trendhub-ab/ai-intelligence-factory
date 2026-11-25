@@ -67,7 +67,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
     files = sorted((p for p in (root / ".github/workflows").iterdir()
                     if p.is_file() and p.suffix in {".yml", ".yaml"}),
                    key=lambda p: p.name)
-    assert len(files) == 91, f"WORKFLOW_COUNT_DRIFT: {len(files)}"
+    assert len(files) == 92, f"WORKFLOW_COUNT_DRIFT: {len(files)}"
     assert set(RETAINED_CI) <= {f.name for f in files}, "OFFLINE_CI_MISSING"
     disabled_count = 0
     job_count = 0
@@ -77,6 +77,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
     onepath_reviewed_count = 0
     onepath_old_pat_audit_count = 0
     onepath_pat_relay_count = 0
+    onepath_p13_diagnostic_count = 0
     for path in files:
         src = path.read_text(encoding="utf-8")
         jobs = _jobs(src, path.name)
@@ -364,6 +365,38 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
             )
             onepath_old_pat_audit_count += 1
             continue
+        if path.name == "onepath-p13-readonly-diagnostic.yml":
+            assert [name for name, _ in jobs] == ["probe-p13-readonly"]
+            assert src.count("on:\n  issues:\n    types: [opened]") == 1
+            for required in (
+                "github.repository == 'trendhub-ab/ai-intelligence-factory'",
+                "github.ref == 'refs/heads/main'",
+                "github.event_name == 'issues'",
+                "github.event.action == 'opened'",
+                "github.actor == 'trendhub-ab'",
+                "github.event.issue.user.login == 'trendhub-ab'",
+                "github.event.issue.title == 'AIIF OLD: P13 READONLY DIAGNOSTIC'",
+                "github.event.issue.body == 'OWNER_GO_P13_READONLY_DIAGNOSTIC_45509465956'",
+                "github.run_attempt == 1",
+                "ref: 0241decaf4b9f5f1d9408e1b30d3d035b4a78500",
+                "runs-on: ubuntu-24.04", "persist-credentials: false",
+                "run_onepath_notion_readonly_diagnostic.py",
+                "tests.test_run_onepath_notion_readonly_diagnostic",
+            ):
+                assert required in src, "P13_DIAGNOSTIC_REQUIRED:" + required
+            for forbidden in (
+                "schedule:", "workflow_dispatch:", "issue_comment:", "pull_request:",
+                "push:", "workflow_call:", "workflow_run:", "self-hosted",
+                "contents: write", "actions: write", "issues: write", "id-token: write",
+                "gcloud ", "google-github-actions/", "NOTE_STORAGE_STATE_B64",
+                "AIIF_NEXT_GEMINI_API_KEY", "onepath_reviewed_delivery.py",
+                "onepath_packet_exchange.py", "actions/upload-artifact", "publish_note",
+            ):
+                assert forbidden not in src, "P13_DIAGNOSTIC_FORBIDDEN:" + forbidden
+            assert (root / "run_onepath_notion_readonly_diagnostic.py").is_file()
+            assert (root / "tests/test_run_onepath_notion_readonly_diagnostic.py").is_file()
+            onepath_p13_diagnostic_count += 1
+            continue
         if path.name in RETAINED_CI:
             assert [name for name, _ in jobs] == [RETAINED_CI[path.name]], (
                 f"UNEXPECTED_CI_JOB: {path.name}"
@@ -393,6 +426,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
     assert onepath_reviewed_count == 1, "ONEPATH_BRIDGE_MISSING_OR_DUPLICATED"
     assert onepath_old_pat_audit_count == 1, "ONEPATH_OLD_PAT_AUDIT_MISSING_OR_DUPLICATED"
     assert onepath_pat_relay_count == 1, "ONEPATH_PAT_RELAY_MISSING_OR_DUPLICATED"
+    assert onepath_p13_diagnostic_count == 1, "P13_DIAGNOSTIC_MISSING"
     assert disabled_count == 81, f"UNEXPECTED_OPERATIONAL_WORKFLOWS: {disabled_count}"
     assert job_count >= 81, f"OPERATIONAL_JOBS_NOT_DISABLED: {job_count}"
 
@@ -424,6 +458,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
         "owner_onepath_signed_private_note_exception": onepath_reviewed_count,
         "owner_onepath_old_pat_readonly_exception": onepath_old_pat_audit_count,
         "owner_onepath_old_pat_relay_exception": onepath_pat_relay_count,
+        "owner_onepath_p13_readonly_diagnostic_exception": onepath_p13_diagnostic_count,
         "entrypoints_blocked": 2,
         "model_calls": 0,
         "publication_mutations": 0,
