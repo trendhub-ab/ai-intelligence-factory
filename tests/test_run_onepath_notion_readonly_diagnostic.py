@@ -3,7 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from urllib.error import HTTPError
 
-from run_onepath_notion_readonly_diagnostic import probe
+from run_onepath_notion_readonly_diagnostic import probe, MAX_REQUESTS, MAX_SECONDS
 
 
 class DiagnosticTests(unittest.TestCase):
@@ -54,13 +54,21 @@ class DiagnosticTests(unittest.TestCase):
             self.assertEqual(result[key], 0)
         self.assertFalse(result["vm_started"])
 
+    def test_full_scan_budget_is_bounded(self):
+        self.assertEqual(MAX_REQUESTS, 6000)
+        self.assertEqual(MAX_SECONDS, 1800)
+        result = probe(self.fake(200), "private", clock=iter([0, 1801]).__next__)
+        self.assertEqual(result["reason"], "PROBE_BUDGET_REACHED")
+        self.assertEqual(result["requests"], 0)
+        self.assertFalse(result["full_inventory_verified"])
+
     def test_workflow_authority(self):
         src = (Path(__file__).resolve().parents[1] / ".github/workflows/onepath-p13-readonly-diagnostic.yml").read_text()
         for field in ("github.actor == 'trendhub-ab'", "github.run_attempt == 1",
                       "github.event.issue.user.login == 'trendhub-ab'",
-                      "OWNER_GO_P13_READONLY_DIAGNOSTIC_45509465956",
+                      "OWNER_GO_P13_FULL_READONLY_DIAGNOSTIC_45597338748",
                       "ref: 0241decaf4b9f5f1d9408e1b30d3d035b4a78500",
-                      "runs-on: ubuntu-24.04", "persist-credentials: false",
+                      "runs-on: ubuntu-24.04", "timeout-minutes: 35", "persist-credentials: false",
                       "run_onepath_notion_readonly_diagnostic.py"):
             self.assertIn(field, src)
         for field in ("self-hosted", "gcloud ", "NOTE_STORAGE_STATE_B64",
