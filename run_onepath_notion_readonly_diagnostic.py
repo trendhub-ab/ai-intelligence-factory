@@ -13,8 +13,8 @@ import time
 from urllib.error import HTTPError
 from unittest.mock import patch
 
-MAX_REQUESTS = 160
-MAX_SECONDS = 120
+MAX_REQUESTS = 6000
+MAX_SECONDS = 1800
 SAFE_P13_CODES = frozenset({
     "P13_NOTION_ID_INVALID", "P13_REQUEST_NOT_READ_ONLY_ALLOWLISTED",
     "P13_NOTION_NON_200", "P13_NOTION_RESPONSE_TOO_LARGE", "P13_NOTION_READ_FAILED",
@@ -36,7 +36,7 @@ class BudgetStop(Exception):
 
 
 def probe(module, token, *, clock=time.monotonic, max_requests=MAX_REQUESTS,
-          max_seconds=MAX_SECONDS):
+          max_seconds=MAX_SECONDS, progress=None):
     start = clock()
     receipt = {"status": "READ_ONLY_PROBE_STOPPED", "phase": "initial",
                "requests": 0, "http_status": None, "reason": "UNKNOWN",
@@ -69,7 +69,11 @@ def probe(module, token, *, clock=time.monotonic, max_requests=MAX_REQUESTS,
         )
         receipt["requests"] += 1
         receipt["http_status"] = None
-        return module._http_readonly(method, path, payload, key)
+        result = module._http_readonly(method, path, payload, key)
+        if progress is not None and receipt["requests"] % 250 == 0:
+            progress({"status": "READ_ONLY_SCAN_PROGRESS",
+                      "requests": receipt["requests"], "phase": receipt["phase"]})
+        return result
 
     try:
         with patch.object(module, "build_opener", observed_builder):
@@ -90,7 +94,8 @@ def probe(module, token, *, clock=time.monotonic, max_requests=MAX_REQUESTS,
 
 def main():
     from aiif_next import p13_notion_public_api_readonly as p13
-    result = probe(p13, os.environ.get("NOTION_API_KEY", ""))
+    result = probe(p13, os.environ.get("NOTION_API_KEY", ""),
+                   progress=lambda item: print(json.dumps(item, sort_keys=True), flush=True))
     print(json.dumps(result, sort_keys=True))
     # Completed diagnostic, not a successful inventory or create authority.
     return 0
