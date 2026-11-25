@@ -32,10 +32,11 @@ class DiagnosticTests(unittest.TestCase):
         module.NotionReadOnlyClient = Client
         return module
 
-    def test_http_429_is_specific_and_stops_without_retry(self):
+    def test_http_429_is_counted_and_unrecovered_error_is_preserved(self):
         result = probe(self.fake(429), "private")
         self.assertEqual(result["http_status"], 429)
-        self.assertEqual(result["reason"], "HTTP_429_RATE_LIMIT_STOP_NO_RETRY")
+        self.assertEqual(result["reason"], "P13_NOTION_READ_FAILED")
+        self.assertEqual(result["rate_limit_responses"], 1)
         self.assertEqual(result["requests"], 1)
         self.assertFalse(result["full_inventory_verified"])
         self.assertNotIn("private", str(result))
@@ -62,12 +63,42 @@ class DiagnosticTests(unittest.TestCase):
         self.assertEqual(result["requests"], 0)
         self.assertFalse(result["full_inventory_verified"])
 
+    def test_successful_retry_is_counted_and_budget_applies_to_retry(self):
+        def recovering():
+            module = self.fake(200)
+            outcomes = iter([429, 200, 200])
+            def builder(*args):
+                def request(*args):
+                    status = next(outcomes)
+                    if status == 429:
+                        raise HTTPError("https://private.invalid/path", 429, "secret", {}, None)
+                    return SimpleNamespace(status=200)
+                return SimpleNamespace(open=request)
+            module.build_opener = builder
+            def read(method, path, payload, token):
+                try:
+                    return module.build_opener().open(None)
+                except HTTPError:
+                    return module.build_opener().open(None)
+            module._http_readonly = read
+            return module
+        result = probe(recovering(), "private")
+        self.assertTrue(result["full_inventory_verified"])
+        self.assertEqual(result["requests"], 3)
+        self.assertEqual(result["rate_limit_responses"], 1)
+        self.assertEqual(result["reason"], "NONE")
+        result = probe(recovering(), "private", max_requests=1)
+        self.assertFalse(result["full_inventory_verified"])
+        self.assertEqual(result["requests"], 1)
+        self.assertEqual(result["rate_limit_responses"], 1)
+        self.assertEqual(result["reason"], "PROBE_BUDGET_REACHED")
+
     def test_workflow_authority(self):
         src = (Path(__file__).resolve().parents[1] / ".github/workflows/onepath-p13-readonly-diagnostic.yml").read_text()
         for field in ("github.actor == 'trendhub-ab'", "github.run_attempt == 1",
                       "github.event.issue.user.login == 'trendhub-ab'",
-                      "OWNER_GO_P13_FULL_READONLY_DIAGNOSTIC_45597338748",
-                      "ref: 0241decaf4b9f5f1d9408e1b30d3d035b4a78500",
+                      "OWNER_GO_P13_REPAIRED_READONLY_DIAGNOSTIC_45598412302",
+                      "ref: 0a20749c370b3fd1fbd601f479c2b703775d6858",
                       "runs-on: ubuntu-24.04", "timeout-minutes: 35", "persist-credentials: false",
                       "run_onepath_notion_readonly_diagnostic.py"):
             self.assertIn(field, src)
