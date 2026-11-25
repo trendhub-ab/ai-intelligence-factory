@@ -1,8 +1,8 @@
-"""Bounded, read-only reproduction of the failed P13 inventory on GitHub-hosted runner.
+"""Bounded, read-only validation of the repaired P13 inventory on GitHub-hosted runner.
 
 Use the exact pinned Next implementation and original credential. Observe only
-fixed phase names, HTTP status codes and request counts. Stop on the first error
-(including 429), or at the diagnostic budget; do not retry or create anything.
+fixed phase names, HTTP status codes and actual request counts, including
+429 retries performed by the pinned client. No diagnostic-level retry or writes.
 """
 from __future__ import annotations
 
@@ -28,6 +28,8 @@ SAFE_P13_CODES = frozenset({
     "P13_DUPLICATE_LINEAGE_IN_PAGE", "P13_BAD_LINEAGE_JSON",
     "P13_LINEAGE_CONTRACT_MISMATCH", "P13_DUPLICATE_NEXT_IDENTITY",
     "P13_QUEUE_SYNC_ID_INVALID", "P13_QUEUE_SYNC_ID_DUPLICATE",
+    "P13_RATE_LIMIT_EXHAUSTED", "P13_RATE_LIMIT_WAIT_EXCEEDS_BUDGET",
+    "P13_RATE_LIMIT_RETRY_AFTER_INVALID",
 })
 
 
@@ -39,7 +41,7 @@ def probe(module, token, *, clock=time.monotonic, max_requests=MAX_REQUESTS,
           max_seconds=MAX_SECONDS, progress=None):
     start = clock()
     receipt = {"status": "READ_ONLY_PROBE_STOPPED", "phase": "initial",
-               "requests": 0, "http_status": None, "reason": "UNKNOWN",
+               "requests": 0, "rate_limit_responses": 0, "http_status": None, "reason": "UNKNOWN",
                "notion_writes": 0, "note_writes": 0, "model_calls": 0,
                "vm_started": False, "full_inventory_verified": False}
     original_builder = module.build_opener
@@ -49,10 +51,22 @@ def probe(module, token, *, clock=time.monotonic, max_requests=MAX_REQUESTS,
 
         class Observer:
             def open(self, *a, **kw):
+                if receipt["requests"] >= max_requests or clock() - start >= max_seconds:
+                    receipt["reason"] = "PROBE_BUDGET_REACHED"
+                    raise BudgetStop()
+                receipt["requests"] += 1
+                receipt["http_status"] = None
+                if progress is not None and receipt["requests"] % 250 == 0:
+                    progress({"status": "READ_ONLY_SCAN_PROGRESS",
+                              "requests": receipt["requests"],
+                              "rate_limit_responses": receipt["rate_limit_responses"],
+                              "phase": receipt["phase"]})
                 try:
                     response = opener.open(*a, **kw)
                 except HTTPError as exc:
                     receipt["http_status"] = exc.code if type(exc.code) is int else None
+                    if exc.code == 429:
+                        receipt["rate_limit_responses"] += 1
                     raise
                 receipt["http_status"] = response.status
                 return response
@@ -60,20 +74,11 @@ def probe(module, token, *, clock=time.monotonic, max_requests=MAX_REQUESTS,
         return Observer()
 
     def transport(method, path, payload, key):
-        if receipt["requests"] >= max_requests or clock() - start >= max_seconds:
-            receipt["reason"] = "PROBE_BUDGET_REACHED"
-            raise BudgetStop()
         receipt["phase"] = (
             "root_blocks" if path.startswith("/v1/blocks/") else
             "data_source_rows" if method == "POST" else "schema"
         )
-        receipt["requests"] += 1
-        receipt["http_status"] = None
-        result = module._http_readonly(method, path, payload, key)
-        if progress is not None and receipt["requests"] % 250 == 0:
-            progress({"status": "READ_ONLY_SCAN_PROGRESS",
-                      "requests": receipt["requests"], "phase": receipt["phase"]})
-        return result
+        return module._http_readonly(method, path, payload, key)
 
     try:
         with patch.object(module, "build_opener", observed_builder):
@@ -86,8 +91,6 @@ def probe(module, token, *, clock=time.monotonic, max_requests=MAX_REQUESTS,
         if receipt["reason"] != "PROBE_BUDGET_REACHED":
             reason = str(exc)
             receipt["reason"] = reason if reason in SAFE_P13_CODES else "UNCLASSIFIED"
-        if receipt["http_status"] == 429:
-            receipt["reason"] = "HTTP_429_RATE_LIMIT_STOP_NO_RETRY"
         # Never print traceback, exception text, page IDs, request URL or body.
     return receipt
 
