@@ -19,6 +19,8 @@ jobs:
         run: python v1_retirement_contract_guard.py
       - name: Verify P1.5 VM audit exception is strictly read-only
         run: python -m unittest tests.test_run_p15_vm_audit_bridge -v
+      - name: Verify P13 read-only diagnostic contract
+        run: python -m unittest tests.test_run_onepath_notion_readonly_diagnostic -v
       - name: Verify business authority and required PR impact review
         run: |
           python business_north_star_guard.py
