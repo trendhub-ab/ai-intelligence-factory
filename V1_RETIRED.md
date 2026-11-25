@@ -36,3 +36,7 @@ Owner directive: V1 is obsolete. Prevent any V1 production run while keeping the
 - Approval to merge this exception does **not** authorize launching it; running it may start a billed GCP VM and requires separate explicit owner live GO. The retirement guard must continue to reject any new V1 jobs, workflow entrypoints or modifications to the isolated v0.4 bridge. Owner must review branch isolation before merge.
 
 Do not restore any V1 runtime without a fresh explicit owner directive. Treat all historical V1 operations as retired; only the separately enumerated v0.4 owner-only exceptions remain executable.
+
+## Scoped P13 read-only diagnostic exception (2026-11-25)
+
+Pending explicit owner merge and separate diagnostic GO, `.github/workflows/onepath-p13-readonly-diagnostic.yml` permits only the authenticated owner's exact new Issue for failed delivery Run 45509465956. It runs on GitHub-hosted Ubuntu, using the same existing Notion credential and immutable Next read-only P13 code at 0241decaf4b9f5f1d9408e1b30d3d035b4a78500. Bounded to 160 requests and 120 seconds between requests (workflow hard limit five minutes); stop at the first failure including HTTP 429 without retry. Only fixed phase/reason, status and aggregate counts are printed. Budget exhaustion is inconclusive, not full inventory success. No VM, decrypt, model, Notion/note write, delivery or publication; no changes to the 81 retired workflows. Diagnosis never grants recovery authority.
