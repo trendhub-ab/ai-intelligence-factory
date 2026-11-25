@@ -1,0 +1,52 @@
+# Read-only diagnostic of the exact P13 implementation used by failed delivery.
+name: AIIF OnePath - P13 Read-only Failure Diagnostic
+on:
+  issues:
+    types: [opened]
+permissions:
+  contents: read
+concurrency:
+  group: onepath-p13-readonly-diagnostic
+  cancel-in-progress: false
+jobs:
+  probe-p13-readonly:
+    if: >-
+      ${{ github.repository == 'trendhub-ab/ai-intelligence-factory' &&
+          github.ref == 'refs/heads/main' &&
+          github.event_name == 'issues' &&
+          github.event.action == 'opened' &&
+          github.actor == 'trendhub-ab' &&
+          github.event.issue.user.login == 'trendhub-ab' &&
+          github.event.issue.title == 'AIIF OLD: P13 READONLY DIAGNOSTIC' &&
+          github.event.issue.body == 'OWNER_GO_P13_READONLY_DIAGNOSTIC_45509465956' &&
+          github.run_attempt == 1 }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          path: legacy
+      - uses: actions/checkout@v4
+        with:
+          repository: trendhub-ab/ai-intelligence-factory-next
+          ref: 0241decaf4b9f5f1d9408e1b30d3d035b4a78500
+          token: ${{ secrets.GH_PAT }}
+          persist-credentials: false
+          path: next-p1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify exact code and offline diagnostic contract
+        run: |
+          set -euo pipefail
+          test "$(git -C next-p1 rev-parse HEAD)" = "0241decaf4b9f5f1d9408e1b30d3d035b4a78500"
+          cd legacy
+          python -B -m unittest tests.test_run_onepath_notion_readonly_diagnostic -v
+      - name: Observe read-only failure without exposing content
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+        run: |
+          set -euo pipefail
+          set +x
+          PYTHONPATH=next-p1/src python -B legacy/run_onepath_notion_readonly_diagnostic.py
