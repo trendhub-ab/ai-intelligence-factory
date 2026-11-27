@@ -185,7 +185,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
             assert [name for name, _ in jobs] == P15_LEDGER_AUDIT_JOBS, (
                 "P15_WORKFLOW_JOB_DRIFT"
             )
-            assert src.count("workflow_dispatch:") == 1, "P15_TRIGGER_INVALID"
+            assert src.count("workflow_dispatch:") == 1 and src.count("  issues:") == 1, "P15_TRIGGER_INVALID"
             for forbidden in (
                 "schedule:", "issue_comment:", "pull_request:", "push:",
                 "workflow_call:", "workflow_run:", "secrets.NOTION_API_KEY",
@@ -202,6 +202,14 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
                 "github.event_name == 'workflow_dispatch'",
                 "github.run_attempt == 1",
                 "AUDIT_P15_PERSISTENT_NOTE_LEDGERS",
+                "github.event_name == 'issues'",
+                "github.event.action == 'opened'",
+                "github.event.issue.user.login == 'trendhub-ab'",
+                "github.event.issue.title == 'AIIF OLD: NOTE TAIL READONLY AUDIT'",
+                "github.event.issue.body == 'OWNER_GO_NOTE_TAIL_READONLY_45639717033'",
+                "run_onepath_note_tail_readonly.py --ledger-dir",
+                "test_run_onepath_note_tail_readonly",
+                "P15_VM_TERMINATED_VERIFIED",
                 "note-draft-create-v2",
                 "actions/checkout@v4",
                 "persist-credentials: false",
