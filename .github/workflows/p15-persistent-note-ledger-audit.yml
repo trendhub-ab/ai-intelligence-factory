@@ -3,6 +3,8 @@
 name: AIIF Next P1.5 - Persistent Note Ledger Readonly Audit
 
 on:
+  issues:
+    types: [opened]
   workflow_dispatch:
     inputs:
       confirm:
@@ -23,14 +25,22 @@ jobs:
       ${{ github.repository == 'trendhub-ab/ai-intelligence-factory' &&
           github.ref == 'refs/heads/main' &&
           github.actor == 'trendhub-ab' &&
-          github.event_name == 'workflow_dispatch' &&
           github.run_attempt == 1 &&
-          inputs.confirm == 'AUDIT_P15_PERSISTENT_NOTE_LEDGERS' }}
+          ((github.event_name == 'workflow_dispatch' &&
+            inputs.confirm == 'AUDIT_P15_PERSISTENT_NOTE_LEDGERS') ||
+           (github.event_name == 'issues' && github.event.action == 'opened' &&
+            github.event.issue.user.login == 'trendhub-ab' &&
+            github.event.issue.title == 'AIIF OLD: NOTE TAIL READONLY AUDIT' &&
+            github.event.issue.body == 'OWNER_GO_NOTE_TAIL_READONLY_45639717033')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 7
     steps:
       # Mutual exclusion with v0.4 is enforced by workflow-level concurrency.
       # Do not infer VM occupancy from GitHub's historical workflow status counters.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          path: legacy
       - name: Checkout immutable AIIF Next P1.5 source
         uses: actions/checkout@v4
         with:
@@ -44,6 +54,8 @@ jobs:
           set -euo pipefail
           test "$(git -C next-p15 rev-parse HEAD)" = "bbf7b49cc4eae1975d3dc838d560c12ccccc3a61"
           PYTHONPATH=next-p15/src python -B -m unittest discover -s next-p15/tests -p test_p15_local_ledger_readonly_audit.py -v
+          cd legacy
+          python -B -m unittest tests.test_run_onepath_note_tail_readonly -v
 
   start-note-vm:
     needs: preflight
@@ -118,6 +130,10 @@ jobs:
     env:
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          path: legacy
       - name: Checkout immutable Next audit module only
         uses: actions/checkout@v4
         with:
@@ -136,6 +152,12 @@ jobs:
           umask 077
           test "$(git -C next-p15 rev-parse HEAD)" = "bbf7b49cc4eae1975d3dc838d560c12ccccc3a61"
           python3 -B next-p15/src/aiif_next/p15_local_ledger_readonly_audit.py --ledger-dir "$HOME/.aiif-note"
+      - name: Inspect exact failed OnePath incident (read-only)
+        if: ${{ github.event_name == 'issues' }}
+        run: |
+          set -euo pipefail
+          umask 077
+          PYTHONPATH=next-p15/src python -B legacy/run_onepath_note_tail_readonly.py --ledger-dir "$HOME/.aiif-note"
       - name: Mark only local-ledger read as complete
         run: |
           echo "P15_VM_LEDGER_READONLY_RUN=PASS"
@@ -166,3 +188,5 @@ jobs:
           if [ "$state" = "RUNNING" ]; then
             gcloud compute instances stop "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --quiet
           fi
+          test "$(gcloud compute instances describe "$GCP_NOTE_VM_NAME" --project "$GCP_PROJECT_ID" --zone "$GCP_NOTE_VM_ZONE" --format='value(status)')" = TERMINATED
+          echo "P15_VM_TERMINATED_VERIFIED"
