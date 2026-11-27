@@ -109,6 +109,8 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
                 "OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_FINAL_ONCE",
                 "tests.test_run_v04_note_body_locator",
                 "tests.test_run_v04_historical_edit_proof",
+                "test \"$INPUT_ISSUE\" = \"205\"",
+                "test \"$INPUT_SHA\" = \"d65a7e9a798f86a31980686483870a1bd6a651ac8f58b12a4fe9ea62427a6650\"",
                 "OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_RETRY_ONCE",
                 "GCP_WORKLOAD_IDENTITY_PROVIDER",
                 "NOTE_STORAGE_STATE_B64",
@@ -139,7 +141,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
             assert src.count("issue_comment:") == 1, "V04_CHATOPS_TRIGGER_INVALID"
             for forbidden in (
                 "schedule:", "push:", "workflow_dispatch:", "pull_request:",
-                '"operation":"create"', "daily-one-shot.yml/dispatches",
+                "daily-one-shot.yml/dispatches",
                 "note-create-draft.yml/dispatches",
                 "AIIF_NEXT_GEMINI_API_KEY", "production_pipeline.py",
                 "publish_note", "note-publication", "secrets.NOTION_API_KEY",
@@ -154,6 +156,7 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
                 "github.event.comment.body == '/aiif v04 inspect 204'",
                 "github.event.comment.body == '/aiif v04 recover 204'",
                 "github.event.comment.body == '/aiif v04 recover-final 204'",
+                "github.event.comment.body == '/aiif v04 create 205'",
                 "github.run_attempt == 1",
                 "issues: write", "actions: write",
                 "run_v04_chatops_control.py",
@@ -164,6 +167,10 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
                 '"operation":"inspect"',
                 '"operation":"recover"',
                 '"operation":"recover-final"',
+                '"operation":"create"',
+                '"source_issue_number":"205"',
+                "d65a7e9a798f86a31980686483870a1bd6a651ac8f58b12a4fe9ea62427a6650",
+                "create-fresh)",
                 '"recovery_approval":"OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_FINAL_ONCE"',
                 '"recovery_approval":"OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_RETRY_ONCE"',
                 '"source_issue_number":"204"',
@@ -172,6 +179,8 @@ def audit_v1_retirement(root: Path = ROOT) -> dict:
                 assert required in src, (
                     f"V04_CHATOPS_SAFETY_CONTRACT_MISSING: {required}"
                 )
+            assert src.count('"operation":"create"') == 1, (
+                "V04_CHATOPS_CREATE_MUST_BE_EXACTLY_ONE_FRESH")
             for dependency in (
                 "run_v04_chatops_control.py",
                 "tests/test_run_v04_chatops_control.py",

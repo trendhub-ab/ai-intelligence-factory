@@ -69,6 +69,15 @@ jobs:
               test "$INPUT_RECOVERY_APPROVAL" = "OWNER_CONFIRMS_AGENT_SKILLS_204_ABSENT_FINAL_ONCE" ;;
             *) exit 1 ;;
           esac
+      - name: Require pinned fresh source before any new draft attempt
+        if: ${{ inputs.operation == 'create' }}
+        env:
+          INPUT_ISSUE: ${{ inputs.source_issue_number }}
+          INPUT_SHA: ${{ inputs.manuscript_sha256 }}
+        run: |
+          set -euo pipefail
+          test "$INPUT_ISSUE" = "205"
+          test "$INPUT_SHA" = "d65a7e9a798f86a31980686483870a1bd6a651ac8f58b12a4fe9ea62427a6650"
       - name: Ensure manifest is authentic and private (no browser)
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
