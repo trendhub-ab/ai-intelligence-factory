@@ -24,6 +24,7 @@ class P15VmAuditBridgeTests(unittest.TestCase):
         names = [name for name, _ in _jobs(self.audit, AUDIT.name)]
         self.assertEqual(names, P15_LEDGER_AUDIT_JOBS)
         self.assertEqual(self.audit.count("workflow_dispatch:"), 1)
+        self.assertEqual(self.audit.count("  issues:"), 1)
         self.assertNotIn("issue_comment:", self.audit)
         self.assertNotIn("schedule:", self.audit)
         self.assertNotIn("push:", self.audit)
@@ -37,6 +38,11 @@ class P15VmAuditBridgeTests(unittest.TestCase):
             "github.event_name == 'workflow_dispatch'",
             "github.run_attempt == 1",
             "inputs.confirm == 'AUDIT_P15_PERSISTENT_NOTE_LEDGERS'",
+            "github.event_name == 'issues'",
+            "github.event.action == 'opened'",
+            "github.event.issue.user.login == 'trendhub-ab'",
+            "github.event.issue.title == 'AIIF OLD: NOTE TAIL READONLY AUDIT'",
+            "github.event.issue.body == 'OWNER_GO_NOTE_TAIL_READONLY_45639717033'",
         )
         for token in expected:
             with self.subTest(token=token):
@@ -51,7 +57,7 @@ class P15VmAuditBridgeTests(unittest.TestCase):
 
     def test_pinned_next_and_no_implicit_secret_transfer(self):
         self.assertEqual(self.audit.count("ref: " + PINNED_NEXT), 2)
-        self.assertEqual(self.audit.count("persist-credentials: false"), 2)
+        self.assertEqual(self.audit.count("persist-credentials: false"), 4)
         self.assertIn("repository: trendhub-ab/ai-intelligence-factory-next", self.audit)
         self.assertIn("test_p15_local_ledger_readonly_audit.py", self.audit)
         self.assertIn("p15_local_ledger_readonly_audit.py --ledger-dir", self.audit)
